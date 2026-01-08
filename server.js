@@ -3,7 +3,7 @@ import multer from "multer";
 import dotenv from "dotenv";
 
 import { mergeAnnuncioProposta } from "./lib/merge_json.js";
-import { aiExtractAnnuncio, aiExtractProposta } from "./lib/ai.js";
+import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale } from "./lib/ai.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
 
 dotenv.config();
@@ -158,6 +158,12 @@ app.post("/callAI", upload, async (req, res) => {
   try {
     const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};
     const rawEmailBody = typeof body.email_body_text === "string" ? body.email_body_text : "";
+    const provvigioneOcrText =
+      typeof body.provvigione_ocr === "string"
+        ? body.provvigione_ocr
+        : typeof body.provvigione_ocr_text === "string"
+        ? body.provvigione_ocr_text
+        : "";
     const files = Array.isArray(req.files) ? req.files : [];
 
     const propostaUploadFile = fileByField(files, "proposta") || firstFile(files);
@@ -221,6 +227,17 @@ app.post("/callAI", upload, async (req, res) => {
 
     let aiProposta = await aiExtractProposta({ text: combinedProText, fileName: proName });
 
+    let provvigioneFromOcr = null;
+    if (provvigioneOcrText.trim()) {
+      const aiProvvigione = await aiExtractProvvigionePercentuale({
+        text: provvigioneOcrText,
+        fileName: "provvigione_ocr.txt",
+      });
+      if (typeof aiProvvigione?.provvigione_percentuale === "number") {
+        provvigioneFromOcr = aiProvvigione.provvigione_percentuale;
+      }
+    }
+
     // BIC lookup da IBAN (se presente)
     if (aiProposta.iban_beneficiario) {
       const { bic, bank } = await fetchIbanInfo(aiProposta.iban_beneficiario);
@@ -242,6 +259,12 @@ app.post("/callAI", upload, async (req, res) => {
       : null;
     const ora_gara_inizio = aiAnnuncio.ora_gara_inizio || "09:00";
     const ora_gara_fine = aiAnnuncio.ora_gara_fine || "12:00";
+    const provvigione_percentuale =
+      typeof provvigioneFromOcr === "number" && provvigioneFromOcr > 0
+        ? provvigioneFromOcr
+        : typeof aiAnnuncio.provvigione_percentuale === "number" && aiAnnuncio.provvigione_percentuale > 0
+        ? aiAnnuncio.provvigione_percentuale
+        : 3;
 
     const merged = mergeAnnuncioProposta(
       {
@@ -263,6 +286,7 @@ app.post("/callAI", upload, async (req, res) => {
         data_termine_deposito: aiAnnuncio.data_termine_deposito,
         ora_termine_deposito: aiAnnuncio.ora_termine_deposito,
         descrizione: aiAnnuncio.descrizione,
+        provvigione_percentuale,
       },
       {
         file_pdf: aiProposta.file_pdf,

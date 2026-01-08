@@ -43,9 +43,10 @@ Usa un process manager (pm2) e un reverse proxy HTTPS.
 - `POST /callAI` (JSON o multipart):
   - `email_body_text` (testo annuncio, obbligatorio).
   - Proposta via `proposta_ocr` (testo) oppure PDF: `proposta_url` (https), `proposta_base64`, o upload file `proposta`.
+  - `provvigione_ocr` (testo OCR clausola provvigione; se presente, usato per estrarre `provvigione_percentuale`).
   - Opzionali: `proposta_name`, `annuncio_name`, altri campi già supportati.
 
-La risposta contiene `ai.annuncio`, `ai.proposta` e `merged` con campi normalizzati; data gara viene calcolata a +2 giorni dal termine deposito se mancante.
+La risposta contiene `ai.annuncio`, `ai.proposta` e `merged` con campi normalizzati (inclusa `provvigione_percentuale`, default 3); data gara viene calcolata a +2 giorni dal termine deposito se mancante.
 
 ## Note
 - Mantieni aggiornata la chiave OpenAI e verifica i limiti di costo.

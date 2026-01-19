@@ -34,12 +34,53 @@ function addDaysToISODate(isoDate, days) {
   return d.toISOString().slice(0, 10);
 }
 
-function toISOFromITDate(val) {
-  // accetta gg/mm/aa o gg/mm/aaaa -> ISO YYYY-MM-DD
-  const m = typeof val === "string" && val.match(/^(\d{2})\/(\d{2})\/(\d{2}|\d{4})$/);
+function shiftISOToNextBusinessDay(isoDate) {
+  const m = typeof isoDate === "string" && isoDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (!m) return null;
-  const yy = m[3].length === 2 ? `20${m[3]}` : m[3];
-  return `${yy}-${m[2]}-${m[1]}`;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
+  const dow = d.getUTCDay();
+  if (dow === 6) return addDaysToISODate(isoDate, 2); // sabato -> lunedi
+  if (dow === 0) return addDaysToISODate(isoDate, 1); // domenica -> lunedi
+  return isoDate;
+}
+
+function toISOFromITDate(val) {
+  // accetta gg/mm/aa, gg/mm/aaaa, o "1 marzo 2026" -> ISO YYYY-MM-DD
+  if (!val) return null;
+  const str = String(val).trim();
+  let m = str.match(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})\b/);
+  if (m) {
+    const day = String(m[1]).padStart(2, "0");
+    const month = String(m[2]).padStart(2, "0");
+    const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return `${year}-${month}-${day}`;
+  }
+
+  const months = {
+    gennaio: "01",
+    febbraio: "02",
+    marzo: "03",
+    aprile: "04",
+    maggio: "05",
+    giugno: "06",
+    luglio: "07",
+    agosto: "08",
+    settembre: "09",
+    ottobre: "10",
+    novembre: "11",
+    dicembre: "12",
+  };
+  m = str.match(
+    /\b(\d{1,2})\D+(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)\D+(\d{2}|\d{4})\b/i
+  );
+  if (m) {
+    const day = String(m[1]).padStart(2, "0");
+    const month = months[m[2].toLowerCase()];
+    const year = m[3].length === 2 ? `20${m[3]}` : m[3];
+    return month ? `${year}-${month}-${day}` : null;
+  }
+
+  return null;
 }
 
 function toItalianTextDate(val) {
@@ -251,12 +292,26 @@ app.post("/callAI", upload, async (req, res) => {
     }
 
     const data_apertura_pubblicazione = computeDataAperturaPubblicazione();
-    const data_termine_deposito =
-      toISOFromITDate(aiAnnuncio.data_termine_deposito) || aiAnnuncio.data_termine_deposito || null;
+    const data_redazione_oggi = formatLocalISODate(new Date());
+    const anno_redazione_oggi = new Date().getFullYear();
+    const dataTermineDepositoRaw = aiAnnuncio.data_termine_deposito || null;
+    const dataTermineDepositoISO = toISOFromITDate(dataTermineDepositoRaw);
+    const dataGaraAnnuncioISO = toISOFromITDate(aiAnnuncio.data_vendita);
+    let data_termine_deposito = dataTermineDepositoISO || dataTermineDepositoRaw || null;
     const ora_termine_deposito = aiAnnuncio.ora_termine_deposito || null;
-    const data_gara = data_termine_deposito
-      ? addDaysToISODate(data_termine_deposito, 2)
-      : null;
+    let data_gara = null;
+    let dataGaraComputed = false;
+    if (dataTermineDepositoISO) {
+      // +2 giorni pieni -> gara il terzo giorno di calendario (weekend inclusi).
+      data_gara = addDaysToISODate(dataTermineDepositoISO, 3);
+      dataGaraComputed = true;
+    } else if (dataGaraAnnuncioISO) {
+      data_gara = dataGaraAnnuncioISO;
+      if (!data_termine_deposito) {
+        data_termine_deposito = addDaysToISODate(dataGaraAnnuncioISO, -3);
+      }
+    }
+    if (dataGaraComputed && data_gara) data_gara = shiftISOToNextBusinessDay(data_gara);
     const ora_gara_inizio = aiAnnuncio.ora_gara_inizio || "09:00";
     const ora_gara_fine = aiAnnuncio.ora_gara_fine || "12:00";
     const provvigione_percentuale =
@@ -317,6 +372,10 @@ app.post("/callAI", upload, async (req, res) => {
     merged.gara.ora_inizio = merged.gara.ora_inizio || ora_gara_inizio;
     merged.gara.ora_fine = merged.gara.ora_fine || ora_gara_fine;
     merged.data_apertura_pubblicazione = data_apertura_pubblicazione;
+    if (merged.redazione) {
+      merged.redazione.data = data_redazione_oggi;
+      merged.redazione.anno = anno_redazione_oggi;
+    }
 
     // Default numerici a 0 se mancanti
     ensureNumberDefaults(merged.gara, ["offerta_minima", "offerta_minima_ammissibile", "rilancio_minimo"]);

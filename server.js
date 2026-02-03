@@ -195,6 +195,50 @@ async function fetchIbanInfo(iban) {
   }
 }
 
+async function geocodeAddress(address) {
+  if (!address || typeof address !== "string") return null;
+  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
+  if (!apiKey) return null;
+  const clean = address.trim();
+  if (!clean) return null;
+  try {
+    const params = new URLSearchParams({
+      address: clean,
+      key: apiKey,
+      language: "it",
+      region: "it",
+    });
+    const url = `https://maps.googleapis.com/maps/api/geocode/json?${params.toString()}`;
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`google geocode status ${resp.status}`);
+    const data = await resp.json();
+    if (data?.status && data.status !== "OK") return null;
+    const result = Array.isArray(data?.results) ? data.results[0] : null;
+    if (!result) return null;
+    const comps = Array.isArray(result.address_components) ? result.address_components : [];
+    const pick = (type) =>
+      comps.find((c) => Array.isArray(c.types) && c.types.includes(type))?.long_name || null;
+    const route = pick("route");
+    const streetNumber = pick("street_number");
+    const comune =
+      pick("locality") ||
+      pick("postal_town") ||
+      pick("administrative_area_level_3") ||
+      pick("administrative_area_level_2") ||
+      null;
+    const indirizzo = [route, streetNumber].filter(Boolean).join(", ") || null;
+    return {
+      indirizzo,
+      comune,
+      cap: pick("postal_code"),
+      provincia: pick("administrative_area_level_2"),
+      formatted_address: result.formatted_address || null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 app.post("/callAI", upload, async (req, res) => {
   try {
     const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};
@@ -291,6 +335,9 @@ app.post("/callAI", upload, async (req, res) => {
       if (m?.[1]) aiProposta.beneficiario_cauzione = m[1].trim();
     }
 
+    const addressCandidate = aiProposta?.indirizzo_immobile || aiAnnuncio?.indirizzo || null;
+    const geocoded = await geocodeAddress(addressCandidate);
+
     const data_apertura_pubblicazione = computeDataAperturaPubblicazione();
     const data_redazione_oggi = formatLocalISODate(new Date());
     const anno_redazione_oggi = new Date().getFullYear();
@@ -362,6 +409,13 @@ app.post("/callAI", upload, async (req, res) => {
         anno_redazione: aiProposta.anno_redazione,
       }
     );
+
+    if (geocoded) {
+      if (geocoded.indirizzo) merged.immobile.indirizzo = geocoded.indirizzo;
+      if (geocoded.comune) merged.immobile.comune = geocoded.comune;
+      if (geocoded.cap) merged.immobile.cap = geocoded.cap;
+      if (geocoded.provincia) merged.immobile.provincia = geocoded.provincia;
+    }
 
     merged.deposito = merged.deposito || {};
     merged.deposito.data_termine_deposito =

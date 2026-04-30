@@ -177,6 +177,41 @@ function firstFile(files) {
   return Array.isArray(files) && files.length > 0 ? files[0] : null;
 }
 
+function normalizeCodicePratica(value) {
+  if (value === null || value === undefined) return null;
+  const normalized = String(value)
+    .trim()
+    .replace(/\s*([-_])\s*/g, "$1")
+    .replace(/\s+/g, "")
+    .toUpperCase();
+  return normalized || null;
+}
+
+function isValidCodicePratica(value) {
+  const normalized = normalizeCodicePratica(value);
+  return normalized ? /^[A-Z]{2,}[-_][A-Z]{2,}[-_]\d{4,}$/.test(normalized) : false;
+}
+
+function extractCodicePraticaFromText(text) {
+  if (!text || typeof text !== "string") return null;
+  const match = text.match(/\b([A-Z]{2,})\s*([-_])\s*([A-Z]{2,})\s*([-_])\s*(\d{4,})\b/i);
+  if (!match) return null;
+  return normalizeCodicePratica(`${match[1]}${match[2]}${match[3]}${match[4]}${match[5]}`);
+}
+
+function resolveCodicePratica(body, emailText) {
+  const candidates = [
+    body?.codice_pratica,
+    body?.codicePratica,
+    body?.practice_code,
+    body?.practiceCode,
+    body?.sigla,
+  ];
+  const firstValid = candidates.find((candidate) => isValidCodicePratica(candidate));
+  if (firstValid) return normalizeCodicePratica(firstValid);
+  return extractCodicePraticaFromText(emailText);
+}
+
 async function fetchIbanInfo(iban) {
   if (!iban || typeof iban !== "string") return { bic: null, bank: null };
   const clean = iban.replace(/\s+/g, "").trim();
@@ -243,6 +278,7 @@ app.post("/callAI", upload, async (req, res) => {
   try {
     const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};
     const rawEmailBody = typeof body.email_body_text === "string" ? body.email_body_text : "";
+    const codice_pratica = resolveCodicePratica(body, rawEmailBody);
     const provvigioneOcrText =
       typeof body.provvigione_ocr === "string"
         ? body.provvigione_ocr
@@ -426,6 +462,7 @@ app.post("/callAI", upload, async (req, res) => {
     merged.gara.ora_inizio = merged.gara.ora_inizio || ora_gara_inizio;
     merged.gara.ora_fine = merged.gara.ora_fine || ora_gara_fine;
     merged.data_apertura_pubblicazione = data_apertura_pubblicazione;
+    merged.codice_pratica = codice_pratica;
     if (merged.redazione) {
       merged.redazione.data = data_redazione_oggi;
       merged.redazione.anno = anno_redazione_oggi;
@@ -463,7 +500,7 @@ app.post("/callAI", upload, async (req, res) => {
     // Sostituisci i null residui con stringa vuota
     replaceNullishWithEmptyString(merged);
 
-    res.json({ ok: true, merged });
+    res.json({ ok: true, codice_pratica: codice_pratica || "", merged });
   } catch (error) {
     console.error("[callAI] error", error);
     res.status(500).json({ ok: false, error: error.message || String(error) });

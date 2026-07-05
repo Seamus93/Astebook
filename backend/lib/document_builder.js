@@ -165,6 +165,12 @@ async function fetchTemplateDocxBuffer() {
   const downloadUrl = docxDownloadUrl(templateUrl);
   const response = await fetch(downloadUrl);
   if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      throw new Error(
+        `Download template DOCX non autorizzato: Google ha risposto ${response.status}. ` +
+          "Apri il template Google Docs, vai su Condividi e abilita 'Chiunque abbia il link' con permesso Visualizzatore."
+      );
+    }
     throw new Error(`Download template DOCX fallito: ${response.status} ${response.statusText}`);
   }
   const buffer = Buffer.from(await response.arrayBuffer());

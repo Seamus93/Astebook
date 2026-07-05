@@ -1,5 +1,8 @@
 import PDFDocument from "pdfkit";
+import PizZip from "pizzip";
+import Docxtemplater from "docxtemplater";
 import { disciplinareTemplate } from "../templates/disciplinare.js";
+import { getEffectiveSetting } from "./app_config.js";
 
 function valueAt(obj, path) {
   return path.split(".").reduce((current, key) => current?.[key], obj);
@@ -126,5 +129,63 @@ export function buildDocumentPdf(event) {
   doc.end();
   return new Promise((resolve) => {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
+  });
+}
+
+function googleFileIdFromUrl(url) {
+  const value = String(url || "");
+  return (
+    value.match(/\/document\/d\/([^/]+)/)?.[1] ||
+    value.match(/\/file\/d\/([^/]+)/)?.[1] ||
+    value.match(/[?&]id=([^&]+)/)?.[1] ||
+    null
+  );
+}
+
+function docxDownloadUrl(templateUrl) {
+  const value = String(templateUrl || "").trim();
+  if (!value) return "";
+  const googleDocId = value.includes("docs.google.com/document/")
+    ? googleFileIdFromUrl(value)
+    : null;
+  if (googleDocId) {
+    return `https://docs.google.com/document/d/${encodeURIComponent(googleDocId)}/export?format=docx`;
+  }
+  const driveFileId = googleFileIdFromUrl(value);
+  if (driveFileId && value.includes("drive.google.com")) {
+    return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(driveFileId)}`;
+  }
+  return value;
+}
+
+async function fetchTemplateDocxBuffer() {
+  const templateUrl = await getEffectiveSetting("DOCUMENT_TEMPLATE_URL", "document_template_url");
+  if (!templateUrl) return null;
+
+  const response = await fetch(docxDownloadUrl(templateUrl));
+  if (!response.ok) {
+    throw new Error(`Download template DOCX fallito: ${response.status} ${response.statusText}`);
+  }
+  return Buffer.from(await response.arrayBuffer());
+}
+
+export async function buildDocumentDocx(event) {
+  const templateBuffer = await fetchTemplateDocxBuffer();
+  if (!templateBuffer) return null;
+
+  const zip = new PizZip(templateBuffer);
+  const doc = new Docxtemplater(zip, {
+    delimiters: {
+      start: "{{",
+      end: "}}",
+    },
+    paragraphLoop: true,
+    linebreaks: true,
+    nullGetter: () => "-",
+  });
+  doc.render(buildDocumentFields(event));
+  return doc.getZip().generate({
+    type: "nodebuffer",
+    compression: "DEFLATE",
   });
 }

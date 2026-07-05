@@ -8,7 +8,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { mergeAnnuncioProposta } from "./lib/merge_json.js";
 import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale } from "./lib/ai.js";
 import { parseDocxBuffer } from "./lib/docx.js";
-import { buildDocumentHtml, buildDocumentPdf, buildDocumentText } from "./lib/document_builder.js";
+import { buildDocumentDocx, buildDocumentHtml, buildDocumentPdf, buildDocumentText } from "./lib/document_builder.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
 import { ocrFileUrlWithPdfApp } from "./lib/pdf_app.js";
 import { scrapeAnnuncioFromText } from "./scrapers/scrape_annuncio.js";
@@ -283,6 +283,8 @@ app.get("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
         process.env.PDF_APP_OCR_ENDPOINT || settings.pdf_app_ocr_endpoint || "",
       pdf_app_job_endpoint:
         process.env.PDF_APP_JOB_ENDPOINT || settings.pdf_app_job_endpoint || "",
+      document_template_url:
+        process.env.DOCUMENT_TEMPLATE_URL || settings.document_template_url || "",
     },
   });
 });
@@ -296,6 +298,7 @@ app.post("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
   if (body.pdf_app_api_key) settings.pdf_app_api_key = String(body.pdf_app_api_key);
   if (body.pdf_app_ocr_endpoint !== undefined) settings.pdf_app_ocr_endpoint = String(body.pdf_app_ocr_endpoint);
   if (body.pdf_app_job_endpoint !== undefined) settings.pdf_app_job_endpoint = String(body.pdf_app_job_endpoint);
+  if (body.document_template_url !== undefined) settings.document_template_url = String(body.document_template_url);
 
   await updateRuntimeSettings({
     settings,
@@ -437,6 +440,18 @@ app.get("/api/v1/processing-events/:id/document", requireProcessingUiToken, asyn
     res.setHeader("content-type", "application/msword; charset=utf-8");
     res.setHeader("content-disposition", `inline; filename="${fileName}"`);
     res.send(buildDocumentHtml(event));
+    return;
+  }
+
+  if (format === "docx") {
+    const docx = await buildDocumentDocx(event);
+    if (!docx) {
+      res.status(400).json({ ok: false, error: "DOCUMENT_TEMPLATE_URL non configurato." });
+      return;
+    }
+    res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.setHeader("content-disposition", `inline; filename="astebook-${event.id}.docx"`);
+    res.send(docx);
     return;
   }
 

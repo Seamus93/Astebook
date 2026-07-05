@@ -24,6 +24,7 @@ const adminSessionSecret = document.querySelector("#adminSessionSecret");
 const pdfAppApiKey = document.querySelector("#pdfAppApiKey");
 const pdfAppOcrEndpoint = document.querySelector("#pdfAppOcrEndpoint");
 const pdfAppJobEndpoint = document.querySelector("#pdfAppJobEndpoint");
+const documentTemplateUrl = document.querySelector("#documentTemplateUrl");
 const adminPassword = document.querySelector("#adminPassword");
 
 const secretInputs = {
@@ -188,6 +189,7 @@ function renderSettingsSummary(payload) {
     ["PDF-app API Key", settings.pdf_app_api_key || "-"],
     ["PDF-app OCR Endpoint", settings.pdf_app_ocr_endpoint || "-"],
     ["PDF-app Job Endpoint", settings.pdf_app_job_endpoint || "-"],
+    ["Template Documento", settings.document_template_url || "-"],
   ];
 
   rows.forEach(([label, value]) => {
@@ -217,6 +219,7 @@ async function loadSettings({ reveal = false } = {}) {
   if (!reveal) {
     pdfAppOcrEndpoint.value = data.settings?.pdf_app_ocr_endpoint || "";
     pdfAppJobEndpoint.value = data.settings?.pdf_app_job_endpoint || "";
+    documentTemplateUrl.value = data.settings?.document_template_url || "";
   }
   renderSettingsSummary(data);
   return data;
@@ -337,7 +340,7 @@ async function loadEvent(id) {
 refreshButton.addEventListener("click", loadEvents);
 documentButton.addEventListener("click", () => {
   if (!selectedId) return;
-  window.open(`/api/v1/processing-events/${selectedId}/document?format=pdf`, "_blank", "noopener");
+  window.open(`/api/v1/processing-events/${selectedId}/document?format=docx`, "_blank", "noopener");
 });
 reprocessButton.addEventListener("click", async () => {
   if (!selectedId) return;
@@ -375,6 +378,7 @@ settingsForm.addEventListener("submit", async (event) => {
     pdf_app_api_key: pdfAppApiKey.value.trim(),
     pdf_app_ocr_endpoint: pdfAppOcrEndpoint.value.trim(),
     pdf_app_job_endpoint: pdfAppJobEndpoint.value.trim(),
+    document_template_url: documentTemplateUrl.value.trim(),
     admin_password: adminPassword.value,
   };
 

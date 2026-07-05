@@ -160,6 +160,41 @@
             </div>
           </label>
           <label>
+            <span>PDF-app API Key</span>
+            <div class="secret-field">
+              <input
+                id="pdfAppApiKey"
+                name="pdf_app_api_key"
+                type="password"
+                autocomplete="off"
+                placeholder="API key PDF-app.net"
+              />
+              <button class="icon-button reveal-button" type="button" data-reveal="pdfAppApiKey" title="Mostra">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+              </button>
+            </div>
+          </label>
+          <label>
+            <span>PDF-app OCR Endpoint</span>
+            <input
+              id="pdfAppOcrEndpoint"
+              name="pdf_app_ocr_endpoint"
+              type="url"
+              autocomplete="off"
+              placeholder="Endpoint OCR 2.0 PDF-app.net"
+            />
+          </label>
+          <label>
+            <span>PDF-app Job Endpoint</span>
+            <input
+              id="pdfAppJobEndpoint"
+              name="pdf_app_job_endpoint"
+              type="url"
+              autocomplete="off"
+              placeholder="Endpoint polling job async, opzionale"
+            />
+          </label>
+          <label>
             <span>Nuova Password Admin</span>
             <div class="secret-field">
               <input

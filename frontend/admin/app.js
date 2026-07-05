@@ -21,18 +21,23 @@ const settingsStatus = document.querySelector("#settingsStatus");
 const processingUiToken = document.querySelector("#processingUiToken");
 const zapierWebhookToken = document.querySelector("#zapierWebhookToken");
 const adminSessionSecret = document.querySelector("#adminSessionSecret");
+const pdfAppApiKey = document.querySelector("#pdfAppApiKey");
+const pdfAppOcrEndpoint = document.querySelector("#pdfAppOcrEndpoint");
+const pdfAppJobEndpoint = document.querySelector("#pdfAppJobEndpoint");
 const adminPassword = document.querySelector("#adminPassword");
 
 const secretInputs = {
   processing_ui_token: processingUiToken,
   zapier_webhook_token: zapierWebhookToken,
   admin_session_secret: adminSessionSecret,
+  pdf_app_api_key: pdfAppApiKey,
 };
 
 const inputSecrets = {
   processingUiToken: "processing_ui_token",
   zapierWebhookToken: "zapier_webhook_token",
   adminSessionSecret: "admin_session_secret",
+  pdfAppApiKey: "pdf_app_api_key",
 };
 
 let selectedId = null;
@@ -180,6 +185,9 @@ function renderSettingsSummary(payload) {
     ["Token UI", settings.processing_ui_token || "-"],
     ["Token Webhook Zapier", settings.zapier_webhook_token || "-"],
     ["Session Secret", settings.admin_session_secret || "-"],
+    ["PDF-app API Key", settings.pdf_app_api_key || "-"],
+    ["PDF-app OCR Endpoint", settings.pdf_app_ocr_endpoint || "-"],
+    ["PDF-app Job Endpoint", settings.pdf_app_job_endpoint || "-"],
   ];
 
   rows.forEach(([label, value]) => {
@@ -206,6 +214,10 @@ async function loadSettings({ reveal = false } = {}) {
   const data = await response.json();
   if (reveal) revealedSettings = data.settings || {};
   if (!reveal) applySettingPlaceholders(data.settings || {});
+  if (!reveal) {
+    pdfAppOcrEndpoint.value = data.settings?.pdf_app_ocr_endpoint || "";
+    pdfAppJobEndpoint.value = data.settings?.pdf_app_job_endpoint || "";
+  }
   renderSettingsSummary(data);
   return data;
 }
@@ -360,6 +372,9 @@ settingsForm.addEventListener("submit", async (event) => {
     processing_ui_token: processingUiToken.value.trim(),
     zapier_webhook_token: zapierWebhookToken.value.trim(),
     admin_session_secret: adminSessionSecret.value.trim(),
+    pdf_app_api_key: pdfAppApiKey.value.trim(),
+    pdf_app_ocr_endpoint: pdfAppOcrEndpoint.value.trim(),
+    pdf_app_job_endpoint: pdfAppJobEndpoint.value.trim(),
     admin_password: adminPassword.value,
   };
 
@@ -372,6 +387,7 @@ settingsForm.addEventListener("submit", async (event) => {
     processingUiToken.value = "";
     zapierWebhookToken.value = "";
     adminSessionSecret.value = "";
+    pdfAppApiKey.value = "";
     adminPassword.value = "";
     revealedSettings = null;
     settingsStatus.textContent = "Impostazioni salvate.";

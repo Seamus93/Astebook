@@ -12,6 +12,9 @@ const defaultConfig = {
     processing_ui_token: "",
     zapier_webhook_token: "",
     admin_session_secret: "",
+    pdf_app_api_key: "",
+    pdf_app_ocr_endpoint: "",
+    pdf_app_job_endpoint: "",
   },
 };
 

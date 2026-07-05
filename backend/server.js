@@ -10,6 +10,7 @@ import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale }
 import { parseDocxBuffer } from "./lib/docx.js";
 import { buildDocumentHtml, buildDocumentPdf, buildDocumentText } from "./lib/document_builder.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
+import { ocrFileUrlWithPdfApp } from "./lib/pdf_app.js";
 import { scrapeAnnuncioFromText } from "./scrapers/scrape_annuncio.js";
 import {
   resolveCodicePraticaFromPayload,
@@ -277,6 +278,11 @@ app.get("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
       processing_ui_token: secretValue("PROCESSING_UI_TOKEN", "processing_ui_token"),
       zapier_webhook_token: secretValue("ZAPIER_WEBHOOK_TOKEN", "zapier_webhook_token"),
       admin_session_secret: secretValue("ADMIN_SESSION_SECRET", "admin_session_secret"),
+      pdf_app_api_key: secretValue("PDF_APP_API_KEY", "pdf_app_api_key"),
+      pdf_app_ocr_endpoint:
+        process.env.PDF_APP_OCR_ENDPOINT || settings.pdf_app_ocr_endpoint || "",
+      pdf_app_job_endpoint:
+        process.env.PDF_APP_JOB_ENDPOINT || settings.pdf_app_job_endpoint || "",
     },
   });
 });
@@ -287,6 +293,9 @@ app.post("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
   if (body.processing_ui_token) settings.processing_ui_token = String(body.processing_ui_token);
   if (body.zapier_webhook_token) settings.zapier_webhook_token = String(body.zapier_webhook_token);
   if (body.admin_session_secret) settings.admin_session_secret = String(body.admin_session_secret);
+  if (body.pdf_app_api_key) settings.pdf_app_api_key = String(body.pdf_app_api_key);
+  if (body.pdf_app_ocr_endpoint !== undefined) settings.pdf_app_ocr_endpoint = String(body.pdf_app_ocr_endpoint);
+  if (body.pdf_app_job_endpoint !== undefined) settings.pdf_app_job_endpoint = String(body.pdf_app_job_endpoint);
 
   await updateRuntimeSettings({
     settings,
@@ -746,6 +755,15 @@ function isDocxAttachment(attachment) {
   return mime.includes("wordprocessingml.document") || fileName.endsWith(".docx");
 }
 
+function isImageAttachment(attachment) {
+  const mime = String(attachment.mime_type || "").toLowerCase();
+  const fileName = String(attachment.file_name || "").toLowerCase();
+  return (
+    mime.startsWith("image/") ||
+    /\.(jpe?g|png|bmp|tiff?|webp)$/i.test(fileName)
+  );
+}
+
 function attachmentKeyLooksRelevant(key) {
   return /attachment|attachments|file|files|allegat/i.test(String(key || ""));
 }
@@ -816,7 +834,7 @@ function normalizeAttachmentDescriptor(raw) {
     supported_by_scraper: isPdfAttachment({
       file_name: fileName,
       mime_type: mimeType,
-    }) || isDocxAttachment({ file_name: fileName, mime_type: mimeType }),
+    }) || isDocxAttachment({ file_name: fileName, mime_type: mimeType }) || isImageAttachment({ file_name: fileName, mime_type: mimeType }),
     buffer: raw?.buffer || null,
   };
 }
@@ -891,6 +909,7 @@ function inferAttachmentFormat(attachment, buffer) {
   if (isDocxAttachment(attachment)) return "docx";
   if (buffer?.subarray(0, 4).toString("utf8") === "%PDF") return "pdf";
   if (buffer?.subarray(0, 2).toString("utf8") === "PK") return "docx";
+  if (isImageAttachment(attachment)) return "image";
   return "unknown";
 }
 
@@ -934,12 +953,57 @@ async function readAttachment(attachment) {
   };
 }
 
-async function extractAttachmentText(resolvedAttachment) {
+async function extractAttachmentText(resolvedAttachment, eventId) {
   if (resolvedAttachment.format === "docx") {
     return (await parseDocxBuffer(resolvedAttachment.buffer)).text;
   }
-  if (resolvedAttachment.format === "pdf") {
-    return (await parsePdfBuffer(resolvedAttachment.buffer)).text;
+  if (["pdf", "image"].includes(resolvedAttachment.format)) {
+    if (resolvedAttachment.url) {
+      try {
+        const ocrResult = await ocrFileUrlWithPdfApp({
+          fileUrl: resolvedAttachment.url,
+          fileName: resolvedAttachment.file_name,
+        });
+        if (ocrResult.ok && ocrResult.text) {
+          if (eventId) {
+            await updateProcessingEvent(eventId, {}, {
+              message: "PDF-app OCR completed",
+              data: {
+                file_name: resolvedAttachment.file_name,
+                text_length: ocrResult.text.length,
+                job_id: ocrResult.job_id || null,
+              },
+            });
+          }
+          return ocrResult.text;
+        }
+        if (eventId) {
+          await updateProcessingEvent(eventId, {}, {
+            message: "PDF-app OCR skipped or empty",
+            data: {
+              file_name: resolvedAttachment.file_name,
+              reason: ocrResult.reason || "Nessun testo OCR restituito.",
+              job_id: ocrResult.job_id || null,
+            },
+          });
+        }
+      } catch (error) {
+        if (eventId) {
+          await updateProcessingEvent(eventId, {}, {
+            level: "error",
+            message: "PDF-app OCR failed; local parser fallback",
+            data: {
+              file_name: resolvedAttachment.file_name,
+              error: error.message || String(error),
+            },
+          });
+        }
+      }
+    }
+
+    if (resolvedAttachment.format === "pdf") {
+      return (await parsePdfBuffer(resolvedAttachment.buffer)).text;
+    }
   }
   return "";
 }
@@ -991,7 +1055,7 @@ async function prepareZapierScraperResult(event, body, files) {
       {
         message: "No supported scraper input found",
         data: {
-          accepted_formats: ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
+          accepted_formats: ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/*"],
           received_files: attachments.map((attachment) => ({
             file_name: attachment.file_name,
             mime_type: attachment.mime_type,
@@ -1022,7 +1086,7 @@ async function prepareZapierScraperResult(event, body, files) {
       size: resolvedAttachment.size,
       url: resolvedAttachment.url,
       kind: resolvedAttachment.kind,
-      supported_by_scraper: ["pdf", "docx"].includes(resolvedAttachment.format),
+      supported_by_scraper: ["pdf", "docx", "image"].includes(resolvedAttachment.format),
       format: resolvedAttachment.format,
     };
     const existingIndex = result.attachments.findIndex(
@@ -1030,7 +1094,7 @@ async function prepareZapierScraperResult(event, body, files) {
     );
     if (existingIndex >= 0) result.attachments[existingIndex] = safeDescriptor;
 
-    if (!["pdf", "docx"].includes(resolvedAttachment.format)) {
+    if (!["pdf", "docx", "image"].includes(resolvedAttachment.format)) {
       result.notes.push(`Formato non supportato: ${resolvedAttachment.file_name}`);
       continue;
     }
@@ -1042,7 +1106,7 @@ async function prepareZapierScraperResult(event, body, files) {
       }
 
       if (resolvedAttachment.kind === "proposta") {
-        const attachmentText = await extractAttachmentText(resolvedAttachment);
+        const attachmentText = await extractAttachmentText(resolvedAttachment, event.id);
         const extractedProposta = scrapePropostaFromText(attachmentText, resolvedAttachment.file_name);
 
         const previousScore = propostaScore(result.extracted.proposta);
@@ -1062,7 +1126,7 @@ async function prepareZapierScraperResult(event, body, files) {
       }
 
       if (resolvedAttachment.kind === "annuncio") {
-        const attachmentText = await extractAttachmentText(resolvedAttachment);
+        const attachmentText = await extractAttachmentText(resolvedAttachment, event.id);
         result.extracted.annuncio = scrapeAnnuncioFromText(attachmentText, resolvedAttachment.file_name);
         if (!result.codice_pratica) {
           result.codice_pratica = scrapeCodicePraticaFromText(attachmentText) || "";

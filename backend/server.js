@@ -10,8 +10,12 @@ import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale }
 import { parseDocxBuffer } from "./lib/docx.js";
 import { buildDocumentHtml, buildDocumentPdf, buildDocumentText } from "./lib/document_builder.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
-import { scrapeAnnuncioFromBuffer, scrapeAnnuncioFromText } from "./scrapers/scrape_annuncio.js";
-import { scrapePropostaFromBuffer, scrapePropostaFromText } from "./scrapers/scrape_proposta.js";
+import { scrapeAnnuncioFromText } from "./scrapers/scrape_annuncio.js";
+import {
+  resolveCodicePraticaFromPayload,
+  scrapeCodicePraticaFromText,
+} from "./scrapers/scrape_codice_pratica.js";
+import { scrapePropostaFromText } from "./scrapers/scrape_proposta.js";
 import {
   createProcessingEvent,
   getProcessingEvent,
@@ -628,47 +632,6 @@ function firstFile(files) {
   return Array.isArray(files) && files.length > 0 ? files[0] : null;
 }
 
-function normalizeCodicePratica(value) {
-  if (value === null || value === undefined) return null;
-  const normalized = String(value)
-    .trim()
-    .replace(/\s*([-_])\s*/g, "$1")
-    .replace(/\s+/g, "")
-    .toUpperCase();
-  return normalized || null;
-}
-
-function isValidCodicePratica(value) {
-  const normalized = normalizeCodicePratica(value);
-  return normalized ? /^[A-Z]{2,}(?:[-_][A-Z0-9]{2,})+[-_]\d{4,}$/.test(normalized) : false;
-}
-
-function extractCodicePraticaFromText(text) {
-  if (!text || typeof text !== "string") return null;
-  const match = text.match(/\b([A-Z]{2,}(?:\s*[-_]\s*[A-Z0-9]{2,})+\s*[-_]\s*\d{4,})\b/i);
-  if (!match) return null;
-  return normalizeCodicePratica(match[1]);
-}
-
-function resolveCodicePratica(body, emailText) {
-  const candidates = [
-    body?.codice_pratica,
-    body?.codicePratica,
-    body?.practice_code,
-    body?.practiceCode,
-    body?.sigla,
-    body?.subject,
-    body?.email_subject,
-    body?.oggetto,
-  ];
-  const firstValid = candidates.find((candidate) => isValidCodicePratica(candidate));
-  if (firstValid) return normalizeCodicePratica(firstValid);
-  return (
-    extractCodicePraticaFromText(candidates.filter(Boolean).join(" ")) ||
-    extractCodicePraticaFromText(emailText)
-  );
-}
-
 function firstBodyValue(body, keys) {
   return keys.map((key) => body?.[key]).find((value) => value !== undefined && value !== null) || "";
 }
@@ -712,6 +675,7 @@ function propostaScore(proposta) {
 
 function finalizeZapierResult(result) {
   result.ready_for_zapier = Boolean(result.extracted.annuncio || result.extracted.proposta);
+  result.missing_fields = collectMissingFields(result);
   result.zapier_response = {
     ok: result.ready_for_zapier,
     codice_pratica: result.codice_pratica,
@@ -719,6 +683,54 @@ function finalizeZapierResult(result) {
     proposta: result.extracted.proposta,
   };
   return result;
+}
+
+function isMissingValue(value) {
+  if (value === null || value === undefined) return true;
+  if (typeof value === "string") {
+    const clean = value.trim();
+    return !clean || clean === "-" || /^[….\s”")]+$/.test(clean);
+  }
+  return false;
+}
+
+function valueAtPath(obj, path) {
+  return path.split(".").reduce((current, key) => current?.[key], obj);
+}
+
+const expectedZapierFields = [
+  { path: "codice_pratica", label: "Codice Pratica", expected_file: "Oggetto mail o Annuncio" },
+  { path: "extracted.proposta.proponente.nominativo", label: "Proponente - Nominativo", expected_file: "Proposta" },
+  { path: "extracted.proposta.indirizzo_immobile", label: "Indirizzo Immobile", expected_file: "Proposta" },
+  { path: "extracted.proposta.prezzo_offerto", label: "Prezzo Offerto", expected_file: "Proposta" },
+  { path: "extracted.proposta.iban_beneficiario", label: "IBAN Beneficiario", expected_file: "Proposta" },
+  { path: "extracted.proposta.catasto.foglio", label: "Catasto - Foglio", expected_file: "Proposta o Visura" },
+  { path: "extracted.proposta.catasto.particella", label: "Catasto - Particella", expected_file: "Proposta o Visura" },
+  { path: "extracted.proposta.catasto.subalterno", label: "Catasto - Subalterno", expected_file: "Proposta o Visura" },
+  { path: "extracted.annuncio.indirizzo", label: "Annuncio - Indirizzo", expected_file: "Annuncio" },
+  { path: "extracted.annuncio.offerta_minima", label: "Offerta Minima", expected_file: "Annuncio" },
+  { path: "extracted.annuncio.data_vendita", label: "Data Vendita", expected_file: "Annuncio" },
+  { path: "extracted.annuncio.ora_vendita", label: "Ora Vendita", expected_file: "Annuncio" },
+];
+
+function collectMissingFields(result) {
+  return expectedZapierFields
+    .filter((field) => isMissingValue(valueAtPath(result, field.path)))
+    .map((field) => ({
+      field: field.label,
+      message: `${field.label}: Dato non trovato o mancante. (Expected File ${field.expected_file})`,
+      expected_file: field.expected_file,
+      path: field.path,
+    }));
+}
+
+function buildMissingFieldsError(result) {
+  const missingFields = collectMissingFields(result);
+  if (missingFields.length === 0) return null;
+  return {
+    message: "Dati mancanti rilevati durante l'estrazione.",
+    missing_fields: missingFields,
+  };
 }
 
 function isPdfAttachment(attachment) {
@@ -922,6 +934,16 @@ async function readAttachment(attachment) {
   };
 }
 
+async function extractAttachmentText(resolvedAttachment) {
+  if (resolvedAttachment.format === "docx") {
+    return (await parseDocxBuffer(resolvedAttachment.buffer)).text;
+  }
+  if (resolvedAttachment.format === "pdf") {
+    return (await parsePdfBuffer(resolvedAttachment.buffer)).text;
+  }
+  return "";
+}
+
 async function prepareZapierScraperResult(event, body, files) {
   const emailText = resolveEmailText(body);
   const attachmentInputs = collectZapierAttachments(body, files);
@@ -930,7 +952,7 @@ async function prepareZapierScraperResult(event, body, files) {
     ok: true,
     mode: "zapier_scraper_preview",
     ready_for_zapier: false,
-    codice_pratica: resolveCodicePratica(body, emailText) || "",
+    codice_pratica: resolveCodicePraticaFromPayload(body) || "",
     email: {
       subject: firstBodyValue(body, ["subject", "email_subject", "oggetto"]) || null,
       from: firstBodyValue(body, ["from", "email_from", "mittente"]) || null,
@@ -959,9 +981,13 @@ async function prepareZapierScraperResult(event, body, files) {
 
   if (attachmentInputs.length === 0) {
     result.notes.push("Nessun allegato trovato nel payload ricevuto.");
+    finalizeZapierResult(result);
     await updateProcessingEvent(
       event.id,
-      { result },
+      {
+        result,
+        error: buildMissingFieldsError(result),
+      },
       {
         message: "No supported scraper input found",
         data: {
@@ -1016,13 +1042,8 @@ async function prepareZapierScraperResult(event, body, files) {
       }
 
       if (resolvedAttachment.kind === "proposta") {
-        const extractedProposta =
-          resolvedAttachment.format === "docx"
-            ? scrapePropostaFromText(
-                (await parseDocxBuffer(resolvedAttachment.buffer)).text,
-                resolvedAttachment.file_name
-              )
-            : await scrapePropostaFromBuffer(resolvedAttachment.buffer, resolvedAttachment.file_name);
+        const attachmentText = await extractAttachmentText(resolvedAttachment);
+        const extractedProposta = scrapePropostaFromText(attachmentText, resolvedAttachment.file_name);
 
         const previousScore = propostaScore(result.extracted.proposta);
         const nextScore = propostaScore(extractedProposta);
@@ -1041,13 +1062,11 @@ async function prepareZapierScraperResult(event, body, files) {
       }
 
       if (resolvedAttachment.kind === "annuncio") {
-        result.extracted.annuncio =
-          resolvedAttachment.format === "docx"
-            ? scrapeAnnuncioFromText(
-                (await parseDocxBuffer(resolvedAttachment.buffer)).text,
-                resolvedAttachment.file_name
-              )
-            : await scrapeAnnuncioFromBuffer(resolvedAttachment.buffer, resolvedAttachment.file_name);
+        const attachmentText = await extractAttachmentText(resolvedAttachment);
+        result.extracted.annuncio = scrapeAnnuncioFromText(attachmentText, resolvedAttachment.file_name);
+        if (!result.codice_pratica) {
+          result.codice_pratica = scrapeCodicePraticaFromText(attachmentText) || "";
+        }
         await updateProcessingEvent(event.id, { result }, {
           message: "Auction announcement scraper completed",
           data: result.extracted.annuncio,
@@ -1065,12 +1084,14 @@ async function prepareZapierScraperResult(event, body, files) {
   }
 
   finalizeZapierResult(result);
+  const extractionError = buildMissingFieldsError(result);
 
   await updateProcessingEvent(
     event.id,
     {
       status: result.ready_for_zapier ? "completed" : "received",
       result,
+      error: extractionError,
     },
     {
       message: result.ready_for_zapier
@@ -1164,7 +1185,8 @@ app.post("/callAI", upload, async (req, res) => {
       },
     });
     const rawEmailBody = typeof body.email_body_text === "string" ? body.email_body_text : "";
-    const codice_pratica = resolveCodicePratica(body, rawEmailBody);
+    const codice_pratica =
+      resolveCodicePraticaFromPayload(body) || scrapeCodicePraticaFromText(rawEmailBody);
     const provvigioneOcrText =
       typeof body.provvigione_ocr === "string"
         ? body.provvigione_ocr

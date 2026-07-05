@@ -180,27 +180,89 @@ input {
   text-transform: uppercase;
 }
 
-.status {
-  border-radius: 999px;
+.workflow-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
   border: 1px solid var(--line);
-  padding: 8px 12px;
-  font-weight: 800;
+  border-radius: 999px;
   background: var(--panel);
-  white-space: nowrap;
+  min-height: 44px;
 }
 
-.status.completed {
+.workflow-step {
+  display: grid;
+  place-items: center;
+  gap: 3px;
+  min-width: 46px;
+  color: var(--muted);
+}
+
+.workflow-circle {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 2px solid var(--line-strong);
+  background: var(--panel-soft);
+}
+
+.workflow-circle .material-symbols-outlined {
+  font-size: 17px;
+}
+
+.workflow-label {
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.workflow-step.done {
   color: var(--ok);
 }
 
-.status.failed {
+.workflow-step.done .workflow-circle {
+  border-color: #58b989;
+  background: #dff6ea;
+}
+
+.workflow-step.failed {
   color: var(--bad);
 }
 
-.status.processing,
-.status.extracting,
-.status.received {
+.workflow-step.failed .workflow-circle {
+  border-color: #dc5f56;
+  background: #fde8e6;
+}
+
+.workflow-step.blocked {
+  color: #98a2b3;
+}
+
+.workflow-step.pending {
   color: var(--work);
+}
+
+.workflow-step.pending .workflow-circle {
+  border-color: #d8a441;
+  background: #fff4d6;
+}
+
+.workflow-connector {
+  width: 18px;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--line-strong);
+}
+
+.workflow-connector.done {
+  background: #58b989;
+}
+
+.workflow-connector.failed {
+  background: #dc5f56;
 }
 
 .summary-grid {
@@ -480,6 +542,28 @@ input {
   .modal-actions {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .workflow-status {
+    gap: 4px;
+    padding: 6px;
+  }
+
+  .workflow-step {
+    min-width: 30px;
+  }
+
+  .workflow-circle {
+    width: 26px;
+    height: 26px;
+  }
+
+  .workflow-label {
+    display: none;
+  }
+
+  .workflow-connector {
+    width: 10px;
   }
 
   .kv-row,

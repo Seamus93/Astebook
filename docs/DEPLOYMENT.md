@@ -56,12 +56,21 @@ For the current test deployment, the container publishes port `3000` on the VPS 
 ${HOST_PORT:-3000}:3000
 ```
 
-Production access should move back behind the host Nginx reverse proxy with authentication for `/admin`.
-
-While exposed publicly for testing, configure at least:
+Runtime files are persisted through the Docker volume:
 
 ```text
-ADMIN_PASSWORD=<strong password>
-ADMIN_SESSION_SECRET=<random secret>
-ZAPIER_WEBHOOK_TOKEN=<random webhook token>
+./runtime:/app/runtime
 ```
+
+This keeps the processing log, first admin and runtime tokens across automatic rebuilds.
+
+Production access should move behind the host Nginx reverse proxy when the public test is complete.
+
+On a new deployment without Infisical/env admin secrets, open `/admin/setup` once and create the first admin. From `/admin` configure at least:
+
+```text
+ZAPIER_WEBHOOK_TOKEN=<random webhook token>
+PROCESSING_UI_TOKEN=<random UI token>
+```
+
+The UI stores these values in `runtime/app-config.json`. Env variables still override runtime values.

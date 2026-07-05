@@ -4,7 +4,7 @@
 
 Secrets must not be committed.
 
-Runtime configuration is provided through environment variables and Infisical/GitHub Actions secrets.
+Runtime configuration can be provided through environment variables, Infisical/GitHub Actions secrets, or the persisted self-hosted config file.
 
 Required local template:
 
@@ -18,13 +18,19 @@ Ignored local file:
 
 The `/admin` processing UI is protected by a server-side login.
 
-Required production variables:
+If `ADMIN_PASSWORD` is configured, env-managed auth is used:
 
 - `ADMIN_USERNAME`
 - `ADMIN_PASSWORD`
 - `ADMIN_SESSION_SECRET`
 
-If `ADMIN_PASSWORD` is not configured, `/admin` returns a setup error and does not expose the UI.
+If `ADMIN_PASSWORD` is not configured, the first visit to `/admin/setup` creates the runtime admin and logs it in automatically. The runtime settings are stored in:
+
+```text
+runtime/app-config.json
+```
+
+Environment variables override runtime settings when both are present.
 
 ## Required GitHub Secrets
 
@@ -60,7 +66,8 @@ Critical and high findings block deploy.
 ## Runtime
 
 - The app should be exposed through host Nginx.
-- The Docker service binds to localhost by default.
+- The Docker service publishes `${HOST_PORT:-3000}:3000` for the current test deployment.
+- Keep `runtime/` mounted as a Docker volume so admin credentials and settings survive redeploys.
 - Shared infrastructure tools must not be installed by this repository.
-- Set `PROCESSING_UI_TOKEN` before exposing `/admin` outside a trusted network.
-- Set `ZAPIER_WEBHOOK_TOKEN` before exposing `/api/v1/zapier/email-activation`.
+- Set `PROCESSING_UI_TOKEN` from the admin UI or env before exposing processing APIs outside a trusted network.
+- Set `ZAPIER_WEBHOOK_TOKEN` from the admin UI or env before exposing `/api/v1/zapier/email-activation`.

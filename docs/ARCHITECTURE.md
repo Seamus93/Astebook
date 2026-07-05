@@ -16,6 +16,7 @@ flowchart LR
 
 - `server.js`: HTTP API, upload handling, orchestration and response formatting.
 - `public/admin`: internal processing UI.
+- `lib/app_config.js`: persisted first-admin bootstrap and runtime settings.
 - `lib/processing_log.js`: JSONL runtime log for received and processed events.
 - `lib/ai.js`: AI extraction prompts and provider integration.
 - `lib/pdf.js`: PDF parsing support.
@@ -38,7 +39,7 @@ flowchart TD
 ## Current Intentional Deviations
 
 - No `/apps/backend` split yet because the service is a single compact backend.
-- No PostgreSQL/Prisma yet because the current workflow is stateless.
+- No PostgreSQL/Prisma yet; runtime state is limited to JSON files under `runtime/`.
 - No frontend app yet.
 
 These deviations are recorded in `docs/adr/ADR-001-compact-node-service.md`.

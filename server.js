@@ -14,6 +14,15 @@ import {
   listProcessingEvents,
   updateProcessingEvent,
 } from "./lib/processing_log.js";
+import {
+  createRuntimeAdmin,
+  getEffectiveSetting,
+  getRuntimeAdminUsername,
+  getRuntimeSettings,
+  hasRuntimeAdmin,
+  updateRuntimeSettings,
+  verifyRuntimeAdmin,
+} from "./lib/app_config.js";
 
 dotenv.config();
 
@@ -21,10 +30,6 @@ const app = express();
 app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: false }));
 
-const adminUser = process.env.ADMIN_USERNAME || "admin";
-const adminPassword = process.env.ADMIN_PASSWORD || "";
-const adminSessionSecret =
-  process.env.ADMIN_SESSION_SECRET || process.env.PROCESSING_UI_TOKEN || adminPassword;
 const adminCookieName = "astebook_admin";
 
 function parseCookies(cookieHeader) {
@@ -42,8 +47,27 @@ function parseCookies(cookieHeader) {
     }, {});
 }
 
-function signAdminSession(username, expiresAt) {
-  return createHmac("sha256", adminSessionSecret)
+async function getAdminSessionSecret() {
+  return (
+    process.env.ADMIN_SESSION_SECRET ||
+    process.env.PROCESSING_UI_TOKEN ||
+    process.env.ADMIN_PASSWORD ||
+    (await getEffectiveSetting("ADMIN_SESSION_SECRET", "admin_session_secret"))
+  );
+}
+
+async function hasConfiguredAdmin() {
+  return Boolean(process.env.ADMIN_PASSWORD) || (await hasRuntimeAdmin());
+}
+
+async function getAdminLoginUsername() {
+  return process.env.ADMIN_USERNAME || (await getRuntimeAdminUsername()) || "admin";
+}
+
+async function signAdminSession(username, expiresAt) {
+  const secret = await getAdminSessionSecret();
+  if (!secret) return "";
+  return createHmac("sha256", secret)
     .update(`${username}.${expiresAt}`)
     .digest("hex");
 }
@@ -54,14 +78,30 @@ function safeEqual(left, right) {
   return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function createAdminSession(username) {
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+async function createAdminSession(username) {
   const expiresAt = Date.now() + 12 * 60 * 60 * 1000;
-  const signature = signAdminSession(username, expiresAt);
+  const signature = await signAdminSession(username, expiresAt);
   return Buffer.from(`${username}.${expiresAt}.${signature}`).toString("base64url");
 }
 
-function verifyAdminSession(req) {
-  if (!adminPassword || !adminSessionSecret) return false;
+function setAdminSessionCookie(res, session) {
+  const secureFlag = process.env.ADMIN_COOKIE_SECURE === "true" ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `${adminCookieName}=${encodeURIComponent(session)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${secureFlag}`
+  );
+}
+
+async function verifyAdminSession(req) {
+  if (!(await hasConfiguredAdmin()) || !(await getAdminSessionSecret())) return false;
 
   const cookies = parseCookies(req.get("cookie"));
   const rawSession = cookies[adminCookieName];
@@ -71,16 +111,24 @@ function verifyAdminSession(req) {
     const decoded = Buffer.from(rawSession, "base64url").toString("utf8");
     const [username, expiresAt, signature] = decoded.split(".");
     if (!username || !expiresAt || !signature) return false;
-    if (username !== adminUser) return false;
+    if (username !== (await getAdminLoginUsername())) return false;
     if (Number(expiresAt) < Date.now()) return false;
-    return safeEqual(signature, signAdminSession(username, expiresAt));
+    return safeEqual(signature, await signAdminSession(username, expiresAt));
   } catch {
     return false;
   }
 }
 
-function adminLoginPage(errorMessage = "") {
-  const errorHtml = errorMessage ? `<p class="error">${errorMessage}</p>` : "";
+async function verifyAdminCredentials(username, password) {
+  if (process.env.ADMIN_PASSWORD) {
+    return username === (process.env.ADMIN_USERNAME || "admin") && safeEqual(password, process.env.ADMIN_PASSWORD);
+  }
+  return verifyRuntimeAdmin({ username, password });
+}
+
+function adminLoginPage({ errorMessage = "", mode = "login", username = "admin" } = {}) {
+  const errorHtml = errorMessage ? `<p class="error">${escapeHtml(errorMessage)}</p>` : "";
+  const isSetup = mode === "setup";
   return `<!doctype html>
 <html lang="it">
   <head>
@@ -99,56 +147,91 @@ function adminLoginPage(errorMessage = "") {
     </style>
   </head>
   <body>
-    <form method="post" action="/admin/login">
-      <h1>Astebook</h1>
+    <form method="post" action="${isSetup ? "/admin/setup" : "/admin/login"}">
+      <h1>${isSetup ? "Crea admin Astebook" : "Astebook"}</h1>
       ${errorHtml}
       <label for="username">Utente</label>
-      <input id="username" name="username" autocomplete="username" value="${adminUser}" />
+      <input id="username" name="username" autocomplete="username" value="${escapeHtml(username)}" />
       <label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" autofocus />
-      <button type="submit">Entra</button>
-      <p class="hint">Accesso alla UI processing e ai log operativi.</p>
+      <button type="submit">${isSetup ? "Crea admin" : "Entra"}</button>
+      <p class="hint">${isSetup ? "Il primo utente diventa admin e viene autenticato automaticamente." : "Accesso alla UI processing e ai log operativi."}</p>
     </form>
   </body>
 </html>`;
 }
 
-function requireAdminSession(req, res, next) {
-  if (verifyAdminSession(req)) {
+async function requireAdminSession(req, res, next) {
+  if (await verifyAdminSession(req)) {
     next();
     return;
   }
 
-  if (!adminPassword) {
-    res
-      .status(503)
-      .send("ADMIN_PASSWORD non configurata. Imposta ADMIN_PASSWORD nel file .env del VPS.");
+  if (!(await hasConfiguredAdmin())) {
+    res.redirect("/admin/setup");
     return;
   }
 
   res.redirect("/admin/login");
 }
 
-app.get("/admin/login", (_req, res) => {
-  res.type("html").send(adminLoginPage());
+app.get("/admin/setup", async (_req, res) => {
+  if (await hasConfiguredAdmin()) {
+    res.redirect("/admin/login");
+    return;
+  }
+  res.type("html").send(adminLoginPage({ mode: "setup", username: "admin" }));
 });
 
-app.post("/admin/login", (req, res) => {
+app.post("/admin/setup", async (req, res) => {
+  if (await hasConfiguredAdmin()) {
+    res.redirect("/admin/login");
+    return;
+  }
+
+  const username = String(req.body.username || "");
+  const password = String(req.body.password || "");
+  try {
+    await createRuntimeAdmin({ username, password });
+    const session = await createAdminSession(username);
+    setAdminSessionCookie(res, session);
+    res.redirect("/admin/");
+  } catch (error) {
+    res.status(400).type("html").send(
+      adminLoginPage({
+        mode: "setup",
+        username: username || "admin",
+        errorMessage: error.message || String(error),
+      })
+    );
+  }
+});
+
+app.get("/admin/login", async (_req, res) => {
+  if (!(await hasConfiguredAdmin())) {
+    res.redirect("/admin/setup");
+    return;
+  }
+  res.type("html").send(adminLoginPage({ username: await getAdminLoginUsername() }));
+});
+
+app.post("/admin/login", async (req, res) => {
   const username = String(req.body.username || "");
   const password = String(req.body.password || "");
 
-  if (username === adminUser && safeEqual(password, adminPassword)) {
-    const session = createAdminSession(username);
-    const secureFlag = process.env.ADMIN_COOKIE_SECURE === "true" ? "; Secure" : "";
-    res.setHeader(
-      "Set-Cookie",
-      `${adminCookieName}=${encodeURIComponent(session)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${secureFlag}`
-    );
+  if (await verifyAdminCredentials(username, password)) {
+    const session = await createAdminSession(username);
+    setAdminSessionCookie(res, session);
     res.redirect("/admin/");
     return;
   }
 
-  res.status(401).type("html").send(adminLoginPage("Credenziali non valide."));
+  res.status(401).type("html").send(
+    adminLoginPage({
+      username: username || (await getAdminLoginUsername()),
+      errorMessage: "Credenziali non valide.",
+    })
+  );
 });
 
 app.post("/admin/logout", (_req, res) => {
@@ -161,20 +244,70 @@ app.post("/admin/logout", (_req, res) => {
 
 app.use("/admin", requireAdminSession, express.static(join(process.cwd(), "public", "admin")));
 
+function redactSecret(value) {
+  if (!value) return "";
+  const str = String(value);
+  if (str.length <= 8) return "********";
+  return `${str.slice(0, 4)}...${str.slice(-4)}`;
+}
+
+app.get("/api/v1/admin/settings", requireAdminSession, async (_req, res) => {
+  const settings = await getRuntimeSettings();
+  res.json({
+    ok: true,
+    admin: {
+      username: await getAdminLoginUsername(),
+      env_managed: Boolean(process.env.ADMIN_PASSWORD),
+    },
+    settings: {
+      processing_ui_token: redactSecret(
+        process.env.PROCESSING_UI_TOKEN || settings.processing_ui_token
+      ),
+      zapier_webhook_token: redactSecret(
+        process.env.ZAPIER_WEBHOOK_TOKEN || settings.zapier_webhook_token
+      ),
+      admin_session_secret: redactSecret(
+        process.env.ADMIN_SESSION_SECRET || settings.admin_session_secret
+      ),
+    },
+  });
+});
+
+app.post("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
+  const body = req.body || {};
+  const settings = {};
+  if (body.processing_ui_token) settings.processing_ui_token = String(body.processing_ui_token);
+  if (body.zapier_webhook_token) settings.zapier_webhook_token = String(body.zapier_webhook_token);
+  if (body.admin_session_secret) settings.admin_session_secret = String(body.admin_session_secret);
+
+  await updateRuntimeSettings({
+    settings,
+    admin_password: body.admin_password ? String(body.admin_password) : undefined,
+  });
+
+  if (body.admin_session_secret || body.admin_password) {
+    const session = await createAdminSession(await getAdminLoginUsername());
+    setAdminSessionCookie(res, session);
+  }
+
+  res.json({ ok: true });
+});
+
 function requireToken(expectedToken, headerName) {
-  return (req, res, next) => {
-    if (verifyAdminSession(req)) {
+  return async (req, res, next) => {
+    if (await verifyAdminSession(req)) {
       next();
       return;
     }
 
-    if (!expectedToken) {
+    const token = typeof expectedToken === "function" ? await expectedToken() : expectedToken;
+    if (!token) {
       res.status(401).json({ ok: false, error: "Unauthorized" });
       return;
     }
 
     const providedToken = req.get(headerName) || req.query.token;
-    if (providedToken === expectedToken) {
+    if (providedToken === token) {
       next();
       return;
     }
@@ -183,9 +316,12 @@ function requireToken(expectedToken, headerName) {
   };
 }
 
-const requireProcessingUiToken = requireToken(process.env.PROCESSING_UI_TOKEN, "x-astebook-token");
+const requireProcessingUiToken = requireToken(
+  () => getEffectiveSetting("PROCESSING_UI_TOKEN", "processing_ui_token"),
+  "x-astebook-token"
+);
 const requireZapierWebhookToken = requireToken(
-  process.env.ZAPIER_WEBHOOK_TOKEN,
+  () => getEffectiveSetting("ZAPIER_WEBHOOK_TOKEN", "zapier_webhook_token"),
   "x-astebook-webhook-token"
 );
 

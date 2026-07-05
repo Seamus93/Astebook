@@ -94,3 +94,54 @@ test("Admin UI requires login before serving the processing interface", async ()
     });
   }
 });
+
+test("Admin login can read and update runtime settings", async () => {
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+
+  try {
+    const { port } = server.address();
+    const loginResponse = await fetch(`http://127.0.0.1:${port}/admin/login`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        username: "admin",
+        password: "test-password",
+      }),
+      redirect: "manual",
+    });
+
+    assert.equal(loginResponse.status, 302);
+    const cookie = loginResponse.headers.get("set-cookie");
+    assert.match(cookie, /astebook_admin=/);
+
+    const settingsResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
+      headers: { cookie },
+    });
+    const settingsPayload = await settingsResponse.json();
+
+    assert.equal(settingsResponse.status, 200);
+    assert.equal(settingsPayload.ok, true);
+    assert.equal(settingsPayload.admin.username, "admin");
+
+    const updateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        processing_ui_token: "runtime-ui-token",
+        zapier_webhook_token: "runtime-webhook-token",
+      }),
+    });
+    const updatePayload = await updateResponse.json();
+
+    assert.equal(updateResponse.status, 200);
+    assert.equal(updatePayload.ok, true);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});

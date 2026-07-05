@@ -47,10 +47,10 @@ docker compose up -d
 Il servizio espone internamente la porta `3000` e pubblica su localhost:
 
 ```text
-127.0.0.1:${HOST_PORT:-3000}:3000
+${HOST_PORT:-3000}:3000
 ```
 
-Il traffico pubblico deve passare dal reverse proxy Nginx host.
+La cartella `runtime/` e montata come volume locale per conservare log, admin bootstrap e impostazioni tra i redeploy.
 
 ## VPS
 
@@ -88,19 +88,23 @@ I log runtime vengono salvati in:
 
 ```text
 runtime/processing-events.jsonl
+runtime/app-config.json
 ```
 
-In produzione configura:
+Al primo avvio senza `ADMIN_PASSWORD`, apri:
 
 ```text
-ADMIN_USERNAME=admin
-ADMIN_PASSWORD=
-ADMIN_SESSION_SECRET=
-PROCESSING_UI_TOKEN=
-ZAPIER_WEBHOOK_TOKEN=
+/admin/setup
 ```
 
-`/admin` richiede login. Se `ADMIN_PASSWORD` non e configurata, la UI resta chiusa.
+Il primo utente creato diventa admin e viene autenticato automaticamente. Dalla UI admin puoi poi impostare:
+
+- token UI processing;
+- token webhook Zapier;
+- secret sessione admin;
+- nuova password admin.
+
+Le variabili env `ADMIN_*`, `PROCESSING_UI_TOKEN` e `ZAPIER_WEBHOOK_TOKEN` restano supportate e hanno precedenza sui valori runtime.
 
 ### `GET /health`
 

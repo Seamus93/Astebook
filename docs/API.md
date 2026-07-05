@@ -52,7 +52,7 @@ The endpoint accepts JSON or multipart form data.
 
 Optional security:
 
-- set `ZAPIER_WEBHOOK_TOKEN`;
+- set `ZAPIER_WEBHOOK_TOKEN` from env or `/admin` settings;
 - send it as `x-astebook-webhook-token`.
 
 For public deployments this token is required operationally, even if local development can use a test value.
@@ -74,7 +74,7 @@ Returns the latest processing events for the UI.
 
 Optional security:
 
-- set `PROCESSING_UI_TOKEN`;
+- set `PROCESSING_UI_TOKEN` from env or `/admin` settings;
 - send it as `x-astebook-token`.
 
 The `/admin` browser UI normally uses the login cookie instead of this header.
@@ -82,3 +82,18 @@ The `/admin` browser UI normally uses the login cookie instead of this header.
 ## `GET /api/v1/processing-events/:id`
 
 Returns the complete event with request payload, file metadata, processing steps, result and error.
+
+## `GET /api/v1/admin/settings`
+
+Returns redacted runtime settings for the logged-in admin.
+
+## `POST /api/v1/admin/settings`
+
+Updates runtime settings for:
+
+- `processing_ui_token`
+- `zapier_webhook_token`
+- `admin_session_secret`
+- `admin_password`
+
+These endpoints require the `/admin` login cookie.

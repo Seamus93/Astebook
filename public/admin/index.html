@@ -62,6 +62,30 @@
             <h2>Errori</h2>
             <pre id="errorPane">{}</pre>
           </article>
+          <article>
+            <h2>Impostazioni</h2>
+            <form id="settingsForm" class="settings-form">
+              <label>
+                Token UI
+                <input id="processingUiToken" name="processing_ui_token" autocomplete="off" />
+              </label>
+              <label>
+                Token Webhook Zapier
+                <input id="zapierWebhookToken" name="zapier_webhook_token" autocomplete="off" />
+              </label>
+              <label>
+                Session Secret
+                <input id="adminSessionSecret" name="admin_session_secret" autocomplete="off" />
+              </label>
+              <label>
+                Nuova Password Admin
+                <input id="adminPassword" name="admin_password" type="password" autocomplete="new-password" />
+              </label>
+              <button type="submit">Salva</button>
+              <p id="settingsStatus" class="settings-status"></p>
+              <pre id="settingsPane">{}</pre>
+            </form>
+          </article>
         </section>
       </section>
     </main>

@@ -10,6 +10,8 @@ services:
       PORT: 3000
     ports:
       - "${HOST_PORT:-3000}:3000"
+    volumes:
+      - ./runtime:/app/runtime
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s

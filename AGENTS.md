@@ -73,4 +73,6 @@ Variables:
 - Public traffic must enter through the host Nginx reverse proxy.
 - The Docker service currently exposes port `3000` publicly for test access.
 - `/admin` must stay protected by server-side login before any public exposure.
+- If env admin secrets are absent, `/admin/setup` creates the first runtime admin.
+- Runtime admin settings and processing logs must persist in the Docker-mounted `runtime/` directory.
 - Shared infrastructure such as Portainer, Uptime Kuma, Grafana, Homepage, Cockpit, Prometheus and Loki must remain outside this repository.

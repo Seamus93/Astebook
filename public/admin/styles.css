@@ -212,6 +212,35 @@ pre {
   font-size: 12px;
 }
 
+.settings-form {
+  padding: 16px;
+}
+
+.settings-form label {
+  display: block;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.settings-form input {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-top: 6px;
+  font: inherit;
+}
+
+.settings-form button {
+  margin-top: 4px;
+}
+
+.settings-status {
+  color: var(--muted);
+  min-height: 20px;
+}
+
 @media (max-width: 900px) {
   .shell,
   .panes,

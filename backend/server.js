@@ -14,7 +14,7 @@ import { scrapeAnnuncioFromText } from "./scrapers/scrape_annuncio.js";
 import {
   resolveCodicePraticaFromPayload,
   scrapeCodicePraticaFromText,
-} from "./scrapers/scrape_codice_pratica.js";
+} from "./scrapers/scrape_annuncio/scrape_codice_pratica.js";
 import { scrapePropostaFromText } from "./scrapers/scrape_proposta.js";
 import {
   createProcessingEvent,

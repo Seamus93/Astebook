@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import {
   resolveCodicePraticaFromPayload,
   scrapeCodicePraticaFromText,
-} from "../scrapers/scrape_codice_pratica.js";
+} from "../scrapers/scrape_annuncio/scrape_codice_pratica.js";
 
 test("codice pratica is extracted from subject first", () => {
   const code = resolveCodicePraticaFromPayload({

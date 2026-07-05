@@ -12,7 +12,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3000
 
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl libreoffice ttf-dejavu
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

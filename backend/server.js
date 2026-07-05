@@ -468,10 +468,18 @@ app.get("/api/v1/processing-events/:id/document", requireProcessingUiToken, asyn
     return;
   }
 
-  const pdf = await buildDocumentPdf(event);
-  res.setHeader("content-type", "application/pdf");
-  res.setHeader("content-disposition", `inline; filename="${fileName}"`);
-  res.send(pdf);
+  try {
+    const pdf = await buildDocumentPdf(event);
+    res.setHeader("content-type", "application/pdf");
+    res.setHeader("content-disposition", `inline; filename="${fileName}"`);
+    res.send(pdf);
+  } catch (error) {
+    res.status(500).json({
+      ok: false,
+      error: "Generazione PDF fallita.",
+      detail: error.message || String(error),
+    });
+  }
 });
 
 app.post("/api/v1/processing-events/:id/reprocess", requireProcessingUiToken, async (req, res) => {

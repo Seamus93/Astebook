@@ -428,7 +428,7 @@ async function loadEvent(id) {
 refreshButton.addEventListener("click", loadEvents);
 documentButton.addEventListener("click", () => {
   if (!selectedId) return;
-  window.open(`/api/v1/processing-events/${selectedId}/document?format=docx`, "_blank", "noopener");
+  window.open(`/api/v1/processing-events/${selectedId}/document?format=pdf`, "_blank", "noopener");
 });
 reprocessButton.addEventListener("click", async () => {
   if (!selectedId) return;

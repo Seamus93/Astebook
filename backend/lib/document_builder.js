@@ -1,8 +1,15 @@
 import PDFDocument from "pdfkit";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
+import { execFile } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
 import { disciplinareTemplate } from "../templates/disciplinare.js";
 import { getEffectiveSetting } from "./app_config.js";
+
+const execFileAsync = promisify(execFile);
 
 function valueAt(obj, path) {
   return path.split(".").reduce((current, key) => current?.[key], obj);
@@ -117,7 +124,23 @@ export function buildDocumentHtml(event) {
 </html>`;
 }
 
-export function buildDocumentPdf(event) {
+async function convertDocxToPdf(docxBuffer) {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "astebook-doc-"));
+  const docxPath = path.join(tempDir, "disciplinare.docx");
+  const pdfPath = path.join(tempDir, "disciplinare.pdf");
+
+  try {
+    await writeFile(docxPath, docxBuffer);
+    await execFileAsync("soffice", ["--headless", "--convert-to", "pdf", "--outdir", tempDir, docxPath], {
+      timeout: 60000,
+    });
+    return await readFile(pdfPath);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function buildTextPdf(event) {
   const text = buildDocumentText(event);
   const doc = new PDFDocument({ size: "A4", margin: 54, bufferPages: true });
   const chunks = [];
@@ -130,6 +153,15 @@ export function buildDocumentPdf(event) {
   return new Promise((resolve) => {
     doc.on("end", () => resolve(Buffer.concat(chunks)));
   });
+}
+
+export async function buildDocumentPdf(event) {
+  const templateUrl = await getEffectiveSetting("DOCUMENT_TEMPLATE_URL", "document_template_url");
+  if (!templateUrl) return buildTextPdf(event);
+
+  const docx = await buildDocumentDocx(event);
+  if (!docx) return buildTextPdf(event);
+  return convertDocxToPdf(docx);
 }
 
 function googleFileIdFromUrl(url) {

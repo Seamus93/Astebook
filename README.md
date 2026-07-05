@@ -1,55 +1,138 @@
-# Astebook Intrum Zapier
+# Astebook
 
-Pipeline Node/Express per estrazione/merge annuncio e proposta via OpenAI. Endpoint principale: `POST /callAI`.
+Pipeline Node/Express per estrazione e normalizzazione dati da email di attivazione, annuncio e proposta. Endpoint principale: `POST /callAI`.
 
-## Setup
-- Requisiti: Node.js 18+, npm.
-- Clona o copia il repo sul server (senza `node_modules`).
-- Installa: `npm install`.
-- Configura `.env` (esempio):
-  ```
-  OPENAI_API_KEY=xxx
-  PORT=4000
-  ```
+Il repository e allineato alla baseline organizzativa in `.skills`: pipeline unica GitHub Actions, deploy VPS in `/opt/projects/astebook`, Docker Compose dedicato, healthcheck e documentazione minima.
 
-## Come installare in un nuovo VPS
-### Opzione A: Docker (consigliato, migrazione più semplice)
-- Prerequisiti: Docker + Docker Compose v2, Git.
-- Clona il repo: `git clone <url-repo> && cd <repo>`.
-- Copia l'env di esempio: `cp .env.example .env` e valorizza `OPENAI_API_KEY`; opzionale `PORT` (default 3000).
-- Build: `docker compose build`.
-- Avvio: `docker compose up -d`.
-- Verifica: `curl http://<host>:<PORT>/health` → `{ "ok": true }`.
+## Setup Locale
 
-### Opzione B: senza Docker (Node)
-- Prerequisiti: Node 18+, Git.
-- `git clone <url-repo> && cd <repo>`.
-- `cp .env.example .env` e imposta le variabili.
-- `npm ci --omit=dev` per installare dipendenze prod.
-- Avvio: `PORT=3000 npm start` (o usa lo script `npm run start:4000` se preferisci).
+Requisiti:
 
-## Avvio rapido
-- Semplice: `npm run start:4000` (o `npm start` per porta di default 3000).
-- Tunnel opzionale: `npm run all` (server su 4000 + ngrok http 4000) se vuoi un URL pubblico temporaneo.
+- Node.js 24+
+- npm
 
-## Produzione consigliata
-Usa un process manager (pm2) e un reverse proxy HTTPS.
-- Installa pm2 (una volta): `npm install -g pm2`.
-- Avvia: `pm2 start server.js --name aste --env production -- --port 4000`.
-- Proxy (nginx/Caddy) che espone 443→localhost:4000. Blocca l’accesso diretto alla porta interna nel firewall.
+Comandi:
 
-## Endpoint principali
-- `GET /health` → `{ ok: true }`.
-- `POST /callAI` (JSON o multipart):
-  - `email_body_text` (testo annuncio, obbligatorio).
-  - `codice_pratica` opzionale. Se presente viene usato solo se valido nel formato tipo `AL-ALE-1130710` oppure `AL_ALE_1130710`; se assente o non valido, il server prova a estrarlo da `email_body_text`.
-  - Proposta via `proposta_ocr` (testo) oppure PDF: `proposta_url` (https), `proposta_base64`, o upload file `proposta`.
-  - `provvigione_ocr` (testo OCR clausola provvigione; se presente, usato per estrarre `provvigione_percentuale`).
-  - Opzionali: `proposta_name`, `annuncio_name`, altri campi già supportati.
+```bash
+npm install
+cp .env.example .env
+npm start
+```
 
-La risposta contiene `codice_pratica` e `merged` con campi normalizzati (inclusa `provvigione_percentuale`, default 3); `merged.codice_pratica` replica lo stesso valore. La data gara viene calcolata a +2 giorni dal termine deposito se mancante.
+Variabili principali:
 
-## Note
-- Mantieni aggiornata la chiave OpenAI e verifica i limiti di costo.
-- `ngrok` è incluso come script, assicurati che il binario sia nel PATH sul server se vuoi usarlo.
-- Configurazione solo via variabili d'ambiente (.env): nessun dato legato al VPS viene salvato nel codice.
+```text
+OPENAI_API_KEY=
+GOOGLE_MAPS_API_KEY=
+PORT=3000
+HOST_PORT=3000
+```
+
+## Verifiche
+
+```bash
+npm run lint
+npm test
+npm audit --audit-level=high
+npm run ci
+```
+
+## Docker
+
+```bash
+docker compose build
+docker compose up -d
+```
+
+Il servizio espone internamente la porta `3000` e pubblica su localhost:
+
+```text
+127.0.0.1:${HOST_PORT:-3000}:3000
+```
+
+Il traffico pubblico deve passare dal reverse proxy Nginx host.
+
+## VPS
+
+Path standard:
+
+```text
+/opt/projects/astebook
+```
+
+Deploy:
+
+- workflow: `.github/workflows/pipeline.yml`
+- stack Docker Compose: `astebook`
+- servizio/container: `astebook-api`
+- registrazione: `/opt/infra/scripts/register-project.sh astebook "$PROJECT_URL" "$HEALTH_URL"`
+
+## Endpoint
+
+### UI Processing
+
+```text
+/admin
+```
+
+La UI mostra:
+
+- payload ricevuto da Zapier;
+- oggetto/mittente/id mail quando presenti;
+- metadata file allegati;
+- step di elaborazione;
+- dati estratti;
+- errori di parsing o AI.
+
+I log runtime vengono salvati in:
+
+```text
+runtime/processing-events.jsonl
+```
+
+In produzione configura:
+
+```text
+PROCESSING_UI_TOKEN=
+ZAPIER_WEBHOOK_TOKEN=
+```
+
+### `GET /health`
+
+```json
+{
+  "status": "ok",
+  "service": "astebook-api",
+  "version": "0.1.0"
+}
+```
+
+### `POST /callAI`
+
+Supporta JSON e multipart.
+
+Campi principali:
+
+- `email_body_text`: testo annuncio, obbligatorio.
+- `codice_pratica`: opzionale.
+- `proposta_ocr`, `proposta_text` o `proposta_ocr_text`: testo proposta.
+- `proposta_url`, `proposta_base64` o upload file `proposta`: fallback PDF.
+- `provvigione_ocr`: opzionale per estrazione percentuale provvigione.
+
+La risposta contiene `codice_pratica` e `merged` con i campi normalizzati.
+
+### `POST /api/v1/zapier/email-activation`
+
+Endpoint di intake per Zapier. Registra mail, body, oggetto, mittente, id run e metadata allegati prima della lavorazione.
+
+## Documentazione
+
+- `docs/PROJECT_OVERVIEW.md`
+- `docs/ARCHITECTURE.md`
+- `docs/API.md`
+- `docs/DEPLOYMENT.md`
+- `docs/SECURITY.md`
+- `docs/GITHUB_ACTIONS.md`
+- `docs/SONAR_CONFIGURATION.md`
+- `docs/PM_STATUS.md`
+- `docs/adr/ADR-001-compact-node-service.md`

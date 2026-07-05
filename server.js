@@ -1,15 +1,47 @@
 ﻿import express from "express";
 import multer from "multer";
 import dotenv from "dotenv";
+import { pathToFileURL } from "node:url";
+import { join } from "node:path";
 
 import { mergeAnnuncioProposta } from "./lib/merge_json.js";
 import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale } from "./lib/ai.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
+import {
+  createProcessingEvent,
+  getProcessingEvent,
+  listProcessingEvents,
+  updateProcessingEvent,
+} from "./lib/processing_log.js";
 
 dotenv.config();
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
+app.use("/admin", express.static(join(process.cwd(), "public", "admin")));
+
+function requireToken(expectedToken, headerName) {
+  return (req, res, next) => {
+    if (!expectedToken) {
+      next();
+      return;
+    }
+
+    const providedToken = req.get(headerName) || req.query.token;
+    if (providedToken === expectedToken) {
+      next();
+      return;
+    }
+
+    res.status(401).json({ ok: false, error: "Unauthorized" });
+  };
+}
+
+const requireProcessingUiToken = requireToken(process.env.PROCESSING_UI_TOKEN, "x-astebook-token");
+const requireZapierWebhookToken = requireToken(
+  process.env.ZAPIER_WEBHOOK_TOKEN,
+  "x-astebook-webhook-token"
+);
 
 // Upload in memoria; accetta qualsiasi field (Zapier può chiamarlo diversamente)
 const upload = multer({
@@ -17,7 +49,55 @@ const upload = multer({
   limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
 }).any();
 
-app.get("/health", (_req, res) => res.json({ ok: true }));
+app.get("/health", (_req, res) =>
+  res.json({
+    status: "ok",
+    service: "astebook-api",
+    version: process.env.npm_package_version || "0.0.0",
+  })
+);
+
+app.post("/api/v1/zapier/email-activation", requireZapierWebhookToken, upload, async (req, res) => {
+  try {
+    const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};
+    const event = await createProcessingEvent({
+      source: "zapier.email_activation",
+      status: "received",
+      body,
+      files: req.files,
+      metadata: {
+        subject: body.subject || body.email_subject || body.oggetto || null,
+        from: body.from || body.email_from || body.mittente || null,
+        zap_run_id: body.zap_run_id || body.zapRunId || null,
+        email_id: body.email_id || body.message_id || body.gmail_id || null,
+      },
+    });
+
+    res.status(202).json({
+      ok: true,
+      event_id: event.id,
+      status: event.status,
+      admin_url: `/admin/#/events/${event.id}`,
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || String(error) });
+  }
+});
+
+app.get("/api/v1/processing-events", requireProcessingUiToken, async (req, res) => {
+  const limit = Number(req.query.limit || 100);
+  const events = await listProcessingEvents({ limit });
+  res.json({ ok: true, events });
+});
+
+app.get("/api/v1/processing-events/:id", requireProcessingUiToken, async (req, res) => {
+  const event = await getProcessingEvent(req.params.id);
+  if (!event) {
+    res.status(404).json({ ok: false, error: "Processing event not found" });
+    return;
+  }
+  res.json({ ok: true, event });
+});
 
 function formatLocalISODate(d) {
   const y = d.getFullYear();
@@ -275,8 +355,21 @@ async function geocodeAddress(address) {
 }
 
 app.post("/callAI", upload, async (req, res) => {
+  let processingEvent = null;
   try {
     const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};
+    processingEvent = await createProcessingEvent({
+      source: "callAI",
+      status: "processing",
+      body,
+      files: req.files,
+      metadata: {
+        subject: body.subject || body.email_subject || body.oggetto || null,
+        from: body.from || body.email_from || body.mittente || null,
+        zap_run_id: body.zap_run_id || body.zapRunId || null,
+        email_id: body.email_id || body.message_id || body.gmail_id || null,
+      },
+    });
     const rawEmailBody = typeof body.email_body_text === "string" ? body.email_body_text : "";
     const codice_pratica = resolveCodicePratica(body, rawEmailBody);
     const provvigioneOcrText =
@@ -286,6 +379,18 @@ app.post("/callAI", upload, async (req, res) => {
         ? body.provvigione_ocr_text
         : "";
     const files = Array.isArray(req.files) ? req.files : [];
+    await updateProcessingEvent(
+      processingEvent.id,
+      { status: "extracting" },
+      {
+        message: "Validated input and started extraction",
+        data: {
+          codice_pratica,
+          has_email_body: rawEmailBody.trim().length > 0,
+          file_count: files.length,
+        },
+      }
+    );
 
     const propostaUploadFile = fileByField(files, "proposta") || firstFile(files);
 
@@ -345,8 +450,16 @@ app.post("/callAI", upload, async (req, res) => {
       fileName: annuncioFileName,
       mode: "email",
     });
+    await updateProcessingEvent(processingEvent.id, { status: "extracting" }, {
+      message: "Auction announcement extracted",
+      data: aiAnnuncio,
+    });
 
     let aiProposta = await aiExtractProposta({ text: combinedProText, fileName: proName });
+    await updateProcessingEvent(processingEvent.id, { status: "extracting" }, {
+      message: "Proposal extracted",
+      data: aiProposta,
+    });
 
     let provvigioneFromOcr = null;
     if (provvigioneOcrText.trim()) {
@@ -500,12 +613,51 @@ app.post("/callAI", upload, async (req, res) => {
     // Sostituisci i null residui con stringa vuota
     replaceNullishWithEmptyString(merged);
 
-    res.json({ ok: true, codice_pratica: codice_pratica || "", merged });
+    const responsePayload = { ok: true, codice_pratica: codice_pratica || "", merged };
+    await updateProcessingEvent(
+      processingEvent.id,
+      {
+        status: "completed",
+        result: responsePayload,
+      },
+      {
+        message: "Processing completed",
+        data: {
+          codice_pratica: responsePayload.codice_pratica,
+        },
+      }
+    );
+
+    res.json(responsePayload);
   } catch (error) {
     console.error("[callAI] error", error);
+    if (processingEvent?.id) {
+      await updateProcessingEvent(
+        processingEvent.id,
+        {
+          status: "failed",
+          error: {
+            message: error.message || String(error),
+            stack: error.stack || null,
+          },
+        },
+        {
+          level: "error",
+          message: "Processing failed",
+        }
+      );
+    }
     res.status(500).json({ ok: false, error: error.message || String(error) });
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server up on http://localhost:${PORT}`));
+export function startServer(port = process.env.PORT || 3000) {
+  return app.listen(port, () => console.log(`Server up on http://localhost:${port}`));
+}
+
+export { app };
+
+const executedUrl = process.argv[1] ? pathToFileURL(process.argv[1]).href : null;
+if (executedUrl === import.meta.url) {
+  startServer();
+}

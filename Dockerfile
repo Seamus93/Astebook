@@ -1,13 +1,20 @@
-FROM node:20-alpine
+FROM node:24-alpine AS deps
 
 WORKDIR /app
-
-# Usa env per porta e ambiente; niente configurazioni hard-coded del VPS
-ENV NODE_ENV=production
 
 COPY package*.json ./
 RUN npm ci --omit=dev
 
+FROM node:24-alpine AS runtime
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+
+RUN apk add --no-cache curl
+
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 EXPOSE 3000

@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Astebook Processing</title>
+    <link rel="stylesheet" href="/admin/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <span>Astebook</span>
+          <button id="refreshButton" type="button">Aggiorna</button>
+        </div>
+        <div id="eventList" class="event-list"></div>
+      </aside>
+
+      <section class="detail">
+        <header class="detail-header">
+          <div>
+            <p id="selectedSource" class="eyebrow">Nessun evento</p>
+            <h1 id="selectedTitle">Seleziona una lavorazione</h1>
+          </div>
+          <span id="selectedStatus" class="status">-</span>
+        </header>
+
+        <section class="summary-grid">
+          <div>
+            <span>Ricevuto</span>
+            <strong id="receivedAt">-</strong>
+          </div>
+          <div>
+            <span>Aggiornato</span>
+            <strong id="updatedAt">-</strong>
+          </div>
+          <div>
+            <span>File</span>
+            <strong id="fileCount">-</strong>
+          </div>
+        </section>
+
+        <section class="panes">
+          <article>
+            <h2>Mail e Payload</h2>
+            <pre id="requestPane">{}</pre>
+          </article>
+          <article>
+            <h2>Log Elaborazione</h2>
+            <div id="stepsPane" class="steps"></div>
+          </article>
+          <article>
+            <h2>Dati Estratti</h2>
+            <pre id="resultPane">{}</pre>
+          </article>
+          <article>
+            <h2>Errori</h2>
+            <pre id="errorPane">{}</pre>
+          </article>
+        </section>
+      </section>
+    </main>
+    <script src="/admin/app.js"></script>
+  </body>
+</html>

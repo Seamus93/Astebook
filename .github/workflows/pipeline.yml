@@ -1,0 +1,268 @@
+name: Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - test
+  pull_request:
+    branches:
+      - main
+      - test
+  workflow_dispatch:
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  NODE_VERSION: "24"
+  VPS_APP_DIR: ${{ vars.VPS_APP_DIR }}
+  PROJECT_URL: ${{ vars.PROJECT_URL }}
+  HEALTH_URL: ${{ vars.HEALTH_URL }}
+  INFISICAL_ENV: ${{ vars.INFISICAL_ENV }}
+  INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
+  INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+  SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+  DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+  DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+  DEPLOY_KEY: ${{ secrets.DEPLOY_KEY }}
+  INFISICAL_CLIENT_ID: ${{ secrets.INFISICAL_CLIENT_ID }}
+  INFISICAL_CLIENT_SECRET: ${{ secrets.INFISICAL_CLIENT_SECRET }}
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  ci:
+    name: CI
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Fetch secrets from Infisical
+        if: ${{ env.INFISICAL_IDENTITY_ID != '' && env.INFISICAL_PROJECT_ID != '' && env.INFISICAL_ENV != '' }}
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: "oidc"
+          identity-id: ${{ env.INFISICAL_IDENTITY_ID }}
+          project-slug: ${{ env.INFISICAL_PROJECT_ID }}
+          env-slug: ${{ env.INFISICAL_ENV }}
+
+      - name: Fetch secrets from Infisical (Universal Auth)
+        if: ${{ env.INFISICAL_IDENTITY_ID == '' && env.INFISICAL_PROJECT_ID != '' && env.INFISICAL_ENV != '' && env.INFISICAL_CLIENT_ID != '' && env.INFISICAL_CLIENT_SECRET != '' }}
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          method: "universal"
+          client-id: ${{ env.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ env.INFISICAL_CLIENT_SECRET }}
+          project-slug: ${{ env.INFISICAL_PROJECT_ID }}
+          env-slug: ${{ env.INFISICAL_ENV }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  sonar:
+    name: Sonar
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Fetch secrets from Infisical
+        if: ${{ env.INFISICAL_IDENTITY_ID != '' && env.INFISICAL_PROJECT_ID != '' && env.INFISICAL_ENV != '' }}
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: "oidc"
+          identity-id: ${{ env.INFISICAL_IDENTITY_ID }}
+          project-slug: ${{ env.INFISICAL_PROJECT_ID }}
+          env-slug: ${{ env.INFISICAL_ENV }}
+
+      - name: Fetch secrets from Infisical (Universal Auth)
+        if: ${{ env.INFISICAL_IDENTITY_ID == '' && env.INFISICAL_PROJECT_ID != '' && env.INFISICAL_ENV != '' && env.INFISICAL_CLIENT_ID != '' && env.INFISICAL_CLIENT_SECRET != '' }}
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          method: "universal"
+          client-id: ${{ env.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ env.INFISICAL_CLIENT_SECRET }}
+          project-slug: ${{ env.INFISICAL_PROJECT_ID }}
+          env-slug: ${{ env.INFISICAL_ENV }}
+
+      - name: SonarQube Scan
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_ORGANIZATION != '' }}
+        uses: SonarSource/sonarqube-scan-action@v6
+        with:
+          args: >-
+            -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
+            -Dsonar.host.url=https://sonarcloud.io
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+
+      - name: Sonar skipped
+        if: ${{ env.SONAR_TOKEN == '' || env.SONAR_ORGANIZATION == '' }}
+        run: 'echo "Sonar non configurato nel repository remoto: job completato come no-op."'
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    needs: ci
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Fetch secrets from Infisical
+        if: ${{ env.INFISICAL_IDENTITY_ID != '' && env.INFISICAL_PROJECT_ID != '' && env.INFISICAL_ENV != '' }}
+        uses: Infisical/secrets-action@v1.0.15
+        with:
+          method: "oidc"
+          identity-id: ${{ env.INFISICAL_IDENTITY_ID }}
+          project-slug: ${{ env.INFISICAL_PROJECT_ID }}
+          env-slug: ${{ env.INFISICAL_ENV }}
+
+      - name: Fetch secrets from Infisical (Universal Auth)
+        if: ${{ env.INFISICAL_IDENTITY_ID == '' && env.INFISICAL_PROJECT_ID != '' && env.INFISICAL_ENV != '' && env.INFISICAL_CLIENT_ID != '' && env.INFISICAL_CLIENT_SECRET != '' }}
+        uses: Infisical/secrets-action@v1.0.16
+        with:
+          method: "universal"
+          client-id: ${{ env.INFISICAL_CLIENT_ID }}
+          client-secret: ${{ env.INFISICAL_CLIENT_SECRET }}
+          project-slug: ${{ env.INFISICAL_PROJECT_ID }}
+          env-slug: ${{ env.INFISICAL_ENV }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: npm audit
+        run: npm audit --audit-level=high
+
+      - name: Trivy filesystem scan
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          exit-code: "1"
+
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    needs: ci
+    continue-on-error: true
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3.36.2
+        with:
+          languages: javascript-typescript
+
+      - name: Analyze with CodeQL
+        uses: github/codeql-action/analyze@v3.36.2
+
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs:
+      - ci
+      - sonar
+      - security
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - name: Skip deploy when credentials are missing
+        if: ${{ env.DEPLOY_HOST == '' || env.DEPLOY_USER == '' || env.DEPLOY_KEY == '' }}
+        run: 'echo "Deploy saltato: credenziali deploy non configurate."'
+
+      - name: Deploy via SSH
+        if: ${{ env.DEPLOY_HOST != '' && env.DEPLOY_USER != '' && env.DEPLOY_KEY != '' }}
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ env.DEPLOY_HOST }}
+          username: ${{ env.DEPLOY_USER }}
+          key: ${{ env.DEPLOY_KEY }}
+          script: |
+            set -e
+
+            PROJECT_DIR="${VPS_APP_DIR:-/opt/projects/astebook}"
+            cd "$PROJECT_DIR"
+            git config core.fileMode false
+
+            DIRTY="$(git status --porcelain)"
+            if [ -n "$DIRTY" ]; then
+              BLOCKING="$(printf '%s\n' "$DIRTY" | awk '{print $2}' | grep -Ev '^(docs/|README\.md|\.github/workflows/)' || true)"
+              if [ -n "$BLOCKING" ]; then
+                echo "Deploy bloccato: worktree remoto sporco fuori whitelist."
+                printf '%s\n' "$DIRTY"
+                exit 1
+              fi
+              printf '%s\n' "$DIRTY" | awk '{print $2}' | xargs -r git checkout --
+            fi
+
+            git fetch origin main
+            git checkout main
+            git reset --hard origin/main
+
+            docker compose pull
+            docker compose up -d --build
+
+            sleep 20
+
+            HEALTH_CHECK_RETRIES=5
+            for i in $(seq 1 "$HEALTH_CHECK_RETRIES"); do
+              if docker compose exec -T app curl -f http://localhost:3000/health --max-time 5; then
+                break
+              fi
+              if [ "$i" -eq "$HEALTH_CHECK_RETRIES" ]; then
+                echo "Health check app fallito."
+                docker compose logs app --tail=100
+                exit 1
+              fi
+              sleep 5
+            done
+
+            if [ -x /opt/infra/scripts/register-project.sh ] && [ -n "${PROJECT_URL:-}" ] && [ -n "${HEALTH_URL:-}" ]; then
+              /opt/infra/scripts/register-project.sh astebook "${PROJECT_URL}" "${HEALTH_URL}"
+            else
+              echo "register-project.sh non eseguito: script o variabili mancanti."
+            fi

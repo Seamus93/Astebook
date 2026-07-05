@@ -1,0 +1,80 @@
+# API
+
+## `GET /health`
+
+Returns service health.
+
+Example response:
+
+```json
+{
+  "status": "ok",
+  "service": "astebook-api",
+  "version": "0.1.0"
+}
+```
+
+## `POST /callAI`
+
+Extracts, enriches and merges auction announcement and proposal data.
+
+Accepted payloads:
+
+- JSON.
+- Multipart form data.
+
+Important fields:
+
+- `email_body_text`: required announcement email text.
+- `codice_pratica`: optional practice code.
+- `proposta_ocr`: optional proposal OCR text.
+- `proposta_text`: optional proposal text.
+- `proposta_base64`: optional proposal PDF as base64.
+- `proposta_url`: optional proposal PDF URL.
+- `provvigione_ocr`: optional commission OCR text.
+
+The response contains `codice_pratica` and `merged`.
+
+Every `/callAI` request is also written to the processing log with input metadata, extraction steps, final result and errors.
+
+## `POST /api/v1/zapier/email-activation`
+
+Receives the raw activation email payload from Zapier before processing.
+
+Purpose:
+
+- record the email body, subject, sender and Zapier identifiers;
+- record attachment metadata;
+- make the event visible in the `/admin` UI;
+- allow inspection before extraction logic is moved out of Zapier.
+
+The endpoint accepts JSON or multipart form data.
+
+Optional security:
+
+- set `ZAPIER_WEBHOOK_TOKEN`;
+- send it as `x-astebook-webhook-token`.
+
+Example response:
+
+```json
+{
+  "ok": true,
+  "event_id": "uuid",
+  "status": "received",
+  "admin_url": "/admin/#/events/uuid"
+}
+```
+
+## `GET /api/v1/processing-events`
+
+Returns the latest processing events for the UI.
+
+Optional security:
+
+- set `PROCESSING_UI_TOKEN`;
+- send it as `x-astebook-token`.
+
+## `GET /api/v1/processing-events/:id`
+
+Returns the complete event with request payload, file metadata, processing steps, result and error.

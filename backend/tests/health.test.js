@@ -53,6 +53,13 @@ test("Zapier intake creates a processing event visible from the UI API", async (
         from: "cliente@example.com",
         email_body_text: "Corpo della mail",
         zap_run_id: "zap-test-1",
+        all_attachments:
+          "https://zapier-dev-files.s3.amazonaws.com/example/Disciplinare.docx",
+        attachment_1_attachment:
+          "https://zapier-dev-files.s3.amazonaws.com/example/Proposta.docx",
+        attachment_1_truncateFilename: "Proposta.docx",
+        attachment_1_mime_type:
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       }),
     });
     const intakePayload = await intakeResponse.json();
@@ -62,6 +69,7 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.ok(intakePayload.event_id);
     assert.equal(intakePayload.result.ready_for_zapier, false);
     assert.equal(intakePayload.result.email.has_body_text, true);
+    assert.equal(intakePayload.result.attachments.length, 2);
 
     const listResponse = await fetch(`http://127.0.0.1:${port}/api/v1/processing-events`, {
       headers: { "x-astebook-token": "test-ui-token" },
@@ -82,6 +90,11 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     const detailPayload = await detailResponse.json();
 
     assert.equal(detailPayload.event.result.mode, "zapier_scraper_preview");
+    assert.ok(
+      detailPayload.event.result.attachments.some(
+        (attachment) => attachment.file_name === "Proposta.docx"
+      )
+    );
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

@@ -612,6 +612,24 @@ function isPdfAttachment(attachment) {
   );
 }
 
+function attachmentKeyLooksRelevant(key) {
+  return /attachment|attachments|file|files|allegat/i.test(String(key || ""));
+}
+
+function extractUrls(value) {
+  return String(value || "").match(/https?:\/\/[^\s"',<>{}\]]+/gi) || [];
+}
+
+function tryParseJsonString(value) {
+  const text = String(value || "").trim();
+  if (!/^[\[{]/.test(text)) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function normalizeAttachmentDescriptor(raw) {
   const url =
     raw?.attachment ||
@@ -623,7 +641,10 @@ function normalizeAttachmentDescriptor(raw) {
     null;
   const fileName =
     raw?.fileName ||
+    raw?.file_name ||
     raw?.filename ||
+    raw?.truncateFilename ||
+    raw?.truncate_filename ||
     raw?.name ||
     raw?.originalname ||
     raw?.title ||
@@ -653,7 +674,7 @@ function collectZapierAttachments(body, files) {
 
   const add = (descriptor) => {
     if (!descriptor) return;
-    const key = `${descriptor.file_name}|${descriptor.url || descriptor.field_name || ""}`;
+    const key = descriptor.url || `${descriptor.file_name}|${descriptor.field_name || ""}`;
     if (seen.has(key)) return;
     seen.add(key);
     collected.push(descriptor);
@@ -661,17 +682,37 @@ function collectZapierAttachments(body, files) {
 
   (Array.isArray(files) ? files : []).forEach((file) => add(normalizeAttachmentDescriptor(file)));
 
+  if (body && typeof body === "object" && !Array.isArray(body)) {
+    const groups = {};
+    Object.entries(body).forEach(([key, value]) => {
+      const match = String(key).match(/^(attachment|file|allegato)[\s_-]*(\d+)[\s_-]*(.+)$/i);
+      if (!match) return;
+      const groupKey = `${match[1].toLowerCase()}_${match[2]}`;
+      groups[groupKey] = groups[groupKey] || {};
+      groups[groupKey][match[3]] = value;
+    });
+    Object.values(groups).forEach((group) => add(normalizeAttachmentDescriptor(group)));
+  }
+
   const visit = (value, key = "") => {
     if (!value) return;
 
     if (typeof value === "string") {
-      if (/^https?:\/\//i.test(value) && /attachment|file|allegat/i.test(key)) {
-        add(
-          normalizeAttachmentDescriptor({
-            attachment: value,
-            fileName: key,
-          })
-        );
+      const parsed = tryParseJsonString(value);
+      if (parsed) {
+        visit(parsed, key);
+        return;
+      }
+
+      if (attachmentKeyLooksRelevant(key)) {
+        extractUrls(value).forEach((url, index) => {
+          add(
+            normalizeAttachmentDescriptor({
+              attachment: url,
+              fileName: index === 0 ? key : `${key}_${index + 1}`,
+            })
+          );
+        });
       }
       return;
     }

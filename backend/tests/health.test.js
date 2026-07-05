@@ -226,3 +226,44 @@ test("Admin login can read and update runtime settings", async () => {
     });
   }
 });
+
+test("DOCX generation returns a clear error when template download is not a DOCX", async () => {
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+
+  try {
+    const { port } = server.address();
+    process.env.DOCUMENT_TEMPLATE_URL = `http://127.0.0.1:${port}/health`;
+
+    const intakeResponse = await fetch(`http://127.0.0.1:${port}/api/v1/zapier/email-activation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-astebook-webhook-token": "test-webhook-token",
+      },
+      body: JSON.stringify({
+        subject: "Fwd: RM_Roma_TOL_202949480010 PROCEDURA COMPETITIVA",
+        email_body_text: "Corpo della mail",
+      }),
+    });
+    const intakePayload = await intakeResponse.json();
+    assert.equal(intakeResponse.status, 202);
+
+    const docxResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/document?format=docx`,
+      {
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    const docxPayload = await docxResponse.json();
+
+    assert.equal(docxResponse.status, 500);
+    assert.equal(docxPayload.error, "Generazione DOCX fallita.");
+    assert.match(docxPayload.detail, /non e un DOCX valido/);
+  } finally {
+    delete process.env.DOCUMENT_TEMPLATE_URL;
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});

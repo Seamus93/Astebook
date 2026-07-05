@@ -444,14 +444,22 @@ app.get("/api/v1/processing-events/:id/document", requireProcessingUiToken, asyn
   }
 
   if (format === "docx") {
-    const docx = await buildDocumentDocx(event);
-    if (!docx) {
-      res.status(400).json({ ok: false, error: "DOCUMENT_TEMPLATE_URL non configurato." });
-      return;
+    try {
+      const docx = await buildDocumentDocx(event);
+      if (!docx) {
+        res.status(400).json({ ok: false, error: "DOCUMENT_TEMPLATE_URL non configurato." });
+        return;
+      }
+      res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("content-disposition", `attachment; filename="astebook-${event.id}.docx"`);
+      res.send(docx);
+    } catch (error) {
+      res.status(500).json({
+        ok: false,
+        error: "Generazione DOCX fallita.",
+        detail: error.message || String(error),
+      });
     }
-    res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-    res.setHeader("content-disposition", `inline; filename="astebook-${event.id}.docx"`);
-    res.send(docx);
     return;
   }
 

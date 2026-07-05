@@ -162,11 +162,19 @@ async function fetchTemplateDocxBuffer() {
   const templateUrl = await getEffectiveSetting("DOCUMENT_TEMPLATE_URL", "document_template_url");
   if (!templateUrl) return null;
 
-  const response = await fetch(docxDownloadUrl(templateUrl));
+  const downloadUrl = docxDownloadUrl(templateUrl);
+  const response = await fetch(downloadUrl);
   if (!response.ok) {
     throw new Error(`Download template DOCX fallito: ${response.status} ${response.statusText}`);
   }
-  return Buffer.from(await response.arrayBuffer());
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.subarray(0, 2).toString("utf8") !== "PK") {
+    const preview = buffer.subarray(0, 120).toString("utf8").replace(/\s+/g, " ").trim();
+    throw new Error(
+      `Il template scaricato non e un DOCX valido. Verifica che il Google Doc sia accessibile pubblicamente. Preview risposta: ${preview}`
+    );
+  }
+  return buffer;
 }
 
 export async function buildDocumentDocx(event) {

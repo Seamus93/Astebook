@@ -94,6 +94,18 @@ test("Zapier intake creates a processing event visible from the UI API", async (
         (attachment) => attachment.file_name === "Proposta.docx"
       )
     );
+
+    const documentResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/document?format=pdf`,
+      {
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    const documentBytes = Buffer.from(await documentResponse.arrayBuffer());
+
+    assert.equal(documentResponse.status, 200);
+    assert.equal(documentResponse.headers.get("content-type"), "application/pdf");
+    assert.equal(documentBytes.subarray(0, 4).toString("utf8"), "%PDF");
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

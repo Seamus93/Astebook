@@ -8,6 +8,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { mergeAnnuncioProposta } from "./lib/merge_json.js";
 import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale } from "./lib/ai.js";
 import { parseDocxBuffer } from "./lib/docx.js";
+import { buildDocumentHtml, buildDocumentPdf, buildDocumentText } from "./lib/document_builder.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
 import { scrapeAnnuncioFromBuffer, scrapeAnnuncioFromText } from "./scrapers/scrape_annuncio.js";
 import { scrapePropostaFromBuffer, scrapePropostaFromText } from "./scrapers/scrape_proposta.js";
@@ -402,6 +403,39 @@ app.get("/api/v1/processing-events/:id", requireProcessingUiToken, async (req, r
     return;
   }
   res.json({ ok: true, event });
+});
+
+app.get("/api/v1/processing-events/:id/document", requireProcessingUiToken, async (req, res) => {
+  const event = await getProcessingEvent(req.params.id);
+  if (!event) {
+    res.status(404).json({ ok: false, error: "Processing event not found" });
+    return;
+  }
+
+  const format = String(req.query.format || "pdf").toLowerCase();
+  const fileName = `astebook-${event.id}.${format === "doc" ? "doc" : format}`;
+
+  if (format === "html") {
+    res.type("html").send(buildDocumentHtml(event));
+    return;
+  }
+
+  if (format === "doc") {
+    res.setHeader("content-type", "application/msword; charset=utf-8");
+    res.setHeader("content-disposition", `inline; filename="${fileName}"`);
+    res.send(buildDocumentHtml(event));
+    return;
+  }
+
+  if (format === "txt") {
+    res.type("text/plain").send(buildDocumentText(event));
+    return;
+  }
+
+  const pdf = await buildDocumentPdf(event);
+  res.setHeader("content-type", "application/pdf");
+  res.setHeader("content-disposition", `inline; filename="${fileName}"`);
+  res.send(pdf);
 });
 
 function formatLocalISODate(d) {

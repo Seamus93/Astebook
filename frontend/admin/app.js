@@ -1,5 +1,6 @@
 const eventList = document.querySelector("#eventList");
 const refreshButton = document.querySelector("#refreshButton");
+const documentButton = document.querySelector("#documentButton");
 const settingsButton = document.querySelector("#settingsButton");
 const closeSettingsButton = document.querySelector("#closeSettingsButton");
 const settingsModal = document.querySelector("#settingsModal");
@@ -271,6 +272,7 @@ async function loadEvents() {
 async function loadEvent(id) {
   isLoadingEvent = true;
   selectedId = id;
+  documentButton.disabled = false;
   const response = await apiFetch(`/api/v1/processing-events/${id}`);
   const data = await response.json();
   const event = data.event;
@@ -319,6 +321,10 @@ async function loadEvent(id) {
 }
 
 refreshButton.addEventListener("click", loadEvents);
+documentButton.addEventListener("click", () => {
+  if (!selectedId) return;
+  window.open(`/api/v1/processing-events/${selectedId}/document?format=pdf`, "_blank", "noopener");
+});
 settingsButton.addEventListener("click", openSettings);
 closeSettingsButton.addEventListener("click", closeSettings);
 settingsModal.addEventListener("click", (event) => {

@@ -91,6 +91,7 @@ La UI mostra:
 - step di elaborazione;
 - dati estratti;
 - errori di parsing o AI.
+- bottone "Visualizza documento" per aprire il disciplinare compilato in PDF.
 
 I log runtime vengono salvati in:
 

@@ -92,6 +92,7 @@ La UI mostra:
 - dati estratti;
 - errori di parsing o AI.
 - bottone "Visualizza documento" per aprire il disciplinare compilato in PDF.
+- bottone "Riprocessa" per rigenerare i dati estratti sugli eventi gia ricevuti.
 
 I log runtime vengono salvati in:
 

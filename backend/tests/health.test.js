@@ -50,7 +50,7 @@ test("Zapier intake creates a processing event visible from the UI API", async (
         "x-astebook-webhook-token": "test-webhook-token",
       },
       body: JSON.stringify({
-        subject: "Test activation",
+        subject: "Fwd: RM_Roma_TOL_202949480010 PROCEDURA COMPETITIVA",
         from: "cliente@example.com",
         email_body_text: "Corpo della mail",
         zap_run_id: "zap-test-1",
@@ -69,6 +69,7 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.equal(intakePayload.result.ready_for_zapier, false);
     assert.equal(intakePayload.result.email.has_body_text, true);
     assert.equal(intakePayload.result.attachments.length, 2);
+    assert.equal(intakePayload.result.codice_pratica, "RM_ROMA_TOL_202949480010");
 
     const listResponse = await fetch(`http://127.0.0.1:${port}/api/v1/processing-events`, {
       headers: { "x-astebook-token": "test-ui-token" },
@@ -106,6 +107,18 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.equal(documentResponse.status, 200);
     assert.equal(documentResponse.headers.get("content-type"), "application/pdf");
     assert.equal(documentBytes.subarray(0, 4).toString("utf8"), "%PDF");
+
+    const reprocessResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/reprocess`,
+      {
+        method: "POST",
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    const reprocessPayload = await reprocessResponse.json();
+
+    assert.equal(reprocessResponse.status, 200);
+    assert.equal(reprocessPayload.result.codice_pratica, "RM_ROMA_TOL_202949480010");
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

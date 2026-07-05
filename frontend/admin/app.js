@@ -1,6 +1,7 @@
 const eventList = document.querySelector("#eventList");
 const refreshButton = document.querySelector("#refreshButton");
 const documentButton = document.querySelector("#documentButton");
+const reprocessButton = document.querySelector("#reprocessButton");
 const settingsButton = document.querySelector("#settingsButton");
 const closeSettingsButton = document.querySelector("#closeSettingsButton");
 const settingsModal = document.querySelector("#settingsModal");
@@ -273,6 +274,7 @@ async function loadEvent(id) {
   isLoadingEvent = true;
   selectedId = id;
   documentButton.disabled = false;
+  reprocessButton.disabled = false;
   const response = await apiFetch(`/api/v1/processing-events/${id}`);
   const data = await response.json();
   const event = data.event;
@@ -324,6 +326,21 @@ refreshButton.addEventListener("click", loadEvents);
 documentButton.addEventListener("click", () => {
   if (!selectedId) return;
   window.open(`/api/v1/processing-events/${selectedId}/document?format=pdf`, "_blank", "noopener");
+});
+reprocessButton.addEventListener("click", async () => {
+  if (!selectedId) return;
+  reprocessButton.disabled = true;
+  reprocessButton.querySelector(".material-symbols-outlined").textContent = "hourglass_top";
+  const response = await apiFetch(`/api/v1/processing-events/${selectedId}/reprocess`, {
+    method: "POST",
+  });
+  reprocessButton.querySelector(".material-symbols-outlined").textContent = "sync";
+  reprocessButton.disabled = false;
+  if (response.ok) {
+    await loadEvent(selectedId);
+    return;
+  }
+  window.alert("Riprocessamento non riuscito.");
 });
 settingsButton.addEventListener("click", openSettings);
 closeSettingsButton.addEventListener("click", closeSettings);

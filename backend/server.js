@@ -438,6 +438,38 @@ app.get("/api/v1/processing-events/:id/document", requireProcessingUiToken, asyn
   res.send(pdf);
 });
 
+app.post("/api/v1/processing-events/:id/reprocess", requireProcessingUiToken, async (req, res) => {
+  const event = await getProcessingEvent(req.params.id);
+  if (!event) {
+    res.status(404).json({ ok: false, error: "Processing event not found" });
+    return;
+  }
+
+  if (event.source !== "zapier.email_activation") {
+    res.status(400).json({ ok: false, error: "Reprocess disponibile solo per eventi Zapier." });
+    return;
+  }
+
+  const body = event.request?.body || {};
+  await updateProcessingEvent(
+    event.id,
+    {
+      status: "received",
+      result: null,
+      error: null,
+    },
+    { message: "Manual reprocess requested" }
+  );
+  const result = await prepareZapierScraperResult(event, body, []);
+  const updatedEvent = await getProcessingEvent(event.id);
+
+  res.json({
+    ok: true,
+    event: updatedEvent,
+    result,
+  });
+});
+
 function formatLocalISODate(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
@@ -608,14 +640,14 @@ function normalizeCodicePratica(value) {
 
 function isValidCodicePratica(value) {
   const normalized = normalizeCodicePratica(value);
-  return normalized ? /^[A-Z]{2,}[-_][A-Z]{2,}[-_]\d{4,}$/.test(normalized) : false;
+  return normalized ? /^[A-Z]{2,}(?:[-_][A-Z0-9]{2,})+[-_]\d{4,}$/.test(normalized) : false;
 }
 
 function extractCodicePraticaFromText(text) {
   if (!text || typeof text !== "string") return null;
-  const match = text.match(/\b([A-Z]{2,})\s*([-_])\s*([A-Z]{2,})\s*([-_])\s*(\d{4,})\b/i);
+  const match = text.match(/\b([A-Z]{2,}(?:\s*[-_]\s*[A-Z0-9]{2,})+\s*[-_]\s*\d{4,})\b/i);
   if (!match) return null;
-  return normalizeCodicePratica(`${match[1]}${match[2]}${match[3]}${match[4]}${match[5]}`);
+  return normalizeCodicePratica(match[1]);
 }
 
 function resolveCodicePratica(body, emailText) {
@@ -625,10 +657,16 @@ function resolveCodicePratica(body, emailText) {
     body?.practice_code,
     body?.practiceCode,
     body?.sigla,
+    body?.subject,
+    body?.email_subject,
+    body?.oggetto,
   ];
   const firstValid = candidates.find((candidate) => isValidCodicePratica(candidate));
   if (firstValid) return normalizeCodicePratica(firstValid);
-  return extractCodicePraticaFromText(emailText);
+  return (
+    extractCodicePraticaFromText(candidates.filter(Boolean).join(" ")) ||
+    extractCodicePraticaFromText(emailText)
+  );
 }
 
 function firstBodyValue(body, keys) {

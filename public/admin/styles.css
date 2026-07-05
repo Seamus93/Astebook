@@ -48,6 +48,16 @@ body {
   font-size: 20px;
 }
 
+.toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.toolbar form {
+  margin: 0;
+}
+
 button {
   border: 1px solid var(--line);
   background: #eef2f7;

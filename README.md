@@ -93,9 +93,14 @@ runtime/processing-events.jsonl
 In produzione configura:
 
 ```text
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=
+ADMIN_SESSION_SECRET=
 PROCESSING_UI_TOKEN=
 ZAPIER_WEBHOOK_TOKEN=
 ```
+
+`/admin` richiede login. Se `ADMIN_PASSWORD` non e configurata, la UI resta chiusa.
 
 ### `GET /health`
 
@@ -124,6 +129,12 @@ La risposta contiene `codice_pratica` e `merged` con i campi normalizzati.
 ### `POST /api/v1/zapier/email-activation`
 
 Endpoint di intake per Zapier. Registra mail, body, oggetto, mittente, id run e metadata allegati prima della lavorazione.
+
+Se `ZAPIER_WEBHOOK_TOKEN` e configurato, Zapier deve inviarlo nell'header:
+
+```text
+x-astebook-webhook-token
+```
 
 ## Documentazione
 

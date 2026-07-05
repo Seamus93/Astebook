@@ -55,6 +55,8 @@ Optional security:
 - set `ZAPIER_WEBHOOK_TOKEN`;
 - send it as `x-astebook-webhook-token`.
 
+For public deployments this token is required operationally, even if local development can use a test value.
+
 Example response:
 
 ```json
@@ -74,6 +76,8 @@ Optional security:
 
 - set `PROCESSING_UI_TOKEN`;
 - send it as `x-astebook-token`.
+
+The `/admin` browser UI normally uses the login cookie instead of this header.
 
 ## `GET /api/v1/processing-events/:id`
 

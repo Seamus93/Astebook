@@ -6,6 +6,11 @@ import { join } from "node:path";
 
 const runtimeDir = await mkdtemp(join(tmpdir(), "astebook-test-"));
 process.env.RUNTIME_DIR = runtimeDir;
+process.env.ADMIN_USERNAME = "admin";
+process.env.ADMIN_PASSWORD = "test-password";
+process.env.ADMIN_SESSION_SECRET = "test-session-secret";
+process.env.PROCESSING_UI_TOKEN = "test-ui-token";
+process.env.ZAPIER_WEBHOOK_TOKEN = "test-webhook-token";
 const { app } = await import("../server.js");
 
 test.after(async () => {
@@ -39,7 +44,10 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     const { port } = server.address();
     const intakeResponse = await fetch(`http://127.0.0.1:${port}/api/v1/zapier/email-activation`, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        "x-astebook-webhook-token": "test-webhook-token",
+      },
       body: JSON.stringify({
         subject: "Test activation",
         from: "cliente@example.com",
@@ -53,12 +61,33 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.equal(intakePayload.ok, true);
     assert.ok(intakePayload.event_id);
 
-    const listResponse = await fetch(`http://127.0.0.1:${port}/api/v1/processing-events`);
+    const listResponse = await fetch(`http://127.0.0.1:${port}/api/v1/processing-events`, {
+      headers: { "x-astebook-token": "test-ui-token" },
+    });
     const listPayload = await listResponse.json();
 
     assert.equal(listResponse.status, 200);
     assert.equal(listPayload.events.length, 1);
     assert.equal(listPayload.events[0].status, "received");
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("Admin UI requires login before serving the processing interface", async () => {
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+
+  try {
+    const { port } = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/admin/`, {
+      redirect: "manual",
+    });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.get("location"), "/admin/login");
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

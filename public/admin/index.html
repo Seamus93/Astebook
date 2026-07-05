@@ -11,7 +11,12 @@
       <aside class="sidebar">
         <div class="brand">
           <span>Astebook</span>
-          <button id="refreshButton" type="button">Aggiorna</button>
+          <div class="toolbar">
+            <button id="refreshButton" type="button">Aggiorna</button>
+            <form method="post" action="/admin/logout">
+              <button type="submit">Esci</button>
+            </form>
+          </div>
         </div>
         <div id="eventList" class="event-list"></div>
       </aside>

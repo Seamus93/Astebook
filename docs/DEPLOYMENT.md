@@ -50,10 +50,18 @@ docker compose pull
 docker compose up -d --build
 ```
 
-The container binds to localhost:
+For the current test deployment, the container publishes port `3000` on the VPS host:
 
 ```text
-127.0.0.1:${HOST_PORT:-3000}:3000
+${HOST_PORT:-3000}:3000
 ```
 
-Public access should be handled by the host Nginx reverse proxy.
+Production access should move back behind the host Nginx reverse proxy with authentication for `/admin`.
+
+While exposed publicly for testing, configure at least:
+
+```text
+ADMIN_PASSWORD=<strong password>
+ADMIN_SESSION_SECRET=<random secret>
+ZAPIER_WEBHOOK_TOKEN=<random webhook token>
+```

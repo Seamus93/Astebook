@@ -3,6 +3,7 @@ import multer from "multer";
 import dotenv from "dotenv";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { mergeAnnuncioProposta } from "./lib/merge_json.js";
 import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale } from "./lib/ai.js";
@@ -18,12 +19,157 @@ dotenv.config();
 
 const app = express();
 app.use(express.json({ limit: "20mb" }));
-app.use("/admin", express.static(join(process.cwd(), "public", "admin")));
+app.use(express.urlencoded({ extended: false }));
+
+const adminUser = process.env.ADMIN_USERNAME || "admin";
+const adminPassword = process.env.ADMIN_PASSWORD || "";
+const adminSessionSecret =
+  process.env.ADMIN_SESSION_SECRET || process.env.PROCESSING_UI_TOKEN || adminPassword;
+const adminCookieName = "astebook_admin";
+
+function parseCookies(cookieHeader) {
+  return String(cookieHeader || "")
+    .split(";")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .reduce((cookies, item) => {
+      const separatorIndex = item.indexOf("=");
+      if (separatorIndex === -1) return cookies;
+      const key = decodeURIComponent(item.slice(0, separatorIndex));
+      const value = decodeURIComponent(item.slice(separatorIndex + 1));
+      cookies[key] = value;
+      return cookies;
+    }, {});
+}
+
+function signAdminSession(username, expiresAt) {
+  return createHmac("sha256", adminSessionSecret)
+    .update(`${username}.${expiresAt}`)
+    .digest("hex");
+}
+
+function safeEqual(left, right) {
+  const leftBuffer = Buffer.from(String(left));
+  const rightBuffer = Buffer.from(String(right));
+  return leftBuffer.length === rightBuffer.length && timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function createAdminSession(username) {
+  const expiresAt = Date.now() + 12 * 60 * 60 * 1000;
+  const signature = signAdminSession(username, expiresAt);
+  return Buffer.from(`${username}.${expiresAt}.${signature}`).toString("base64url");
+}
+
+function verifyAdminSession(req) {
+  if (!adminPassword || !adminSessionSecret) return false;
+
+  const cookies = parseCookies(req.get("cookie"));
+  const rawSession = cookies[adminCookieName];
+  if (!rawSession) return false;
+
+  try {
+    const decoded = Buffer.from(rawSession, "base64url").toString("utf8");
+    const [username, expiresAt, signature] = decoded.split(".");
+    if (!username || !expiresAt || !signature) return false;
+    if (username !== adminUser) return false;
+    if (Number(expiresAt) < Date.now()) return false;
+    return safeEqual(signature, signAdminSession(username, expiresAt));
+  } catch {
+    return false;
+  }
+}
+
+function adminLoginPage(errorMessage = "") {
+  const errorHtml = errorMessage ? `<p class="error">${errorMessage}</p>` : "";
+  return `<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Astebook Login</title>
+    <style>
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f6f7f9; color: #17202a; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      form { width: min(420px, calc(100vw - 32px)); background: white; border: 1px solid #d9dee7; border-radius: 8px; padding: 24px; box-shadow: 0 12px 30px rgba(23,32,42,.08); }
+      h1 { margin: 0 0 18px; font-size: 24px; }
+      label { display: block; margin: 14px 0 6px; font-weight: 700; }
+      input { width: 100%; box-sizing: border-box; border: 1px solid #c9d1dd; border-radius: 6px; padding: 11px 12px; font: inherit; }
+      button { width: 100%; border: 0; border-radius: 6px; padding: 12px; margin-top: 18px; background: #17202a; color: white; font-weight: 800; cursor: pointer; }
+      .error { color: #b42318; margin: 0 0 12px; }
+      .hint { color: #647084; font-size: 13px; margin: 14px 0 0; }
+    </style>
+  </head>
+  <body>
+    <form method="post" action="/admin/login">
+      <h1>Astebook</h1>
+      ${errorHtml}
+      <label for="username">Utente</label>
+      <input id="username" name="username" autocomplete="username" value="${adminUser}" />
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" autofocus />
+      <button type="submit">Entra</button>
+      <p class="hint">Accesso alla UI processing e ai log operativi.</p>
+    </form>
+  </body>
+</html>`;
+}
+
+function requireAdminSession(req, res, next) {
+  if (verifyAdminSession(req)) {
+    next();
+    return;
+  }
+
+  if (!adminPassword) {
+    res
+      .status(503)
+      .send("ADMIN_PASSWORD non configurata. Imposta ADMIN_PASSWORD nel file .env del VPS.");
+    return;
+  }
+
+  res.redirect("/admin/login");
+}
+
+app.get("/admin/login", (_req, res) => {
+  res.type("html").send(adminLoginPage());
+});
+
+app.post("/admin/login", (req, res) => {
+  const username = String(req.body.username || "");
+  const password = String(req.body.password || "");
+
+  if (username === adminUser && safeEqual(password, adminPassword)) {
+    const session = createAdminSession(username);
+    const secureFlag = process.env.ADMIN_COOKIE_SECURE === "true" ? "; Secure" : "";
+    res.setHeader(
+      "Set-Cookie",
+      `${adminCookieName}=${encodeURIComponent(session)}; HttpOnly; SameSite=Lax; Path=/; Max-Age=43200${secureFlag}`
+    );
+    res.redirect("/admin/");
+    return;
+  }
+
+  res.status(401).type("html").send(adminLoginPage("Credenziali non valide."));
+});
+
+app.post("/admin/logout", (_req, res) => {
+  res.setHeader(
+    "Set-Cookie",
+    `${adminCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`
+  );
+  res.redirect("/admin/login");
+});
+
+app.use("/admin", requireAdminSession, express.static(join(process.cwd(), "public", "admin")));
 
 function requireToken(expectedToken, headerName) {
   return (req, res, next) => {
-    if (!expectedToken) {
+    if (verifyAdminSession(req)) {
       next();
+      return;
+    }
+
+    if (!expectedToken) {
+      res.status(401).json({ ok: false, error: "Unauthorized" });
       return;
     }
 

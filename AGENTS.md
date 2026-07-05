@@ -71,5 +71,6 @@ Variables:
 
 - HTTP health endpoint: `GET /health`.
 - Public traffic must enter through the host Nginx reverse proxy.
-- The Docker service binds to localhost by default.
+- The Docker service currently exposes port `3000` publicly for test access.
+- `/admin` must stay protected by server-side login before any public exposure.
 - Shared infrastructure such as Portainer, Uptime Kuma, Grafana, Homepage, Cockpit, Prometheus and Loki must remain outside this repository.

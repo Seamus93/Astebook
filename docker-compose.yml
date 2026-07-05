@@ -9,7 +9,7 @@ services:
       NODE_ENV: production
       PORT: 3000
     ports:
-      - "127.0.0.1:${HOST_PORT:-3000}:3000"
+      - "${HOST_PORT:-3000}:3000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s

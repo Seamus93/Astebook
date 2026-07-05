@@ -14,6 +14,18 @@ Ignored local file:
 
 - `.env`
 
+## Admin UI
+
+The `/admin` processing UI is protected by a server-side login.
+
+Required production variables:
+
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+- `ADMIN_SESSION_SECRET`
+
+If `ADMIN_PASSWORD` is not configured, `/admin` returns a setup error and does not expose the UI.
+
 ## Required GitHub Secrets
 
 - `DEPLOY_HOST`

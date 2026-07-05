@@ -221,6 +221,7 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ env.DEPLOY_KEY }}
+          envs: VPS_APP_DIR,PROJECT_URL,HEALTH_URL
           script: |
             set -e
 

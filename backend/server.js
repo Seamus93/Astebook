@@ -7,9 +7,10 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 import { mergeAnnuncioProposta } from "./lib/merge_json.js";
 import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale } from "./lib/ai.js";
+import { parseDocxBuffer } from "./lib/docx.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
-import { scrapeAnnuncioFromBuffer } from "./scrapers/scrape_annuncio.js";
-import { scrapePropostaFromBuffer } from "./scrapers/scrape_proposta.js";
+import { scrapeAnnuncioFromBuffer, scrapeAnnuncioFromText } from "./scrapers/scrape_annuncio.js";
+import { scrapePropostaFromBuffer, scrapePropostaFromText } from "./scrapers/scrape_proposta.js";
 import {
   createProcessingEvent,
   getProcessingEvent,
@@ -612,12 +613,36 @@ function isPdfAttachment(attachment) {
   );
 }
 
+function isDocxAttachment(attachment) {
+  const mime = String(attachment.mime_type || "").toLowerCase();
+  const fileName = String(attachment.file_name || "").toLowerCase();
+  return mime.includes("wordprocessingml.document") || fileName.endsWith(".docx");
+}
+
 function attachmentKeyLooksRelevant(key) {
   return /attachment|attachments|file|files|allegat/i.test(String(key || ""));
 }
 
 function extractUrls(value) {
   return String(value || "").match(/https?:\/\/[^\s"',<>{}\]]+/gi) || [];
+}
+
+function filenameFromUrl(url) {
+  try {
+    const parsed = new URL(url);
+    const last = parsed.pathname.split("/").filter(Boolean).pop();
+    return last ? decodeURIComponent(last) : null;
+  } catch {
+    return null;
+  }
+}
+
+function filenameFromContentDisposition(value) {
+  const header = String(value || "");
+  const encoded = header.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  if (encoded) return decodeURIComponent(encoded);
+  const plain = header.match(/filename="?([^";]+)"?/i)?.[1];
+  return plain || null;
 }
 
 function tryParseJsonString(value) {
@@ -648,6 +673,7 @@ function normalizeAttachmentDescriptor(raw) {
     raw?.name ||
     raw?.originalname ||
     raw?.title ||
+    filenameFromUrl(url) ||
     "allegato";
   const mimeType = raw?.mime_type || raw?.mimetype || raw?.mimeType || raw?.content_type || "";
 
@@ -663,7 +689,7 @@ function normalizeAttachmentDescriptor(raw) {
     supported_by_scraper: isPdfAttachment({
       file_name: fileName,
       mime_type: mimeType,
-    }),
+    }) || isDocxAttachment({ file_name: fileName, mime_type: mimeType }),
     buffer: raw?.buffer || null,
   };
 }
@@ -733,8 +759,22 @@ function collectZapierAttachments(body, files) {
   return collected;
 }
 
-async function readAttachmentBuffer(attachment) {
-  if (attachment.buffer) return attachment.buffer;
+function inferAttachmentFormat(attachment, buffer) {
+  if (isPdfAttachment(attachment)) return "pdf";
+  if (isDocxAttachment(attachment)) return "docx";
+  if (buffer?.subarray(0, 4).toString("utf8") === "%PDF") return "pdf";
+  if (buffer?.subarray(0, 2).toString("utf8") === "PK") return "docx";
+  return "unknown";
+}
+
+async function readAttachment(attachment) {
+  if (attachment.buffer) {
+    return {
+      ...attachment,
+      buffer: attachment.buffer,
+      format: inferAttachmentFormat(attachment, attachment.buffer),
+    };
+  }
   if (!attachment.url) return null;
 
   const response = await fetch(attachment.url);
@@ -744,7 +784,27 @@ async function readAttachmentBuffer(attachment) {
     );
   }
 
-  return Buffer.from(await response.arrayBuffer());
+  const buffer = Buffer.from(await response.arrayBuffer());
+  const headerFileName = filenameFromContentDisposition(response.headers.get("content-disposition"));
+  const mimeType = response.headers.get("content-type") || attachment.mime_type || "";
+  const fileName =
+    headerFileName ||
+    (attachment.file_name && !/^attachments?(_\d+)?$/i.test(attachment.file_name)
+      ? attachment.file_name
+      : filenameFromUrl(attachment.url)) ||
+    attachment.file_name;
+
+  const resolved = {
+    ...attachment,
+    file_name: fileName,
+    mime_type: mimeType,
+    kind: attachment.kind === "unknown" ? attachmentKind(fileName) : attachment.kind,
+    buffer,
+  };
+  return {
+    ...resolved,
+    format: inferAttachmentFormat(resolved, buffer),
+  };
 }
 
 async function prepareZapierScraperResult(event, body, files) {
@@ -777,21 +837,20 @@ async function prepareZapierScraperResult(event, body, files) {
       message: "Zapier payload normalized for extraction",
       data: {
         attachment_count: attachments.length,
-        supported_pdf_count: attachments.filter((attachment) => attachment.supported_by_scraper).length,
+        initially_supported_count: attachments.filter((attachment) => attachment.supported_by_scraper).length,
       },
     }
   );
 
-  const supported = attachmentInputs.filter((attachment) => attachment.supported_by_scraper);
-  if (supported.length === 0) {
-    result.notes.push("Nessun PDF supportato dagli scraper trovato negli allegati ricevuti.");
+  if (attachmentInputs.length === 0) {
+    result.notes.push("Nessun allegato trovato nel payload ricevuto.");
     await updateProcessingEvent(
       event.id,
       { result },
       {
         message: "No supported scraper input found",
         data: {
-          accepted_formats: ["application/pdf"],
+          accepted_formats: ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"],
           received_files: attachments.map((attachment) => ({
             file_name: attachment.file_name,
             mime_type: attachment.mime_type,
@@ -804,29 +863,75 @@ async function prepareZapierScraperResult(event, body, files) {
 
   await updateProcessingEvent(event.id, { status: "extracting" }, { message: "Scraper extraction started" });
 
-  for (const attachment of supported) {
-    const buffer = await readAttachmentBuffer(attachment);
-    if (!buffer) continue;
-
-    if (attachment.kind === "proposta") {
-      result.extracted.proposta = await scrapePropostaFromBuffer(buffer, attachment.file_name);
-      await updateProcessingEvent(event.id, { result }, {
-        message: "Proposal scraper completed",
-        data: result.extracted.proposta,
-      });
+  for (const attachment of attachmentInputs) {
+    let resolvedAttachment = null;
+    try {
+      resolvedAttachment = await readAttachment(attachment);
+    } catch (error) {
+      result.notes.push(`${attachment.file_name}: download fallito (${error.message || String(error)})`);
       continue;
     }
 
-    if (attachment.kind === "annuncio") {
-      result.extracted.annuncio = await scrapeAnnuncioFromBuffer(buffer, attachment.file_name);
-      await updateProcessingEvent(event.id, { result }, {
-        message: "Auction announcement scraper completed",
-        data: result.extracted.annuncio,
-      });
+    if (!resolvedAttachment?.buffer) continue;
+
+    const safeDescriptor = {
+      field_name: resolvedAttachment.field_name,
+      file_name: resolvedAttachment.file_name,
+      mime_type: resolvedAttachment.mime_type,
+      size: resolvedAttachment.size,
+      url: resolvedAttachment.url,
+      kind: resolvedAttachment.kind,
+      supported_by_scraper: ["pdf", "docx"].includes(resolvedAttachment.format),
+      format: resolvedAttachment.format,
+    };
+    const existingIndex = result.attachments.findIndex(
+      (item) => item.url === safeDescriptor.url || item.file_name === attachment.file_name
+    );
+    if (existingIndex >= 0) result.attachments[existingIndex] = safeDescriptor;
+
+    if (!["pdf", "docx"].includes(resolvedAttachment.format)) {
+      result.notes.push(`Formato non supportato: ${resolvedAttachment.file_name}`);
       continue;
     }
 
-    result.notes.push(`Allegato PDF non classificato: ${attachment.file_name}`);
+    try {
+      if (resolvedAttachment.kind === "proposta") {
+        result.extracted.proposta =
+          resolvedAttachment.format === "docx"
+            ? scrapePropostaFromText(
+                (await parseDocxBuffer(resolvedAttachment.buffer)).text,
+                resolvedAttachment.file_name
+              )
+            : await scrapePropostaFromBuffer(resolvedAttachment.buffer, resolvedAttachment.file_name);
+        await updateProcessingEvent(event.id, { result }, {
+          message: "Proposal scraper completed",
+          data: result.extracted.proposta,
+        });
+        continue;
+      }
+
+      if (resolvedAttachment.kind === "annuncio") {
+        result.extracted.annuncio =
+          resolvedAttachment.format === "docx"
+            ? scrapeAnnuncioFromText(
+                (await parseDocxBuffer(resolvedAttachment.buffer)).text,
+                resolvedAttachment.file_name
+              )
+            : await scrapeAnnuncioFromBuffer(resolvedAttachment.buffer, resolvedAttachment.file_name);
+        await updateProcessingEvent(event.id, { result }, {
+          message: "Auction announcement scraper completed",
+          data: result.extracted.annuncio,
+        });
+        continue;
+      }
+    } catch (error) {
+      result.notes.push(
+        `${resolvedAttachment.file_name}: estrazione fallita (${error.message || String(error)})`
+      );
+      continue;
+    }
+
+    result.notes.push(`Allegato non classificato: ${resolvedAttachment.file_name}`);
   }
 
   result.ready_for_zapier = Boolean(result.extracted.annuncio || result.extracted.proposta);

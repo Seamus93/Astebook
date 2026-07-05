@@ -42,6 +42,7 @@ test("Zapier intake creates a processing event visible from the UI API", async (
 
   try {
     const { port } = server.address();
+    const localFileUrl = `http://127.0.0.1:${port}/health`;
     const intakeResponse = await fetch(`http://127.0.0.1:${port}/api/v1/zapier/email-activation`, {
       method: "POST",
       headers: {
@@ -53,10 +54,8 @@ test("Zapier intake creates a processing event visible from the UI API", async (
         from: "cliente@example.com",
         email_body_text: "Corpo della mail",
         zap_run_id: "zap-test-1",
-        all_attachments:
-          "https://zapier-dev-files.s3.amazonaws.com/example/Disciplinare.docx",
-        attachment_1_attachment:
-          "https://zapier-dev-files.s3.amazonaws.com/example/Proposta.docx",
+        all_attachments: localFileUrl,
+        attachment_1_attachment: `${localFileUrl}?attachment=1`,
         attachment_1_truncateFilename: "Proposta.docx",
         attachment_1_mime_type:
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",

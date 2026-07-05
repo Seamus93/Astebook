@@ -81,7 +81,7 @@ Example response:
 }
 ```
 
-The attachment collector accepts Zapier URLs in nested objects, JSON strings and flattened fields such as `attachment_1_attachment`. When PDF attachments are classified as `annuncio` or `proposta`, the endpoint runs the local scrapers and stores the extracted payload in the event `result`.
+The attachment collector accepts Zapier URLs in nested objects, JSON strings and flattened fields such as `attachment_1_attachment`. When PDF or DOCX attachments are classified as `annuncio` or `proposta`, the endpoint runs the local scrapers and stores the extracted payload in the event `result`.
 
 ## `GET /api/v1/processing-events`
 

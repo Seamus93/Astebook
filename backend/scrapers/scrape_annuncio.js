@@ -162,8 +162,7 @@ function extractDataOra(text) {
 }
 
 /* ---------------- Export principale ---------------- */
-export async function scrapeAnnuncioFromBuffer(buffer, fileName = "annuncio.pdf") {
-  const { text } = await parsePdfBuffer(buffer);
+export function scrapeAnnuncioFromText(text, fileName = "annuncio.txt") {
   const T = norm(text || "");
 
   // indirizzo
@@ -189,4 +188,9 @@ export async function scrapeAnnuncioFromBuffer(buffer, fileName = "annuncio.pdf"
     aggiornato_il:   extractAggiornatoIl(T),
     raw_length:      T.length
   };
+}
+
+export async function scrapeAnnuncioFromBuffer(buffer, fileName = "annuncio.pdf") {
+  const { text } = await parsePdfBuffer(buffer);
+  return scrapeAnnuncioFromText(text, fileName);
 }

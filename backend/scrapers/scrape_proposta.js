@@ -125,8 +125,7 @@ function grabCatasto(text) {
 
 /* ============ EXTRACTOR PRINCIPALE ============ */
 
-export async function scrapePropostaFromBuffer(buffer, fileName = "proposta.pdf") {
-  const { text } = await parsePdfBuffer(buffer);
+export function scrapePropostaFromText(text, fileName = "proposta.txt") {
   const T = norm(text || "");
 
   const proponenteRaw = grabProponente(T);
@@ -193,4 +192,9 @@ export async function scrapePropostaFromBuffer(buffer, fileName = "proposta.pdf"
     catasto,
     raw_length: T.length
   };
+}
+
+export async function scrapePropostaFromBuffer(buffer, fileName = "proposta.pdf") {
+  const { text } = await parsePdfBuffer(buffer);
+  return scrapePropostaFromText(text, fileName);
 }

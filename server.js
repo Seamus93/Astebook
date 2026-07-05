@@ -251,8 +251,14 @@ function redactSecret(value) {
   return `${str.slice(0, 4)}...${str.slice(-4)}`;
 }
 
-app.get("/api/v1/admin/settings", requireAdminSession, async (_req, res) => {
+app.get("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
   const settings = await getRuntimeSettings();
+  const reveal = req.query.reveal === "1" || req.query.reveal === "true";
+  const secretValue = (envName, runtimeName) => {
+    const value = process.env[envName] || settings[runtimeName];
+    return reveal ? value || "" : redactSecret(value);
+  };
+
   res.json({
     ok: true,
     admin: {
@@ -260,15 +266,9 @@ app.get("/api/v1/admin/settings", requireAdminSession, async (_req, res) => {
       env_managed: Boolean(process.env.ADMIN_PASSWORD),
     },
     settings: {
-      processing_ui_token: redactSecret(
-        process.env.PROCESSING_UI_TOKEN || settings.processing_ui_token
-      ),
-      zapier_webhook_token: redactSecret(
-        process.env.ZAPIER_WEBHOOK_TOKEN || settings.zapier_webhook_token
-      ),
-      admin_session_secret: redactSecret(
-        process.env.ADMIN_SESSION_SECRET || settings.admin_session_secret
-      ),
+      processing_ui_token: secretValue("PROCESSING_UI_TOKEN", "processing_ui_token"),
+      zapier_webhook_token: secretValue("ZAPIER_WEBHOOK_TOKEN", "zapier_webhook_token"),
+      admin_session_secret: secretValue("ADMIN_SESSION_SECRET", "admin_session_secret"),
     },
   });
 });

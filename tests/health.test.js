@@ -123,6 +123,18 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(settingsResponse.status, 200);
     assert.equal(settingsPayload.ok, true);
     assert.equal(settingsPayload.admin.username, "admin");
+    assert.equal(settingsPayload.settings.processing_ui_token, "test...oken");
+
+    const revealResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/admin/settings?reveal=1`,
+      {
+        headers: { cookie },
+      }
+    );
+    const revealPayload = await revealResponse.json();
+
+    assert.equal(revealResponse.status, 200);
+    assert.equal(revealPayload.settings.processing_ui_token, "test-ui-token");
 
     const updateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
       method: "POST",

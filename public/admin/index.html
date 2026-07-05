@@ -4,6 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Astebook Processing</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0"
+      rel="stylesheet"
+    />
     <link rel="stylesheet" href="/admin/styles.css" />
   </head>
   <body>
@@ -12,9 +18,16 @@
         <div class="brand">
           <span>Astebook</span>
           <div class="toolbar">
-            <button id="refreshButton" type="button">Aggiorna</button>
+            <button id="refreshButton" class="icon-button" type="button" title="Aggiorna">
+              <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
+            </button>
+            <button id="settingsButton" class="icon-button" type="button" title="Impostazioni">
+              <span class="material-symbols-outlined" aria-hidden="true">settings</span>
+            </button>
             <form method="post" action="/admin/logout">
-              <button type="submit">Esci</button>
+              <button class="icon-button" type="submit" title="Esci">
+                <span class="material-symbols-outlined" aria-hidden="true">logout</span>
+              </button>
             </form>
           </div>
         </div>
@@ -46,49 +59,125 @@
         </section>
 
         <section class="panes">
-          <article>
-            <h2>Mail e Payload</h2>
-            <pre id="requestPane">{}</pre>
+          <article class="panel panel-wide">
+            <h2>
+              <span class="material-symbols-outlined" aria-hidden="true">mail</span>
+              Mail e Payload
+            </h2>
+            <div id="requestPane" class="data-view"></div>
           </article>
-          <article>
-            <h2>Log Elaborazione</h2>
+          <article class="panel">
+            <h2>
+              <span class="material-symbols-outlined" aria-hidden="true">timeline</span>
+              Log Elaborazione
+            </h2>
             <div id="stepsPane" class="steps"></div>
           </article>
-          <article>
-            <h2>Dati Estratti</h2>
-            <pre id="resultPane">{}</pre>
+          <article class="panel">
+            <h2>
+              <span class="material-symbols-outlined" aria-hidden="true">fact_check</span>
+              Dati Estratti
+            </h2>
+            <div id="resultPane" class="data-view"></div>
           </article>
-          <article>
-            <h2>Errori</h2>
-            <pre id="errorPane">{}</pre>
-          </article>
-          <article>
-            <h2>Impostazioni</h2>
-            <form id="settingsForm" class="settings-form">
-              <label>
-                Token UI
-                <input id="processingUiToken" name="processing_ui_token" autocomplete="off" />
-              </label>
-              <label>
-                Token Webhook Zapier
-                <input id="zapierWebhookToken" name="zapier_webhook_token" autocomplete="off" />
-              </label>
-              <label>
-                Session Secret
-                <input id="adminSessionSecret" name="admin_session_secret" autocomplete="off" />
-              </label>
-              <label>
-                Nuova Password Admin
-                <input id="adminPassword" name="admin_password" type="password" autocomplete="new-password" />
-              </label>
-              <button type="submit">Salva</button>
-              <p id="settingsStatus" class="settings-status"></p>
-              <pre id="settingsPane">{}</pre>
-            </form>
+          <article class="panel">
+            <h2>
+              <span class="material-symbols-outlined" aria-hidden="true">error</span>
+              Errori
+            </h2>
+            <div id="errorPane" class="data-view"></div>
           </article>
         </section>
       </section>
     </main>
+
+    <div id="settingsModal" class="modal-backdrop" hidden>
+      <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+        <header class="modal-header">
+          <div>
+            <p class="eyebrow">Console Admin</p>
+            <h2 id="settingsTitle">Impostazioni</h2>
+          </div>
+          <button id="closeSettingsButton" class="icon-button" type="button" title="Chiudi">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </header>
+
+        <form id="settingsForm" class="settings-form">
+          <label>
+            <span>Token UI</span>
+            <div class="secret-field">
+              <input
+                id="processingUiToken"
+                name="processing_ui_token"
+                type="password"
+                autocomplete="off"
+                placeholder="Token per le API della UI"
+              />
+              <button class="icon-button reveal-button" type="button" data-reveal="processingUiToken" title="Mostra">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+              </button>
+            </div>
+          </label>
+          <label>
+            <span>Token Webhook Zapier</span>
+            <div class="secret-field">
+              <input
+                id="zapierWebhookToken"
+                name="zapier_webhook_token"
+                type="password"
+                autocomplete="off"
+                placeholder="Token richiesto dagli hook Zapier"
+              />
+              <button class="icon-button reveal-button" type="button" data-reveal="zapierWebhookToken" title="Mostra">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+              </button>
+            </div>
+          </label>
+          <label>
+            <span>Session Secret</span>
+            <div class="secret-field">
+              <input
+                id="adminSessionSecret"
+                name="admin_session_secret"
+                type="password"
+                autocomplete="off"
+                placeholder="Secret per firmare la sessione admin"
+              />
+              <button class="icon-button reveal-button" type="button" data-reveal="adminSessionSecret" title="Mostra">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+              </button>
+            </div>
+          </label>
+          <label>
+            <span>Nuova Password Admin</span>
+            <div class="secret-field">
+              <input
+                id="adminPassword"
+                name="admin_password"
+                type="password"
+                autocomplete="new-password"
+                placeholder="Lascia vuoto per non cambiarla"
+              />
+              <button class="icon-button reveal-button" type="button" data-reveal="adminPassword" title="Mostra">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+              </button>
+            </div>
+          </label>
+
+          <div class="modal-actions">
+            <p id="settingsStatus" class="settings-status"></p>
+            <button type="submit" class="primary-button">Salva</button>
+          </div>
+        </form>
+
+        <section class="settings-summary">
+          <h3>Valori salvati</h3>
+          <div id="settingsPane" class="settings-cards"></div>
+        </section>
+      </section>
+    </div>
+
     <script src="/admin/app.js"></script>
   </body>
 </html>

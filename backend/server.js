@@ -343,9 +343,10 @@ app.get("/health", (_req, res) =>
 );
 
 app.post("/api/v1/zapier/email-activation", requireZapierWebhookToken, upload, async (req, res) => {
+  let event = null;
   try {
     const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};
-    const event = await createProcessingEvent({
+    event = await createProcessingEvent({
       source: "zapier.email_activation",
       status: "received",
       body,
@@ -368,6 +369,22 @@ app.post("/api/v1/zapier/email-activation", requireZapierWebhookToken, upload, a
       result,
     });
   } catch (error) {
+    if (event?.id) {
+      await updateProcessingEvent(
+        event.id,
+        {
+          status: "failed",
+          error: {
+            message: error.message || String(error),
+            stack: error.stack || null,
+          },
+        },
+        {
+          level: "error",
+          message: "Zapier intake processing failed",
+        }
+      );
+    }
     res.status(500).json({ ok: false, error: error.message || String(error) });
   }
 });
@@ -601,9 +618,35 @@ function resolveEmailText(body) {
 
 function attachmentKind(fileName) {
   const name = String(fileName || "").toLowerCase();
+  if (/provvigione|commission|raccolta\s+offerte/.test(name)) return "provvigione";
   if (/proposta|offerta|offer/.test(name)) return "proposta";
   if (/annuncio|disciplinare|gara|asta|lotto/.test(name)) return "annuncio";
   return "unknown";
+}
+
+function propostaScore(proposta) {
+  if (!proposta) return -1;
+  return [
+    proposta.proponente?.nominativo && !/^[….\s”")]+$/.test(proposta.proponente.nominativo),
+    proposta.prezzo_offerto,
+    proposta.deposito_cauzionale || proposta.deposito_cauzionale_percentuale,
+    proposta.iban_beneficiario,
+    proposta.indirizzo_immobile,
+    proposta.catasto?.foglio,
+    proposta.catasto?.particella,
+    proposta.catasto?.subalterno,
+  ].filter(Boolean).length;
+}
+
+function finalizeZapierResult(result) {
+  result.ready_for_zapier = Boolean(result.extracted.annuncio || result.extracted.proposta);
+  result.zapier_response = {
+    ok: result.ready_for_zapier,
+    codice_pratica: result.codice_pratica,
+    annuncio: result.extracted.annuncio,
+    proposta: result.extracted.proposta,
+  };
+  return result;
 }
 
 function isPdfAttachment(attachment) {
@@ -895,17 +938,32 @@ async function prepareZapierScraperResult(event, body, files) {
     }
 
     try {
+      if (resolvedAttachment.kind === "provvigione") {
+        result.notes.push(`Allegato provvigione ignorato dagli scraper proposta: ${resolvedAttachment.file_name}`);
+        continue;
+      }
+
       if (resolvedAttachment.kind === "proposta") {
-        result.extracted.proposta =
+        const extractedProposta =
           resolvedAttachment.format === "docx"
             ? scrapePropostaFromText(
                 (await parseDocxBuffer(resolvedAttachment.buffer)).text,
                 resolvedAttachment.file_name
               )
             : await scrapePropostaFromBuffer(resolvedAttachment.buffer, resolvedAttachment.file_name);
+
+        const previousScore = propostaScore(result.extracted.proposta);
+        const nextScore = propostaScore(extractedProposta);
+        if (!result.extracted.proposta || nextScore >= previousScore) {
+          result.extracted.proposta = extractedProposta;
+        } else {
+          result.notes.push(
+            `Proposta estratta ma non usata perche meno completa: ${resolvedAttachment.file_name}`
+          );
+        }
         await updateProcessingEvent(event.id, { result }, {
           message: "Proposal scraper completed",
-          data: result.extracted.proposta,
+          data: extractedProposta,
         });
         continue;
       }
@@ -934,13 +992,7 @@ async function prepareZapierScraperResult(event, body, files) {
     result.notes.push(`Allegato non classificato: ${resolvedAttachment.file_name}`);
   }
 
-  result.ready_for_zapier = Boolean(result.extracted.annuncio || result.extracted.proposta);
-  result.zapier_response = {
-    ok: result.ready_for_zapier,
-    codice_pratica: result.codice_pratica,
-    annuncio: result.extracted.annuncio,
-    proposta: result.extracted.proposta,
-  };
+  finalizeZapierResult(result);
 
   await updateProcessingEvent(
     event.id,

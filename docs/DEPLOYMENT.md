@@ -33,10 +33,11 @@ Shared infrastructure remains outside the repository under `/opt/infra`.
 2. CI, SonarCloud and security scans run.
 3. The deploy job fetches Infisical secrets with OIDC when configured.
 4. GitHub connects to the VPS with `appleboy/ssh-action`.
-5. The remote repository must be clean.
-6. The deploy job pulls `main` with `--ff-only`.
-7. Docker Compose pulls base/runtime images, rebuilds and starts stack `astebook`.
-8. `/opt/infra/scripts/register-project.sh` registers Homepage and Uptime Kuma.
+5. If `/opt/projects/astebook` does not exist, the deploy job clones the repository there.
+6. The remote repository must be clean.
+7. The deploy job resets the checkout to `origin/main`.
+8. Docker Compose pulls base/runtime images, rebuilds and starts stack `astebook`.
+9. `/opt/infra/scripts/register-project.sh` registers Homepage and Uptime Kuma.
 
 ## Docker
 

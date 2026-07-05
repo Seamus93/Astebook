@@ -67,4 +67,4 @@ docker compose up -d --build
 
 This rebuilds the Astebook container from the current `main` checkout on the VPS.
 
-The deploy action passes `VPS_APP_DIR`, `PROJECT_URL` and `HEALTH_URL` to the remote SSH session through `envs`.
+The deploy action passes `VPS_APP_DIR`, `PROJECT_URL`, `HEALTH_URL` and `REPOSITORY_URL` to the remote SSH session through `envs`.

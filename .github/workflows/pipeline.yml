@@ -17,6 +17,7 @@ env:
   VPS_APP_DIR: ${{ vars.VPS_APP_DIR }}
   PROJECT_URL: ${{ vars.PROJECT_URL }}
   HEALTH_URL: ${{ vars.HEALTH_URL }}
+  REPOSITORY_URL: https://github.com/${{ github.repository }}.git
   INFISICAL_ENV: ${{ vars.INFISICAL_ENV }}
   INFISICAL_IDENTITY_ID: ${{ vars.INFISICAL_IDENTITY_ID }}
   INFISICAL_PROJECT_ID: ${{ vars.INFISICAL_PROJECT_ID }}
@@ -221,11 +222,24 @@ jobs:
           host: ${{ env.DEPLOY_HOST }}
           username: ${{ env.DEPLOY_USER }}
           key: ${{ env.DEPLOY_KEY }}
-          envs: VPS_APP_DIR,PROJECT_URL,HEALTH_URL
+          envs: VPS_APP_DIR,PROJECT_URL,HEALTH_URL,REPOSITORY_URL
           script: |
             set -e
 
             PROJECT_DIR="${VPS_APP_DIR:-/opt/projects/astebook}"
+            REPO_URL="${REPOSITORY_URL:-https://github.com/Seamus93/Astebook.git}"
+
+            if [ ! -d "$PROJECT_DIR/.git" ]; then
+              if [ -d "$PROJECT_DIR" ] && [ -n "$(ls -A "$PROJECT_DIR" 2>/dev/null)" ]; then
+                echo "Deploy bloccato: $PROJECT_DIR esiste ma non e un checkout git vuoto."
+                ls -la "$PROJECT_DIR"
+                exit 1
+              fi
+
+              mkdir -p "$(dirname "$PROJECT_DIR")"
+              git clone "$REPO_URL" "$PROJECT_DIR"
+            fi
+
             cd "$PROJECT_DIR"
             git config core.fileMode false
 

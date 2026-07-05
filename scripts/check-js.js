@@ -3,7 +3,7 @@ import { readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 const ignoredDirs = new Set([".git", "node_modules"]);
-const roots = ["server.js", "lib", "public", "scrapers", "scripts", "tests"];
+const roots = ["backend", "frontend", "scripts"];
 
 function collectJsFiles(path) {
   const stat = statSync(path, { throwIfNoEntry: false });

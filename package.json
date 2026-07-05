@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "start:4000": "set PORT=4000&& node server.js",
+    "start": "node backend/server.js",
+    "start:4000": "set PORT=4000&& node backend/server.js",
     "lint": "node scripts/check-js.js",
-    "test": "node --test",
+    "test": "node --test backend/tests/*.test.js",
     "build": "npm run lint",
     "ci": "npm run lint && npm test && npm audit --audit-level=high",
     "ngrok": "ngrok http 4000",

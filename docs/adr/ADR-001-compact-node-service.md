@@ -1,4 +1,4 @@
-# ADR-001 - Compact Node Service
+# ADR-001 - Minimal Frontend/Backend Service
 
 ## Status
 
@@ -8,11 +8,17 @@ Accepted.
 
 The standard repository structure supports larger modular monoliths with `/apps`, `/packages`, Prisma and frontend/backend separation.
 
-Astebook currently provides one stateless Node/Express API for document automation. Introducing a full monorepo split now would add structure without immediate operational value.
+Astebook now has both a Node/Express automation API and a small admin processing UI. A full monorepo split would still add structure without immediate operational value, but separating visual assets from backend code improves clarity.
 
 ## Decision
 
-Keep the current compact Node service layout while adding the standard repository baseline:
+Use a minimal split:
+
+- `backend/` for API, domain logic, scrapers and backend tests;
+- `frontend/` for visual/admin UI assets;
+- root-level Docker, package and CI files for the single deployable service.
+
+Keep the standard repository baseline:
 
 - single GitHub Actions pipeline;
 - Docker Compose compliance;
@@ -23,6 +29,6 @@ Keep the current compact Node service layout while adding the standard repositor
 
 ## Consequences
 
-- The repository remains simple while becoming deployable under the VPS standard.
-- Future persistence, frontend, queues or backoffice modules can introduce `/apps`, `/packages`, Prisma and Redis through dedicated ADRs.
-- This ADR documents the intentional deviation from the full AgriAvenger-style monorepo structure.
+- The repository stays simple while separating frontend and backend responsibilities.
+- Future persistence, queues or larger backoffice modules can introduce `/apps`, `/packages`, Prisma and Redis through dedicated ADRs.
+- This ADR documents the intentional deviation from a heavier monorepo structure.

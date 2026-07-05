@@ -242,7 +242,7 @@ app.post("/admin/logout", (_req, res) => {
   res.redirect("/admin/login");
 });
 
-app.use("/admin", requireAdminSession, express.static(join(process.cwd(), "public", "admin")));
+app.use("/admin", requireAdminSession, express.static(join(process.cwd(), "frontend", "admin")));
 
 function redactSecret(value) {
   if (!value) return "";

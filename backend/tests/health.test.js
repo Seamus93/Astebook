@@ -125,6 +125,14 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(settingsPayload.admin.username, "admin");
     assert.equal(settingsPayload.settings.processing_ui_token, "test...oken");
 
+    const adminUiResponse = await fetch(`http://127.0.0.1:${port}/admin/`, {
+      headers: { cookie },
+    });
+    const adminUiHtml = await adminUiResponse.text();
+
+    assert.equal(adminUiResponse.status, 200);
+    assert.match(adminUiHtml, /Astebook Processing/);
+
     const revealResponse = await fetch(
       `http://127.0.0.1:${port}/api/v1/admin/settings?reveal=1`,
       {

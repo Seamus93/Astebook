@@ -1,6 +1,6 @@
 # Architecture
 
-Astebook currently uses a compact modular backend layout.
+Astebook uses a minimal frontend/backend split.
 
 ```mermaid
 flowchart LR
@@ -14,14 +14,15 @@ flowchart LR
 
 ## Components
 
-- `server.js`: HTTP API, upload handling, orchestration and response formatting.
-- `public/admin`: internal processing UI.
-- `lib/app_config.js`: persisted first-admin bootstrap and runtime settings.
-- `lib/processing_log.js`: JSONL runtime log for received and processed events.
-- `lib/ai.js`: AI extraction prompts and provider integration.
-- `lib/pdf.js`: PDF parsing support.
-- `lib/merge_json.js`: domain merge rules.
-- `scrapers/`: supporting extraction scripts.
+- `backend/server.js`: HTTP API, upload handling, orchestration and response formatting.
+- `backend/lib/app_config.js`: persisted first-admin bootstrap and runtime settings.
+- `backend/lib/processing_log.js`: JSONL runtime log for received and processed events.
+- `backend/lib/ai.js`: AI extraction prompts and provider integration.
+- `backend/lib/pdf.js`: PDF parsing support.
+- `backend/lib/merge_json.js`: domain merge rules.
+- `backend/scrapers/`: supporting extraction scripts.
+- `backend/tests/`: backend/API tests.
+- `frontend/admin`: internal processing UI served by the backend under `/admin`.
 
 ## Deployment Flow
 
@@ -38,8 +39,8 @@ flowchart TD
 
 ## Current Intentional Deviations
 
-- No `/apps/backend` split yet because the service is a single compact backend.
+- No `/apps` or `/packages` layer yet because the project is still one deployable service.
 - No PostgreSQL/Prisma yet; runtime state is limited to JSON files under `runtime/`.
-- No frontend app yet.
+- The frontend is static admin UI, not a separate SPA build pipeline.
 
 These deviations are recorded in `docs/adr/ADR-001-compact-node-service.md`.

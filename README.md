@@ -4,6 +4,14 @@ Pipeline Node/Express per estrazione e normalizzazione dati da email di attivazi
 
 Il repository e allineato alla baseline organizzativa in `.skills`: pipeline unica GitHub Actions, deploy VPS in `/opt/projects/astebook`, Docker Compose dedicato, healthcheck e documentazione minima.
 
+Struttura principale:
+
+```text
+backend/   API, logica estrazione, scrapers, test
+frontend/  UI admin statica
+runtime/   log e configurazione runtime persistente
+```
+
 ## Setup Locale
 
 Requisiti:

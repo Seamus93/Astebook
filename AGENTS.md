@@ -21,19 +21,21 @@ Current repository layout:
 ```text
 /.github
 /.skills
+/backend
+/backend/lib
+/backend/scrapers
+/backend/tests
 /docs
 /docs/adr
-/lib
+/frontend
+/frontend/admin
 /scripts
-/scrapers
-/tests
 Dockerfile
 docker-compose.yml
 package.json
-server.js
 ```
 
-The repository is intentionally a compact backend service. Deviations from the full monorepo baseline are documented in `docs/adr/ADR-001-compact-node-service.md`.
+The repository uses the minimal frontend/backend split required by the project standard. It intentionally avoids extra app/package layers until they provide operational value.
 
 ## Required GitHub Actions Configuration
 

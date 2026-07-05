@@ -8,6 +8,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { mergeAnnuncioProposta } from "./lib/merge_json.js";
 import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale } from "./lib/ai.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
+import { scrapeAnnuncioFromBuffer } from "./scrapers/scrape_annuncio.js";
+import { scrapePropostaFromBuffer } from "./scrapers/scrape_proposta.js";
 import {
   createProcessingEvent,
   getProcessingEvent,
@@ -354,12 +356,15 @@ app.post("/api/v1/zapier/email-activation", requireZapierWebhookToken, upload, a
         email_id: body.email_id || body.message_id || body.gmail_id || null,
       },
     });
+    const result = await prepareZapierScraperResult(event, body, req.files);
+    const updatedEvent = await getProcessingEvent(event.id);
 
     res.status(202).json({
       ok: true,
       event_id: event.id,
-      status: event.status,
+      status: updatedEvent?.status || event.status,
       admin_url: `/admin/#/events/${event.id}`,
+      result,
     });
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message || String(error) });
@@ -572,6 +577,242 @@ function resolveCodicePratica(body, emailText) {
   const firstValid = candidates.find((candidate) => isValidCodicePratica(candidate));
   if (firstValid) return normalizeCodicePratica(firstValid);
   return extractCodicePraticaFromText(emailText);
+}
+
+function firstBodyValue(body, keys) {
+  return keys.map((key) => body?.[key]).find((value) => value !== undefined && value !== null) || "";
+}
+
+function resolveEmailText(body) {
+  return String(
+    firstBodyValue(body, [
+      "email_body_text",
+      "body_plain",
+      "body_text",
+      "body",
+      "text",
+      "message",
+      "email_body",
+      "plain_body",
+    ]) || ""
+  );
+}
+
+function attachmentKind(fileName) {
+  const name = String(fileName || "").toLowerCase();
+  if (/proposta|offerta|offer/.test(name)) return "proposta";
+  if (/annuncio|disciplinare|gara|asta|lotto/.test(name)) return "annuncio";
+  return "unknown";
+}
+
+function isPdfAttachment(attachment) {
+  return (
+    String(attachment.mime_type || "").toLowerCase().includes("pdf") ||
+    String(attachment.file_name || "").toLowerCase().endsWith(".pdf")
+  );
+}
+
+function normalizeAttachmentDescriptor(raw) {
+  const url =
+    raw?.attachment ||
+    raw?.url ||
+    raw?.file ||
+    raw?.download_url ||
+    raw?.href ||
+    raw?.value ||
+    null;
+  const fileName =
+    raw?.fileName ||
+    raw?.filename ||
+    raw?.name ||
+    raw?.originalname ||
+    raw?.title ||
+    "allegato";
+  const mimeType = raw?.mime_type || raw?.mimetype || raw?.mimeType || raw?.content_type || "";
+
+  if (!url && !raw?.buffer) return null;
+
+  return {
+    field_name: raw?.fieldname || raw?.field_name || null,
+    file_name: String(fileName),
+    mime_type: String(mimeType),
+    size: raw?.size || null,
+    url: typeof url === "string" && /^https?:\/\//i.test(url) ? url : null,
+    kind: attachmentKind(fileName),
+    supported_by_scraper: isPdfAttachment({
+      file_name: fileName,
+      mime_type: mimeType,
+    }),
+    buffer: raw?.buffer || null,
+  };
+}
+
+function collectZapierAttachments(body, files) {
+  const collected = [];
+  const seen = new Set();
+
+  const add = (descriptor) => {
+    if (!descriptor) return;
+    const key = `${descriptor.file_name}|${descriptor.url || descriptor.field_name || ""}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    collected.push(descriptor);
+  };
+
+  (Array.isArray(files) ? files : []).forEach((file) => add(normalizeAttachmentDescriptor(file)));
+
+  const visit = (value, key = "") => {
+    if (!value) return;
+
+    if (typeof value === "string") {
+      if (/^https?:\/\//i.test(value) && /attachment|file|allegat/i.test(key)) {
+        add(
+          normalizeAttachmentDescriptor({
+            attachment: value,
+            fileName: key,
+          })
+        );
+      }
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => visit(item, `${key}_${index + 1}`));
+      return;
+    }
+
+    if (typeof value === "object") {
+      const descriptor = normalizeAttachmentDescriptor(value);
+      if (descriptor) add(descriptor);
+      Object.entries(value).forEach(([childKey, childValue]) => visit(childValue, childKey));
+    }
+  };
+
+  visit(body);
+  return collected;
+}
+
+async function readAttachmentBuffer(attachment) {
+  if (attachment.buffer) return attachment.buffer;
+  if (!attachment.url) return null;
+
+  const response = await fetch(attachment.url);
+  if (!response.ok) {
+    throw new Error(
+      `Download allegato fallito (${attachment.file_name}): ${response.status} ${response.statusText}`
+    );
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function prepareZapierScraperResult(event, body, files) {
+  const emailText = resolveEmailText(body);
+  const attachmentInputs = collectZapierAttachments(body, files);
+  const attachments = attachmentInputs.map(({ buffer, ...safeDescriptor }) => safeDescriptor);
+  const result = {
+    ok: true,
+    mode: "zapier_scraper_preview",
+    ready_for_zapier: false,
+    codice_pratica: resolveCodicePratica(body, emailText) || "",
+    email: {
+      subject: firstBodyValue(body, ["subject", "email_subject", "oggetto"]) || null,
+      from: firstBodyValue(body, ["from", "email_from", "mittente"]) || null,
+      has_body_text: emailText.trim().length > 0,
+    },
+    attachments,
+    extracted: {
+      annuncio: null,
+      proposta: null,
+    },
+    zapier_response: null,
+    notes: [],
+  };
+
+  await updateProcessingEvent(
+    event.id,
+    { result },
+    {
+      message: "Zapier payload normalized for extraction",
+      data: {
+        attachment_count: attachments.length,
+        supported_pdf_count: attachments.filter((attachment) => attachment.supported_by_scraper).length,
+      },
+    }
+  );
+
+  const supported = attachmentInputs.filter((attachment) => attachment.supported_by_scraper);
+  if (supported.length === 0) {
+    result.notes.push("Nessun PDF supportato dagli scraper trovato negli allegati ricevuti.");
+    await updateProcessingEvent(
+      event.id,
+      { result },
+      {
+        message: "No supported scraper input found",
+        data: {
+          accepted_formats: ["application/pdf"],
+          received_files: attachments.map((attachment) => ({
+            file_name: attachment.file_name,
+            mime_type: attachment.mime_type,
+          })),
+        },
+      }
+    );
+    return result;
+  }
+
+  await updateProcessingEvent(event.id, { status: "extracting" }, { message: "Scraper extraction started" });
+
+  for (const attachment of supported) {
+    const buffer = await readAttachmentBuffer(attachment);
+    if (!buffer) continue;
+
+    if (attachment.kind === "proposta") {
+      result.extracted.proposta = await scrapePropostaFromBuffer(buffer, attachment.file_name);
+      await updateProcessingEvent(event.id, { result }, {
+        message: "Proposal scraper completed",
+        data: result.extracted.proposta,
+      });
+      continue;
+    }
+
+    if (attachment.kind === "annuncio") {
+      result.extracted.annuncio = await scrapeAnnuncioFromBuffer(buffer, attachment.file_name);
+      await updateProcessingEvent(event.id, { result }, {
+        message: "Auction announcement scraper completed",
+        data: result.extracted.annuncio,
+      });
+      continue;
+    }
+
+    result.notes.push(`Allegato PDF non classificato: ${attachment.file_name}`);
+  }
+
+  result.ready_for_zapier = Boolean(result.extracted.annuncio || result.extracted.proposta);
+  result.zapier_response = {
+    ok: result.ready_for_zapier,
+    codice_pratica: result.codice_pratica,
+    annuncio: result.extracted.annuncio,
+    proposta: result.extracted.proposta,
+  };
+
+  await updateProcessingEvent(
+    event.id,
+    {
+      status: result.ready_for_zapier ? "completed" : "received",
+      result,
+    },
+    {
+      message: result.ready_for_zapier
+        ? "Scraper extraction completed"
+        : "Scraper extraction completed without classified data",
+      data: {
+        ready_for_zapier: result.ready_for_zapier,
+      },
+    }
+  );
+
+  return result;
 }
 
 async function fetchIbanInfo(iban) {

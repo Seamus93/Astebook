@@ -46,6 +46,8 @@ Purpose:
 - record the email body, subject, sender and Zapier identifiers;
 - record attachment metadata;
 - make the event visible in the `/admin` UI;
+- prepare the result payload that can be returned to Zapier;
+- run PDF scraper extraction when supported announcement/proposal attachments are present;
 - allow inspection before extraction logic is moved out of Zapier.
 
 The endpoint accepts JSON or multipart form data.
@@ -64,9 +66,22 @@ Example response:
   "ok": true,
   "event_id": "uuid",
   "status": "received",
-  "admin_url": "/admin/#/events/uuid"
+  "admin_url": "/admin/#/events/uuid",
+  "result": {
+    "mode": "zapier_scraper_preview",
+    "ready_for_zapier": false,
+    "codice_pratica": "",
+    "attachments": [],
+    "extracted": {
+      "annuncio": null,
+      "proposta": null
+    },
+    "zapier_response": null
+  }
 }
 ```
+
+When PDF attachments are classified as `annuncio` or `proposta`, the endpoint runs the local scrapers and stores the extracted payload in the event `result`.
 
 ## `GET /api/v1/processing-events`
 

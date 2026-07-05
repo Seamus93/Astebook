@@ -60,6 +60,8 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.equal(intakeResponse.status, 202);
     assert.equal(intakePayload.ok, true);
     assert.ok(intakePayload.event_id);
+    assert.equal(intakePayload.result.ready_for_zapier, false);
+    assert.equal(intakePayload.result.email.has_body_text, true);
 
     const listResponse = await fetch(`http://127.0.0.1:${port}/api/v1/processing-events`, {
       headers: { "x-astebook-token": "test-ui-token" },
@@ -69,6 +71,17 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.equal(listResponse.status, 200);
     assert.equal(listPayload.events.length, 1);
     assert.equal(listPayload.events[0].status, "received");
+    assert.equal(listPayload.events[0].has_result, true);
+
+    const detailResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}`,
+      {
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    const detailPayload = await detailResponse.json();
+
+    assert.equal(detailPayload.event.result.mode, "zapier_scraper_preview");
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

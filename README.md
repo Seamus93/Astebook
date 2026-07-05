@@ -142,6 +142,8 @@ La risposta contiene `codice_pratica` e `merged` con i campi normalizzati.
 
 Endpoint di intake per Zapier. Registra mail, body, oggetto, mittente, id run e metadata allegati prima della lavorazione.
 
+L'endpoint prepara anche il payload `result` visibile in UI e restituito a Zapier. Se trova allegati PDF riconoscibili come `annuncio` o `proposta`, esegue gli scraper locali e popola `Dati Estratti`.
+
 Se `ZAPIER_WEBHOOK_TOKEN` e configurato, Zapier deve inviarlo nell'header:
 
 ```text

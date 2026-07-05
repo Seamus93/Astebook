@@ -176,33 +176,48 @@
           </label>
           <label>
             <span>PDF-app OCR Endpoint</span>
-            <input
-              id="pdfAppOcrEndpoint"
-              name="pdf_app_ocr_endpoint"
-              type="url"
-              autocomplete="off"
-              placeholder="Endpoint OCR 2.0 PDF-app.net"
-            />
+            <div class="secret-field">
+              <input
+                id="pdfAppOcrEndpoint"
+                name="pdf_app_ocr_endpoint"
+                type="password"
+                autocomplete="off"
+                placeholder="Endpoint OCR 2.0 PDF-app.net"
+              />
+              <button class="icon-button reveal-button" type="button" data-reveal="pdfAppOcrEndpoint" title="Mostra">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+              </button>
+            </div>
           </label>
           <label>
             <span>PDF-app Job Endpoint</span>
-            <input
-              id="pdfAppJobEndpoint"
-              name="pdf_app_job_endpoint"
-              type="url"
-              autocomplete="off"
-              placeholder="Endpoint polling job async, opzionale"
-            />
+            <div class="secret-field">
+              <input
+                id="pdfAppJobEndpoint"
+                name="pdf_app_job_endpoint"
+                type="password"
+                autocomplete="off"
+                placeholder="Endpoint polling job async, opzionale"
+              />
+              <button class="icon-button reveal-button" type="button" data-reveal="pdfAppJobEndpoint" title="Mostra">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+              </button>
+            </div>
           </label>
           <label>
             <span>Template Documento</span>
-            <input
-              id="documentTemplateUrl"
-              name="document_template_url"
-              type="url"
-              autocomplete="off"
-              placeholder="Link Google Doc template con placeholder {{campo}}"
-            />
+            <div class="secret-field">
+              <input
+                id="documentTemplateUrl"
+                name="document_template_url"
+                type="password"
+                autocomplete="off"
+                placeholder="Link Google Doc template con placeholder {{campo}}"
+              />
+              <button class="icon-button reveal-button" type="button" data-reveal="documentTemplateUrl" title="Mostra">
+                <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
+              </button>
+            </div>
           </label>
           <label>
             <span>Nuova Password Admin</span>

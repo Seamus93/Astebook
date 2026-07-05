@@ -32,6 +32,9 @@ const secretInputs = {
   zapier_webhook_token: zapierWebhookToken,
   admin_session_secret: adminSessionSecret,
   pdf_app_api_key: pdfAppApiKey,
+  pdf_app_ocr_endpoint: pdfAppOcrEndpoint,
+  pdf_app_job_endpoint: pdfAppJobEndpoint,
+  document_template_url: documentTemplateUrl,
 };
 
 const inputSecrets = {
@@ -39,6 +42,9 @@ const inputSecrets = {
   zapierWebhookToken: "zapier_webhook_token",
   adminSessionSecret: "admin_session_secret",
   pdfAppApiKey: "pdf_app_api_key",
+  pdfAppOcrEndpoint: "pdf_app_ocr_endpoint",
+  pdfAppJobEndpoint: "pdf_app_job_endpoint",
+  documentTemplateUrl: "document_template_url",
 };
 
 let selectedId = null;
@@ -216,11 +222,6 @@ async function loadSettings({ reveal = false } = {}) {
   const data = await response.json();
   if (reveal) revealedSettings = data.settings || {};
   if (!reveal) applySettingPlaceholders(data.settings || {});
-  if (!reveal) {
-    pdfAppOcrEndpoint.value = data.settings?.pdf_app_ocr_endpoint || "";
-    pdfAppJobEndpoint.value = data.settings?.pdf_app_job_endpoint || "";
-    documentTemplateUrl.value = data.settings?.document_template_url || "";
-  }
   renderSettingsSummary(data);
   return data;
 }

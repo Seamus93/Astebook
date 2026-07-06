@@ -62,7 +62,7 @@ export function buildDocumentFields(event) {
       ["proposta.descrizione_immobile", "annuncio.descrizione", "annuncio.categoria_macro"]
     ),
     catasto_fg: firstValue({ proposta }, ["proposta.catasto.foglio"]),
-    catasto_mappale: firstValue({ proposta }, ["proposta.catasto.particella"]),
+    catasto_mappale: firstValue({ proposta }, ["proposta.catasto.mappale", "proposta.catasto.particella"]),
     catasto_sub: firstValue({ proposta }, ["proposta.catasto.subalterno"]),
     catasto_categoria: firstValue({ proposta, annuncio }, ["proposta.catasto.categoria", "annuncio.categoria_macro"]),
     stato_occupazione: firstValue({ annuncio }, ["annuncio.stato"], "non indicato"),

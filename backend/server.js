@@ -714,8 +714,9 @@ function propostaScore(proposta) {
 }
 
 function finalizeZapierResult(result) {
-  result.ready_for_zapier = Boolean(result.extracted.annuncio || result.extracted.proposta);
   result.missing_fields = collectMissingFields(result);
+  result.ready_for_zapier =
+    Boolean(result.extracted.annuncio || result.extracted.proposta) && result.missing_fields.length === 0;
   result.zapier_response = {
     ok: result.ready_for_zapier,
     codice_pratica: result.codice_pratica,
@@ -984,7 +985,7 @@ async function readAttachment(attachment) {
   };
 }
 
-async function extractAttachmentText(resolvedAttachment, eventId) {
+async function extractAttachmentText(resolvedAttachment, eventId, result) {
   if (resolvedAttachment.format === "docx") {
     return (await parseDocxBuffer(resolvedAttachment.buffer)).text;
   }
@@ -1018,6 +1019,10 @@ async function extractAttachmentText(resolvedAttachment, eventId) {
             },
           });
         }
+        addUniqueNote(
+          result,
+          `${resolvedAttachment.file_name}: OCR PDF-app non eseguito o senza testo (${ocrResult.reason || "Nessun testo OCR restituito."})`
+        );
       } catch (error) {
         if (eventId) {
           await updateProcessingEvent(eventId, {}, {
@@ -1029,6 +1034,10 @@ async function extractAttachmentText(resolvedAttachment, eventId) {
             },
           });
         }
+        addUniqueNote(
+          result,
+          `${resolvedAttachment.file_name}: OCR PDF-app fallito (${error.message || String(error)})`
+        );
       }
     }
 
@@ -1037,6 +1046,12 @@ async function extractAttachmentText(resolvedAttachment, eventId) {
     }
   }
   return "";
+}
+
+function addUniqueNote(result, note) {
+  if (!note) return;
+  result.notes = Array.isArray(result.notes) ? result.notes : [];
+  if (!result.notes.includes(note)) result.notes.push(note);
 }
 
 async function prepareZapierScraperResult(event, body, files) {
@@ -1137,7 +1152,7 @@ async function prepareZapierScraperResult(event, body, files) {
       }
 
       if (resolvedAttachment.kind === "proposta") {
-        const attachmentText = await extractAttachmentText(resolvedAttachment, event.id);
+        const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
         const extractedProposta = scrapePropostaFromText(attachmentText, resolvedAttachment.file_name);
 
         const previousScore = propostaScore(result.extracted.proposta);
@@ -1157,7 +1172,7 @@ async function prepareZapierScraperResult(event, body, files) {
       }
 
       if (resolvedAttachment.kind === "annuncio") {
-        const attachmentText = await extractAttachmentText(resolvedAttachment, event.id);
+        const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
         result.extracted.annuncio = scrapeAnnuncioFromText(attachmentText, resolvedAttachment.file_name);
         if (!result.codice_pratica) {
           result.codice_pratica = scrapeCodicePraticaFromText(attachmentText) || "";

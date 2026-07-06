@@ -679,6 +679,7 @@ function toISOFromITDate(val) {
   // accetta gg/mm/aa, gg/mm/aaaa, o "1 marzo 2026" -> ISO YYYY-MM-DD
   if (!val) return null;
   const str = String(val).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return str;
   let m = str.match(/\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2}|\d{4})\b/);
   if (m) {
     const day = String(m[1]).padStart(2, "0");
@@ -1029,7 +1030,7 @@ function isMissingValue(value) {
   if (value === null || value === undefined) return true;
   if (typeof value === "string") {
     const clean = value.trim();
-    return !clean || clean === "-" || /^[….\s”")]+$/.test(clean);
+    return !clean || clean === "-" || /^[…._\s”")/]+$/.test(clean);
   }
   return false;
 }
@@ -1745,6 +1746,7 @@ async function buildMergedFromExtractionResult(result) {
       : typeof annuncio.provvigione_percentuale === "number" && annuncio.provvigione_percentuale > 0
       ? annuncio.provvigione_percentuale
       : 3;
+  const offertaMinima = annuncio.offerta_minima ?? annuncio.prezzo_base ?? null;
 
   const merged = mergeAnnuncioProposta(
     {
@@ -1752,10 +1754,11 @@ async function buildMergedFromExtractionResult(result) {
       indirizzo: annuncio.indirizzo,
       data_vendita: annuncio.data_vendita,
       ora_vendita: annuncio.ora_vendita,
-      offerta_minima: annuncio.offerta_minima,
+      prezzo_base: annuncio.prezzo_base,
+      offerta_minima: offertaMinima,
       rilancio_minimo: annuncio.rilancio_minimo || 1000,
       offerta_minima_ammissibile:
-        annuncio.offerta_minima != null ? Number(annuncio.offerta_minima) + 1000 : null,
+        offertaMinima != null ? Number(offertaMinima) + 1000 : null,
       stato: annuncio.stato,
       ora_gara_inizio: annuncio.ora_gara_inizio,
       ora_gara_fine: annuncio.ora_gara_fine,

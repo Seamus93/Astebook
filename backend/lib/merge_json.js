@@ -74,6 +74,9 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
     ];
     const regex = new RegExp(`\\b(${streetKeywords.join("|")})\\b`, "i");
     const matchStreet = regex.exec(raw);
+    if (matchStreet && matchStreet.index === 0) {
+      return { indirizzo: raw || null, comune: null, cap: null, provincia: null };
+    }
     if (matchStreet && matchStreet.index > 0) {
       const comuneRaw = raw.slice(0, matchStreet.index).trim();
       const indirizzo = raw.slice(matchStreet.index).trim();
@@ -126,8 +129,11 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
       ora: get(annuncio, "ora_vendita", null),
     },
     gara: {
-      offerta_minima: get(annuncio, "offerta_minima", null),
-      offerta_minima_ammissibile: get(annuncio, "offerta_minima_ammissibile", null),
+      offerta_minima: get(annuncio, "offerta_minima", null) || get(annuncio, "prezzo_base", null),
+      offerta_minima_ammissibile:
+        get(annuncio, "offerta_minima_ammissibile", null) ||
+        get(annuncio, "offerta_minima", null) ||
+        get(annuncio, "prezzo_base", null),
       rilancio_minimo: get(annuncio, "rilancio_minimo", null),
       ora_inizio: get(annuncio, "ora_gara_inizio", null) || get(annuncio, "ora_vendita", null) || null,
       ora_fine: get(annuncio, "ora_gara_fine", null),

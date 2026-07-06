@@ -30,3 +30,9 @@ test("annuncio parser extracts price caution and offer deadline", () => {
   assert.equal(result.data_termine_deposito, "2026-07-27");
   assert.equal(result.ora_termine_deposito, "12:00");
 });
+
+test("annuncio parser handles dotted decimal money from email html", () => {
+  const result = scrapeAnnuncioFromText("Prezzo Base : Euro 210.000.00", "Corpo email");
+
+  assert.equal(result.prezzo_base, 210000);
+});

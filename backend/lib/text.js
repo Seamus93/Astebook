@@ -12,7 +12,15 @@ export const splitLines = (text) => norm(text).split("\n").map(s => s.trim()).fi
 
 export const moneyNum = (s) => {
   if (!s) return null;
-  const n = parseFloat(String(s).replace(/\./g,"").replace(",",".").replace(/[^\d.-]/g,""));
+  const raw = String(s).trim();
+  const normalized = (() => {
+    if (!raw.includes(",") && /\d{1,3}(?:\.\d{3})+\.\d{2}\b/.test(raw)) {
+      const lastDot = raw.lastIndexOf(".");
+      return `${raw.slice(0, lastDot).replace(/\./g, "")}.${raw.slice(lastDot + 1)}`;
+    }
+    return raw.replace(/\./g,"").replace(",",".");
+  })();
+  const n = parseFloat(normalized.replace(/[^\d.-]/g,""));
   return Number.isNaN(n) ? null : Number(n.toFixed(2));
 };
 

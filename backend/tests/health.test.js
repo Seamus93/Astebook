@@ -11,7 +11,7 @@ process.env.ADMIN_PASSWORD = "test-password";
 process.env.ADMIN_SESSION_SECRET = "test-session-secret";
 process.env.PROCESSING_UI_TOKEN = "test-ui-token";
 process.env.ZAPIER_WEBHOOK_TOKEN = "test-webhook-token";
-const { app } = await import("../server.js");
+const { app, mergeExtractedProposta } = await import("../server.js");
 const { scrapeProvvigionePercentuale } = await import("../scrapers/scrape_provvigione.js");
 
 test.after(async () => {
@@ -158,6 +158,37 @@ test("Admin UI requires login before serving the processing interface", async ()
       server.close((error) => (error ? reject(error) : resolve()));
     });
   }
+});
+
+test("proposal merge prefers OCR PDF values over DOCX values", () => {
+  const merged = mergeExtractedProposta(
+    {
+      file_pdf: "Modello proposta.docx",
+      source_format: "docx",
+      proponente: { nominativo: "Mario Rossi", cellulare: "-" },
+      indirizzo_immobile: "Via V. Alfieri 1",
+      iban_beneficiario: "IT00DOCX",
+      catasto: { foglio: "-", particella: "-", subalterno: "-" },
+      raw_length: 100,
+    },
+    {
+      file_pdf: "Proposta firmata.pdf",
+      source_format: "pdf",
+      proponente: { nominativo: "-", cellulare: "3208183295" },
+      indirizzo_immobile: "Via Leonardo Da Vinci 48",
+      iban_beneficiario: "-",
+      catasto: { foglio: "463", particella: "174", subalterno: "733" },
+      raw_length: 80,
+    }
+  );
+
+  assert.equal(merged.file_pdf, "Proposta firmata.pdf");
+  assert.equal(merged.indirizzo_immobile, "Via Leonardo Da Vinci 48");
+  assert.equal(merged.iban_beneficiario, "IT00DOCX");
+  assert.equal(merged.proponente.nominativo, "Mario Rossi");
+  assert.equal(merged.proponente.cellulare, "3208183295");
+  assert.equal(merged.catasto.foglio, "463");
+  assert.deepEqual(merged.source_files, ["Modello proposta.docx", "Proposta firmata.pdf"]);
 });
 
 test("Admin login can read and update runtime settings", async () => {

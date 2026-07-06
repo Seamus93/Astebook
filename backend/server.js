@@ -888,10 +888,20 @@ function addSourceConflictNotes(result) {
   }
 }
 
-function mergeExtractedProposta(current, next) {
+function propostaSourcePriority(proposta) {
+  const source = String(proposta?.source_format || proposta?.file_pdf || "").toLowerCase();
+  if (/pdf|image|png|jpe?g|tiff?|bmp|heic/.test(source)) return 20;
+  if (/docx|document/.test(source)) return 10;
+  return 0;
+}
+
+export function mergeExtractedProposta(current, next) {
   if (!current) return next;
   if (!next) return current;
 
+  const currentPriority = propostaSourcePriority(current);
+  const nextPriority = propostaSourcePriority(next);
+  const nextWins = nextPriority > currentPriority;
   const merged = {
     ...current,
     proponente: {
@@ -905,12 +915,16 @@ function mergeExtractedProposta(current, next) {
     ),
     raw_length: Math.max(Number(current.raw_length || 0), Number(next.raw_length || 0)),
   };
+  if (nextWins) {
+    merged.file_pdf = next.file_pdf || merged.file_pdf;
+    merged.source_format = next.source_format || merged.source_format;
+  }
 
   const mergeValue = (key) => {
-    if (isMissingValue(merged[key]) && !isMissingValue(next[key])) merged[key] = next[key];
+    if (!isMissingValue(next[key]) && (isMissingValue(merged[key]) || nextWins)) merged[key] = next[key];
   };
   const mergeNestedValue = (parent, key) => {
-    if (isMissingValue(merged[parent]?.[key]) && !isMissingValue(next[parent]?.[key])) {
+    if (!isMissingValue(next[parent]?.[key]) && (isMissingValue(merged[parent]?.[key]) || nextWins)) {
       merged[parent] = { ...(merged[parent] || {}), [key]: next[parent][key] };
     }
   };
@@ -1402,6 +1416,7 @@ async function prepareZapierScraperResult(event, body, files) {
       if (resolvedAttachment.kind === "proposta") {
         const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
         const extractedProposta = scrapePropostaFromText(attachmentText, resolvedAttachment.file_name);
+        extractedProposta.source_format = resolvedAttachment.format;
 
         result.extracted.proposta = mergeExtractedProposta(result.extracted.proposta, extractedProposta);
         await updateProcessingEvent(event.id, { result }, {

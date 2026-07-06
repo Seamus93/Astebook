@@ -704,18 +704,46 @@ function attachmentKind(fileName) {
   return "unknown";
 }
 
-function propostaScore(proposta) {
-  if (!proposta) return -1;
-  return [
-    proposta.proponente?.nominativo && !/^[….\s”")]+$/.test(proposta.proponente.nominativo),
-    proposta.prezzo_offerto,
-    proposta.deposito_cauzionale || proposta.deposito_cauzionale_percentuale,
-    proposta.iban_beneficiario,
-    proposta.indirizzo_immobile,
-    proposta.catasto?.foglio,
-    proposta.catasto?.particella,
-    proposta.catasto?.subalterno,
-  ].filter(Boolean).length;
+function mergeExtractedProposta(current, next) {
+  if (!current) return next;
+  if (!next) return current;
+
+  const merged = {
+    ...current,
+    proponente: {
+      ...(current.proponente || {}),
+    },
+    catasto: {
+      ...(current.catasto || {}),
+    },
+    source_files: Array.from(
+      new Set([...(current.source_files || [current.file_pdf]).filter(Boolean), next.file_pdf].filter(Boolean))
+    ),
+    raw_length: Math.max(Number(current.raw_length || 0), Number(next.raw_length || 0)),
+  };
+
+  const mergeValue = (key) => {
+    if (isMissingValue(merged[key]) && !isMissingValue(next[key])) merged[key] = next[key];
+  };
+  const mergeNestedValue = (parent, key) => {
+    if (isMissingValue(merged[parent]?.[key]) && !isMissingValue(next[parent]?.[key])) {
+      merged[parent] = { ...(merged[parent] || {}), [key]: next[parent][key] };
+    }
+  };
+
+  [
+    "indirizzo_immobile",
+    "prezzo_offerto",
+    "deposito_cauzionale",
+    "deposito_cauzionale_percentuale",
+    "iban_beneficiario",
+    "irrevocabile_giorni",
+    "rogito_entro_giorni",
+  ].forEach(mergeValue);
+  ["nominativo", "telefono", "cellulare", "documento"].forEach((key) => mergeNestedValue("proponente", key));
+  ["foglio", "particella", "subalterno", "sezione", "categoria"].forEach((key) => mergeNestedValue("catasto", key));
+
+  return merged;
 }
 
 function finalizeZapierResult(result) {
@@ -1160,15 +1188,7 @@ async function prepareZapierScraperResult(event, body, files) {
         const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
         const extractedProposta = scrapePropostaFromText(attachmentText, resolvedAttachment.file_name);
 
-        const previousScore = propostaScore(result.extracted.proposta);
-        const nextScore = propostaScore(extractedProposta);
-        if (!result.extracted.proposta || nextScore >= previousScore) {
-          result.extracted.proposta = extractedProposta;
-        } else {
-          result.notes.push(
-            `Proposta estratta ma non usata perche meno completa: ${resolvedAttachment.file_name}`
-          );
-        }
+        result.extracted.proposta = mergeExtractedProposta(result.extracted.proposta, extractedProposta);
         await updateProcessingEvent(event.id, { result }, {
           message: "Proposal scraper completed",
           data: extractedProposta,

@@ -124,6 +124,27 @@ test("proposal parser extracts company proponente block", () => {
   assert.equal(result.proponente.cellulare, "3208183295");
 });
 
+test("proposal parser extracts company proponente before proponente marker", () => {
+  const text = [
+    "Oggetto: PROPOSTA IRREVOCABILE DI ACQUISTO",
+    "La società AFIM SRL con sede in Frossasco (TO), Via Pinerolo 29, iscritta al Registro delle",
+    "Imprese di Torino al n. 1329356, cod. fiscale e p. Iva 03926910047, in persona del Sig.",
+    "Alfredo Livio Forgia nella",
+    "sua qualità di Rappresentante legale e amministratore unico munito dei poteri di legale",
+    "rappresentanza come esso dichiara (il \"Proponente\")",
+    "*****",
+  ].join("\n");
+
+  const result = scrapePropostaFromText(text, "Proposta scannerizzata.pdf");
+
+  assert.equal(result.proponente.nominativo, "AFIM SRL");
+  assert.equal(result.proponente.societa, "AFIM SRL");
+  assert.equal(result.proponente.sede, "Frossasco (TO), Via Pinerolo 29");
+  assert.equal(result.proponente.rappresentante, "Alfredo Livio Forgia");
+  assert.equal(result.proponente.codice_fiscale, "03926910047");
+  assert.equal(result.proponente.partita_iva, "03926910047");
+});
+
 test("proposal cadastral parser ignores non numeric mappale false positives", () => {
   const result = scrapePropostaFromText(
     "Identificazione catastale foglio 463 particolare descrizione sub 733 cat. A/10",

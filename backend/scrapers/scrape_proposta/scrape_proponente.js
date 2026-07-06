@@ -52,6 +52,7 @@ function scrapeCompanyProponente(text) {
     /con\s+sede\s+(.+?)\s*,\s*(?:iscritta|c\.?f\.?|p\.?\s*iva|in\s+persona)/i,
   ]);
   const rappresentante = firstMatch(section, [
+    /in\s+persona\s+del(?:la)?\s+(?:dott\.?|sig\.?|sig\.ra)?\s*([\s\S]+?)\s+nella\s+sua\s+qualit[aà]/i,
     /in\s+persona\s+del(?:la)?\s+(?:dott\.?|sig\.?|sig\.ra)?\s*([^,]+?)\s*,\s*(?:amministratore|legale|munito)/i,
     /in\s+persona\s+del(?:la)?\s+([^,]+?)\s*,\s*(?:amministratore|legale|munito)/i,
   ]);
@@ -59,6 +60,7 @@ function scrapeCompanyProponente(text) {
     /,\s*([^,]*amministratore[^,]*|[^,]*legale\s+rappresentante[^,]*)\s*,/i,
   ]);
   const codiceFiscale = firstMatch(section, [
+    /\bcod\.?\s*fiscale\s*(?:e\s+p\.?\s*iva\s*)?([A-Z0-9]{8,16})/i,
     /\bc\.?\s*f\.?\s*(?:e\s+p\.?\s*iva\s*)?([A-Z0-9]{8,16})/i,
   ]);
   const partitaIva = firstMatch(section, [
@@ -83,7 +85,7 @@ function scrapeCompanyProponente(text) {
     nominativo: societa || rappresentante || null,
     societa: societa || null,
     sede: sede || null,
-    rappresentante: rappresentante || null,
+    rappresentante: cleanPersonName(rappresentante) || null,
     ruolo: ruolo || null,
     codice_fiscale: codiceFiscale || null,
     partita_iva: partitaIva || null,
@@ -96,10 +98,18 @@ function scrapeCompanyProponente(text) {
 function extractCompanySection(text) {
   const value = String(text || "");
   const start = value.search(/in\s+caso\s+di\s+societ[aà]\s*:/i);
-  if (start < 0) return "";
-  const section = value.slice(start);
-  const stop = section.search(/(?:^|\n)\s*(?:\*{3,}|ci[oò]\s+premesso|descrizione\s+immobile|1\.\s+descrizione)/i);
-  return stop > 0 ? section.slice(0, stop) : section.slice(0, 1400);
+  if (start >= 0) {
+    const section = value.slice(start);
+    const stop = section.search(/(?:^|\n)\s*(?:\*{3,}|ci[oò]\s+premesso|descrizione\s+immobile|1\.\s+descrizione)/i);
+    return stop > 0 ? section.slice(0, stop) : section.slice(0, 1400);
+  }
+
+  const proponenteMatch = Array.from(value.matchAll(/["“(]\s*il\s+["“]?proponente["”)]/gi)).at(0);
+  const proponenteIndex = proponenteMatch?.index ?? value.search(/\bproponente\b/i);
+  if (proponenteIndex < 0) return "";
+  const before = value.slice(Math.max(0, proponenteIndex - 1000), proponenteIndex + 120);
+  if (!/\bsociet[aà]\b/i.test(before) && !/\bin\s+persona\s+del/i.test(before)) return "";
+  return before;
 }
 
 function firstMatch(text, patterns) {
@@ -116,6 +126,14 @@ function cleanNominativo(value) {
     .replace(/\b(?:c\.?i\.?|ci|carta d'identit[aà]|passaporto|p\.?iva|piv[ae]|codice fiscale|c\.?f\.?)\b.*$/i, "")
     .replace(/^\s*\/?\s*a\s+/i, "")
     .trim();
+}
+
+function cleanPersonName(value) {
+  return String(value || "")
+    .replace(/\s+nella\s+sua\s+qualit[aà][\s\S]*$/i, "")
+    .replace(/\s+(?:amministratore|legale\s+rappresentante|munito)[\s\S]*$/i, "")
+    .replace(/\s{2,}/g, " ")
+    .trim() || null;
 }
 
 function normalizePhone(value) {

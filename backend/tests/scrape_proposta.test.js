@@ -135,3 +135,21 @@ test("proposal cadastral parser ignores non numeric mappale false positives", ()
   assert.equal(result.catasto.subalterno, "733");
   assert.equal(result.catasto.categoria, "A/10");
 });
+
+test("proposal parser extracts price caution and offer deadline", () => {
+  const text = [
+    "Il Proponente offre il prezzo di euro 210.000,00",
+    "Deposito cauzionale pari al 10% del prezzo offerto",
+    "La proposta dovrà pervenire entro il 27/07/2026 ore 12:00",
+  ].join("\n");
+
+  const result = scrapePropostaFromText(text, "Proposta scannerizzata.pdf");
+
+  assert.equal(result.prezzo_offerto, 210000);
+  assert.equal(result.deposito_cauzionale, null);
+  assert.equal(result.deposito_cauzionale_percentuale, 10);
+  assert.equal(result.data_termine_offerta, "2026-07-27");
+  assert.equal(result.ora_termine_offerta, "12:00");
+  assert.equal(result.data_termine_deposito, "2026-07-27");
+  assert.equal(result.ora_termine_deposito, "12:00");
+});

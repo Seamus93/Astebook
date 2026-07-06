@@ -954,6 +954,10 @@ export function mergeExtractedProposta(current, next) {
     "iban_beneficiario",
     "irrevocabile_giorni",
     "rogito_entro_giorni",
+    "data_termine_offerta",
+    "ora_termine_offerta",
+    "data_termine_deposito",
+    "ora_termine_deposito",
   ].forEach(mergeValue);
   ["nominativo", "telefono", "cellulare", "documento"].forEach((key) => mergeNestedValue("proponente", key));
   ["foglio", "particella", "subalterno", "sezione", "categoria"].forEach((key) => mergeNestedValue("catasto", key));

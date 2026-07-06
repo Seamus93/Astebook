@@ -93,7 +93,7 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     );
     const detailPayload = await detailResponse.json();
 
-    assert.equal(detailPayload.event.result.mode, "zapier_scraper_preview");
+    assert.equal(detailPayload.event.result.mode, "ai_extraction_pipeline");
     assert.ok(
       detailPayload.event.result.attachments.some(
         (attachment) => attachment.file_name === "Proposta.docx"

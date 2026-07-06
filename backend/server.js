@@ -501,7 +501,12 @@ app.post("/api/v1/zapier/email-activation", requireZapierWebhookToken, upload, a
         email_id: body.email_id || body.message_id || body.gmail_id || null,
       },
     });
-    const result = await prepareZapierScraperResult(event, body, req.files);
+    const result = await runAiExtractionPipeline({
+      body,
+      files: req.files,
+      eventId: event.id,
+      source: "zapier.email_activation",
+    });
     const updatedEvent = await getProcessingEvent(event.id);
 
     res.status(202).json({
@@ -630,7 +635,12 @@ app.post("/api/v1/processing-events/:id/reprocess", requireProcessingUiToken, as
     },
     { message: "Manual reprocess requested" }
   );
-  const result = await prepareZapierScraperResult(event, body, []);
+  const result = await runAiExtractionPipeline({
+    body,
+    files: [],
+    eventId: event.id,
+    source: event.source || "zapier.email_activation",
+  });
   const updatedEvent = await getProcessingEvent(event.id);
 
   res.json({
@@ -813,6 +823,27 @@ function resolveEmailText(body) {
       "message",
       "email_body",
       "plain_body",
+    ]) || ""
+  );
+}
+
+function resolvePropostaText(body) {
+  return String(
+    firstBodyValue(body, [
+      "proposta_ocr",
+      "proposta_text",
+      "proposta_ocr_text",
+      "ocr_text",
+    ]) || ""
+  );
+}
+
+function resolveProvvigioneText(body) {
+  return String(
+    firstBodyValue(body, [
+      "provvigione_ocr",
+      "provvigione_ocr_text",
+      "provvigione_text",
     ]) || ""
   );
 }
@@ -1322,13 +1353,15 @@ function addUniqueNote(result, note) {
   if (!result.notes.includes(note)) result.notes.push(note);
 }
 
-async function prepareZapierScraperResult(event, body, files) {
+async function runAiExtractionPipeline({ body = {}, files = [], eventId, source = "zapier.email_activation" }) {
+  const event = { id: eventId };
   const emailText = resolveEmailText(body);
   const attachmentInputs = collectZapierAttachments(body, files);
   const attachments = attachmentInputs.map(({ buffer, ...safeDescriptor }) => safeDescriptor);
   const result = {
     ok: true,
-    mode: "zapier_scraper_preview",
+    mode: "ai_extraction_pipeline",
+    source,
     ready_for_zapier: false,
     codice_pratica: resolveCodicePraticaFromPayload(body) || "",
     email: {
@@ -1350,7 +1383,7 @@ async function prepareZapierScraperResult(event, body, files) {
     event.id,
     { result },
     {
-      message: "Zapier payload normalized for extraction",
+      message: "Payload normalized for AI extraction",
       data: {
         attachment_count: attachments.length,
         initially_supported_count: attachments.filter((attachment) => attachment.supported_by_scraper).length,
@@ -1360,20 +1393,62 @@ async function prepareZapierScraperResult(event, body, files) {
 
   const emailAnnouncementText = normalizeEmailTextForScraper(emailText);
   if (emailAnnouncementText) {
-    const emailAnnouncement = scrapeAnnuncioFromText(emailAnnouncementText, "Corpo email");
+    const emailAnnouncement = await extractAnnuncioAiFirst({
+      text: emailAnnouncementText,
+      fileName: "Corpo email",
+      eventId: event.id,
+      result,
+      fallbackMessage: "Email body announcement local fallback completed",
+    });
     if (hasUsefulAnnuncioData(emailAnnouncement)) {
       result.extracted.annuncio = emailAnnouncement;
       if (!result.codice_pratica) {
         result.codice_pratica = scrapeCodicePraticaFromText(emailAnnouncementText) || "";
       }
       await updateProcessingEvent(event.id, { result }, {
-        message: "Email body announcement scraper completed",
+        message: "Email body announcement extracted",
         data: emailAnnouncement,
       });
     }
   }
 
-  if (attachmentInputs.length === 0) {
+  const bodyPropostaText = resolvePropostaText(body);
+  if (bodyPropostaText.trim()) {
+    const fileName = firstBodyValue(body, ["proposta_name", "proposta_file_name"]) || "Proposta OCR body.txt";
+    const extractedProposta = await extractPropostaAiFirst({
+      text: bodyPropostaText,
+      fileName,
+      eventId: event.id,
+      result,
+    });
+    extractedProposta.source_format = "text";
+    result.extracted.proposta = mergeExtractedProposta(result.extracted.proposta, extractedProposta);
+    await updateProcessingEvent(event.id, { result }, {
+      message: "Proposal body OCR extracted",
+      data: extractedProposta,
+    });
+  }
+
+  const bodyProvvigioneText = resolveProvvigioneText(body);
+  if (bodyProvvigioneText.trim()) {
+    const provvigionePercentuale = await extractProvvigioneAiFirst({
+      text: bodyProvvigioneText,
+      fileName: "Provvigione OCR body.txt",
+      eventId: event.id,
+      result,
+    });
+    result.extracted.provvigione = {
+      file_pdf: "Provvigione OCR body.txt",
+      provvigione_percentuale: provvigionePercentuale,
+      raw_length: bodyProvvigioneText.length,
+    };
+    await updateProcessingEvent(event.id, { result }, {
+      message: "Commission body OCR extracted",
+      data: result.extracted.provvigione,
+    });
+  }
+
+  if (attachmentInputs.length === 0 && !bodyPropostaText.trim() && !bodyProvvigioneText.trim()) {
     result.notes.push("Nessun allegato trovato nel payload ricevuto.");
     finalizeZapierResult(result);
     await updateProcessingEvent(
@@ -1396,7 +1471,7 @@ async function prepareZapierScraperResult(event, body, files) {
     return result;
   }
 
-  await updateProcessingEvent(event.id, { status: "extracting" }, { message: "Scraper extraction started" });
+  await updateProcessingEvent(event.id, { status: "extracting" }, { message: "AI extraction started" });
 
   for (const attachment of attachmentInputs) {
     let resolvedAttachment = null;
@@ -1436,14 +1511,19 @@ async function prepareZapierScraperResult(event, body, files) {
     try {
       if (resolvedAttachment.kind === "provvigione") {
         const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
-        const provvigionePercentuale = scrapeProvvigionePercentuale(attachmentText);
+        const provvigionePercentuale = await extractProvvigioneAiFirst({
+          text: attachmentText,
+          fileName: resolvedAttachment.file_name,
+          eventId: event.id,
+          result,
+        });
         result.extracted.provvigione = {
           file_pdf: resolvedAttachment.file_name,
           provvigione_percentuale: provvigionePercentuale,
           raw_length: attachmentText.length,
         };
         await updateProcessingEvent(event.id, { result }, {
-          message: "Commission scraper completed",
+          message: "Commission extracted",
           data: result.extracted.provvigione,
         });
         continue;
@@ -1451,12 +1531,17 @@ async function prepareZapierScraperResult(event, body, files) {
 
       if (resolvedAttachment.kind === "proposta") {
         const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
-        const extractedProposta = scrapePropostaFromText(attachmentText, resolvedAttachment.file_name);
+        const extractedProposta = await extractPropostaAiFirst({
+          text: attachmentText,
+          fileName: resolvedAttachment.file_name,
+          eventId: event.id,
+          result,
+        });
         extractedProposta.source_format = resolvedAttachment.format;
 
         result.extracted.proposta = mergeExtractedProposta(result.extracted.proposta, extractedProposta);
         await updateProcessingEvent(event.id, { result }, {
-          message: "Proposal scraper completed",
+          message: "Proposal extracted",
           data: extractedProposta,
         });
         continue;
@@ -1464,7 +1549,13 @@ async function prepareZapierScraperResult(event, body, files) {
 
       if (resolvedAttachment.kind === "annuncio") {
         const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
-        result.extracted.annuncio = scrapeAnnuncioFromText(attachmentText, resolvedAttachment.file_name);
+        result.extracted.annuncio = await extractAnnuncioAiFirst({
+          text: attachmentText,
+          fileName: resolvedAttachment.file_name,
+          eventId: event.id,
+          result,
+          fallbackMessage: "Auction announcement local fallback completed",
+        });
         if (
           isMissingValue(result.extracted.annuncio.provvigione_percentuale) &&
           !isMissingValue(result.extracted.provvigione?.provvigione_percentuale)
@@ -1476,7 +1567,7 @@ async function prepareZapierScraperResult(event, body, files) {
           result.codice_pratica = scrapeCodicePraticaFromText(attachmentText) || "";
         }
         await updateProcessingEvent(event.id, { result }, {
-          message: "Auction announcement scraper completed",
+          message: "Auction announcement extracted",
           data: result.extracted.annuncio,
         });
         continue;
@@ -1501,6 +1592,8 @@ async function prepareZapierScraperResult(event, body, files) {
   }
 
   finalizeZapierResult(result);
+  result.merged = await buildMergedFromExtractionResult(result);
+  result.zapier_response.merged = result.merged;
   const extractionError = buildMissingFieldsError(result);
 
   await updateProcessingEvent(
@@ -1512,8 +1605,8 @@ async function prepareZapierScraperResult(event, body, files) {
     },
     {
       message: result.ready_for_zapier
-        ? "Scraper extraction completed"
-        : "Scraper extraction completed without classified data",
+        ? "AI extraction completed"
+        : "AI extraction completed with missing data",
       data: {
         ready_for_zapier: result.ready_for_zapier,
       },
@@ -1521,6 +1614,230 @@ async function prepareZapierScraperResult(event, body, files) {
   );
 
   return result;
+}
+
+async function extractAnnuncioAiFirst({ text, fileName, eventId, result, fallbackMessage }) {
+  const local = scrapeAnnuncioFromText(text, fileName);
+  try {
+    const ai = await aiExtractAnnuncio({ text, fileName });
+    return mergeMissingValues(ai, local);
+  } catch (error) {
+    await updateProcessingEvent(eventId, {}, {
+      level: "error",
+      message: "Announcement AI extraction failed; local fallback",
+      data: {
+        file_name: fileName,
+        error: error.message || String(error),
+      },
+    });
+    addUniqueNote(result, `${fileName}: AI annuncio fallita (${error.message || String(error)})`);
+    await updateProcessingEvent(eventId, {}, {
+      message: fallbackMessage || "Announcement local fallback completed",
+      data: local,
+    });
+    return local;
+  }
+}
+
+async function extractPropostaAiFirst({ text, fileName, eventId, result }) {
+  const local = scrapePropostaFromText(text, fileName);
+  try {
+    const ai = await aiExtractProposta({ text, fileName });
+    return mergeMissingValues(ai, local);
+  } catch (error) {
+    await updateProcessingEvent(eventId, {}, {
+      level: "error",
+      message: "Proposal AI extraction failed; local fallback",
+      data: {
+        file_name: fileName,
+        error: error.message || String(error),
+      },
+    });
+    addUniqueNote(result, `${fileName}: AI proposta fallita (${error.message || String(error)})`);
+    await updateProcessingEvent(eventId, {}, {
+      message: "Proposal local fallback completed",
+      data: local,
+    });
+    return local;
+  }
+}
+
+async function extractProvvigioneAiFirst({ text, fileName, eventId, result }) {
+  const local = scrapeProvvigionePercentuale(text);
+  try {
+    const ai = await aiExtractProvvigionePercentuale({ text, fileName });
+    return typeof ai?.provvigione_percentuale === "number" ? ai.provvigione_percentuale : local;
+  } catch (error) {
+    await updateProcessingEvent(eventId, {}, {
+      level: "error",
+      message: "Commission AI extraction failed; local fallback",
+      data: {
+        file_name: fileName,
+        error: error.message || String(error),
+      },
+    });
+    addUniqueNote(result, `${fileName}: AI provvigione fallita (${error.message || String(error)})`);
+    return local;
+  }
+}
+
+function mergeMissingValues(primary, fallback) {
+  if (!primary || typeof primary !== "object") return fallback;
+  if (!fallback || typeof fallback !== "object") return primary;
+  const merged = Array.isArray(primary) ? [...primary] : { ...primary };
+  Object.entries(fallback).forEach(([key, fallbackValue]) => {
+    const primaryValue = merged[key];
+    if (isMissingValue(primaryValue)) {
+      merged[key] = fallbackValue;
+      return;
+    }
+    if (
+      primaryValue &&
+      fallbackValue &&
+      typeof primaryValue === "object" &&
+      typeof fallbackValue === "object" &&
+      !Array.isArray(primaryValue) &&
+      !Array.isArray(fallbackValue)
+    ) {
+      merged[key] = mergeMissingValues(primaryValue, fallbackValue);
+    }
+    if (Array.isArray(primaryValue) && primaryValue.length === 0 && Array.isArray(fallbackValue)) {
+      merged[key] = fallbackValue;
+    }
+  });
+  return merged;
+}
+
+async function buildMergedFromExtractionResult(result) {
+  const annuncio = result.extracted?.annuncio || {};
+  const proposta = result.extracted?.proposta || {};
+  const provvigioneFromFile = result.extracted?.provvigione?.provvigione_percentuale;
+
+  if (proposta.iban_beneficiario) {
+    const { bic, bank } = await fetchIbanInfo(proposta.iban_beneficiario);
+    if (!proposta.bic_cauzione) proposta.bic_cauzione = bic;
+    if (!proposta.beneficiario_cauzione) proposta.beneficiario_cauzione = bank;
+  }
+
+  const addressCandidate = proposta.indirizzo_immobile || annuncio.indirizzo || null;
+  const geocoded = await geocodeAddress(addressCandidate);
+
+  const dataAperturaPubblicazione = computeDataAperturaPubblicazione();
+  const dataRedazioneOggi = formatLocalISODate(new Date());
+  const annoRedazioneOggi = new Date().getFullYear();
+  const dataTermineDepositoRaw =
+    annuncio.data_termine_deposito || proposta.data_termine_deposito || proposta.data_termine_offerta || null;
+  const dataTermineDepositoISO = toISOFromITDate(dataTermineDepositoRaw);
+  const dataGaraAnnuncioISO = toISOFromITDate(annuncio.data_vendita);
+  let dataTermineDeposito = dataTermineDepositoISO || dataTermineDepositoRaw || null;
+  let dataGara = null;
+
+  if (dataTermineDepositoISO) {
+    dataGara = shiftISOToNextBusinessDay(addDaysToISODate(dataTermineDepositoISO, 3));
+  } else if (dataGaraAnnuncioISO) {
+    dataGara = dataGaraAnnuncioISO;
+    if (!dataTermineDeposito) dataTermineDeposito = addDaysToISODate(dataGaraAnnuncioISO, -3);
+  }
+
+  const provvigionePercentuale =
+    typeof provvigioneFromFile === "number" && provvigioneFromFile > 0
+      ? provvigioneFromFile
+      : typeof annuncio.provvigione_percentuale === "number" && annuncio.provvigione_percentuale > 0
+      ? annuncio.provvigione_percentuale
+      : 3;
+
+  const merged = mergeAnnuncioProposta(
+    {
+      file_pdf: annuncio.file_pdf,
+      indirizzo: annuncio.indirizzo,
+      data_vendita: annuncio.data_vendita,
+      ora_vendita: annuncio.ora_vendita,
+      offerta_minima: annuncio.offerta_minima,
+      rilancio_minimo: annuncio.rilancio_minimo || 1000,
+      offerta_minima_ammissibile:
+        annuncio.offerta_minima != null ? Number(annuncio.offerta_minima) + 1000 : null,
+      stato: annuncio.stato,
+      ora_gara_inizio: annuncio.ora_gara_inizio,
+      ora_gara_fine: annuncio.ora_gara_fine,
+      termine_richieste_visite_data: annuncio.termine_richieste_visite_data,
+      termine_richieste_visite_ora: annuncio.termine_richieste_visite_ora,
+      data_termine_deposito: annuncio.data_termine_deposito,
+      ora_termine_deposito: annuncio.ora_termine_deposito,
+      descrizione: annuncio.descrizione,
+      provvigione_percentuale: provvigionePercentuale,
+    },
+    {
+      file_pdf: proposta.file_pdf,
+      proponente: proposta.proponente,
+      indirizzo_immobile: proposta.indirizzo_immobile,
+      descrizione_immobile: proposta.descrizione_immobile,
+      prezzo_offerto: proposta.prezzo_offerto,
+      deposito_cauzionale: proposta.deposito_cauzionale,
+      cauzione_percentuale: proposta.cauzione_percentuale || proposta.deposito_cauzionale_percentuale,
+      iban_beneficiario: proposta.iban_beneficiario,
+      bic_cauzione: proposta.bic_cauzione,
+      beneficiario_cauzione: proposta.beneficiario_cauzione,
+      irrevocabile_giorni: proposta.irrevocabile_giorni,
+      rogito_entro_giorni: proposta.rogito_entro_giorni,
+      catasto: proposta.catasto,
+      luogo_redazione: proposta.luogo_redazione,
+      data_redazione: proposta.data_redazione,
+      anno_redazione: proposta.anno_redazione,
+    }
+  );
+
+  if (geocoded) {
+    if (geocoded.indirizzo) merged.immobile.indirizzo = geocoded.indirizzo;
+    if (geocoded.comune) merged.immobile.comune = geocoded.comune;
+    if (geocoded.cap) merged.immobile.cap = geocoded.cap;
+    if (geocoded.provincia) merged.immobile.provincia = geocoded.provincia;
+  }
+
+  merged.deposito = merged.deposito || {};
+  merged.deposito.data_termine_deposito = merged.deposito.data_termine_deposito ?? dataTermineDeposito;
+  merged.deposito.ora_termine_deposito =
+    merged.deposito.ora_termine_deposito ?? annuncio.ora_termine_deposito ?? proposta.ora_termine_deposito;
+  merged.gara.data_gara = dataGara;
+  merged.gara.ora_inizio = merged.gara.ora_inizio || annuncio.ora_gara_inizio || "09:00";
+  merged.gara.ora_fine = merged.gara.ora_fine || annuncio.ora_gara_fine || "12:00";
+  merged.data_apertura_pubblicazione = dataAperturaPubblicazione;
+  merged.codice_pratica = result.codice_pratica || "";
+  if (merged.redazione) {
+    merged.redazione.data = dataRedazioneOggi;
+    merged.redazione.anno = annoRedazioneOggi;
+  }
+
+  ensureNumberDefaults(merged.gara, ["offerta_minima", "offerta_minima_ammissibile", "rilancio_minimo"]);
+  ensureNumberDefaults(merged.deposito, ["deposito_cauzionale"]);
+  ensureNumberDefaults(merged.termini, ["irrevocabile_giorni", "rogito_entro_giorni"]);
+  ensureNumberDefaults(merged.redazione, ["anno"]);
+
+  formatMergedOutput(merged);
+  replaceNullishWithEmptyString(merged);
+  return merged;
+}
+
+function formatMergedOutput(merged) {
+  const formatDateFields = (obj, keys) => {
+    keys.forEach((key) => {
+      if (obj && obj[key]) obj[key] = toItalianTextDate(obj[key]);
+    });
+  };
+  const formatMoneyFields = (obj, keys) => {
+    keys.forEach((key) => {
+      if (obj && obj[key] !== undefined) obj[key] = formatMoneyIT(obj[key]);
+    });
+  };
+
+  formatDateFields(merged.gara, ["data", "data_gara", "data_vendita"]);
+  formatDateFields(merged.asta, ["data"]);
+  formatDateFields(merged.visite, ["termine_data"]);
+  formatDateFields(merged.deposito, ["data_termine_deposito"]);
+  formatDateFields(merged.redazione, ["data"]);
+  merged.data_apertura_pubblicazione = toItalianTextDate(merged.data_apertura_pubblicazione);
+
+  formatMoneyFields(merged.gara, ["offerta_minima", "offerta_minima_ammissibile", "rilancio_minimo"]);
+  formatMoneyFields(merged.deposito, ["deposito_cauzionale"]);
 }
 
 async function fetchIbanInfo(iban) {
@@ -1586,6 +1903,59 @@ async function geocodeAddress(address) {
 }
 
 app.post("/callAI", upload, async (req, res) => {
+  let processingEvent = null;
+  try {
+    const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};
+    processingEvent = await createProcessingEvent({
+      source: "callAI",
+      status: "processing",
+      body,
+      files: req.files,
+      metadata: {
+        subject: body.subject || body.email_subject || body.oggetto || null,
+        from: body.from || body.email_from || body.mittente || null,
+        zap_run_id: body.zap_run_id || body.zapRunId || null,
+        email_id: body.email_id || body.message_id || body.gmail_id || null,
+      },
+    });
+
+    const result = await runAiExtractionPipeline({
+      body,
+      files: req.files,
+      eventId: processingEvent.id,
+      source: "callAI",
+    });
+
+    res.json({
+      ok: result.ok,
+      event_id: processingEvent.id,
+      codice_pratica: result.codice_pratica || "",
+      merged: result.merged,
+      result,
+    });
+  } catch (error) {
+    console.error("[callAI] error", error);
+    if (processingEvent?.id) {
+      await updateProcessingEvent(
+        processingEvent.id,
+        {
+          status: "failed",
+          error: {
+            message: error.message || String(error),
+            stack: error.stack || null,
+          },
+        },
+        {
+          level: "error",
+          message: "Processing failed",
+        }
+      );
+    }
+    res.status(500).json({ ok: false, error: error.message || String(error) });
+  }
+});
+
+app.post("/callAI-legacy", upload, async (req, res) => {
   let processingEvent = null;
   try {
     const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};

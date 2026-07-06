@@ -54,7 +54,7 @@ function authHeaders(apiKey) {
   return {
     "x-api-key": apiKey,
     "X-API-Key": apiKey,
-    Authorization: `Bearer ${apiKey}`,
+    Authorization: apiKey,
   };
 }
 
@@ -121,12 +121,19 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
   }
 
   const body = {
+    versionMode: "2",
     file_url: fileUrl,
     fileUrl,
     url: fileUrl,
     urls: [fileUrl],
     filename: fileName,
     file_name: fileName,
+    v2rawText: true,
+    v2Layout: false,
+    v2Forms: true,
+    v2Signatures: true,
+    pdfConvertZoomFactor: 1,
+    zoom_factor_img: 1,
     extract_plain_text: true,
     extractPlainText: true,
     extract_layout: false,

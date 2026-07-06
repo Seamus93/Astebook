@@ -12,6 +12,7 @@ process.env.ADMIN_SESSION_SECRET = "test-session-secret";
 process.env.PROCESSING_UI_TOKEN = "test-ui-token";
 process.env.ZAPIER_WEBHOOK_TOKEN = "test-webhook-token";
 const { app } = await import("../server.js");
+const { scrapeProvvigionePercentuale } = await import("../scrapers/scrape_provvigione.js");
 
 test.after(async () => {
   await rm(runtimeDir, { recursive: true, force: true });
@@ -303,4 +304,12 @@ test("DOCX generation returns a clear error when template download is not a DOCX
       server.close((error) => (error ? reject(error) : resolve()));
     });
   }
+});
+
+test("provvigione percentage is extracted near commission labels", () => {
+  assert.equal(
+    scrapeProvvigionePercentuale("Costo di mediazione dovuto a I-RESALES nella misura pari al 4%"),
+    4
+  );
+  assert.equal(scrapeProvvigionePercentuale("Riferimento catastale foglio 463 sub 733"), null);
 });

@@ -3,6 +3,7 @@ import { norm } from "../lib/text.js";
 import { scrapeCaratteristicheAnnuncio } from "./scrape_annuncio/scrape_caratteristiche.js";
 import { scrapeIndirizzoAnnuncio } from "./scrape_annuncio/scrape_indirizzo.js";
 import { scrapeVenditaAnnuncio } from "./scrape_annuncio/scrape_vendita.js";
+import { scrapeProvvigionePercentuale } from "./scrape_provvigione.js";
 
 export function scrapeAnnuncioFromText(text, fileName = "annuncio.txt") {
   const T = norm(text || "");
@@ -18,6 +19,7 @@ export function scrapeAnnuncioFromText(text, fileName = "annuncio.txt") {
     data_vendita: vendita.data_vendita,
     ora_vendita: vendita.ora_vendita,
     offerta_minima: vendita.offerta_minima,
+    provvigione_percentuale: scrapeProvvigionePercentuale(T),
     superficie_mq: caratteristiche.superficie_mq,
     piano_numero: caratteristiche.piano_numero,
     ascensore: caratteristiche.ascensore,

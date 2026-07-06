@@ -12,6 +12,7 @@ import { buildDocumentDocx, buildDocumentHtml, buildDocumentPdf, buildDocumentTe
 import { parsePdfBuffer } from "./lib/pdf.js";
 import { ocrFileUrlWithPdfApp } from "./lib/pdf_app.js";
 import { scrapeAnnuncioFromText } from "./scrapers/scrape_annuncio.js";
+import { scrapeProvvigionePercentuale } from "./scrapers/scrape_provvigione.js";
 import {
   resolveCodicePraticaFromPayload,
   scrapeCodicePraticaFromText,
@@ -698,6 +699,9 @@ function resolveEmailText(body) {
 
 function attachmentKind(fileName) {
   const name = String(fileName || "").toLowerCase();
+  if (/privacy|aml|antiriciclaggio|bonifico|distin[gt]a|istinta|codice\s*fiscale|\bcf\b|document[oi]\s+cliente/.test(name)) {
+    return "ignored";
+  }
   if (/provvigione|commission|raccolta\s+offerte/.test(name)) return "provvigione";
   if (/proposta|offerta|offer/.test(name)) return "proposta";
   if (/annuncio|disciplinare|gara|asta|lotto/.test(name)) return "annuncio";
@@ -1105,6 +1109,7 @@ async function prepareZapierScraperResult(event, body, files) {
     extracted: {
       annuncio: null,
       proposta: null,
+      provvigione: null,
     },
     zapier_response: null,
     notes: [],
@@ -1173,6 +1178,10 @@ async function prepareZapierScraperResult(event, body, files) {
     );
     if (existingIndex >= 0) result.attachments[existingIndex] = safeDescriptor;
 
+    if (resolvedAttachment.kind === "ignored") {
+      continue;
+    }
+
     if (!["pdf", "docx", "image"].includes(resolvedAttachment.format)) {
       result.notes.push(`Formato non supportato: ${resolvedAttachment.file_name}`);
       continue;
@@ -1180,7 +1189,17 @@ async function prepareZapierScraperResult(event, body, files) {
 
     try {
       if (resolvedAttachment.kind === "provvigione") {
-        result.notes.push(`Allegato provvigione ignorato dagli scraper proposta: ${resolvedAttachment.file_name}`);
+        const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
+        const provvigionePercentuale = scrapeProvvigionePercentuale(attachmentText);
+        result.extracted.provvigione = {
+          file_pdf: resolvedAttachment.file_name,
+          provvigione_percentuale: provvigionePercentuale,
+          raw_length: attachmentText.length,
+        };
+        await updateProcessingEvent(event.id, { result }, {
+          message: "Commission scraper completed",
+          data: result.extracted.provvigione,
+        });
         continue;
       }
 
@@ -1199,6 +1218,13 @@ async function prepareZapierScraperResult(event, body, files) {
       if (resolvedAttachment.kind === "annuncio") {
         const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
         result.extracted.annuncio = scrapeAnnuncioFromText(attachmentText, resolvedAttachment.file_name);
+        if (
+          isMissingValue(result.extracted.annuncio.provvigione_percentuale) &&
+          !isMissingValue(result.extracted.provvigione?.provvigione_percentuale)
+        ) {
+          result.extracted.annuncio.provvigione_percentuale = result.extracted.provvigione.provvigione_percentuale;
+          result.extracted.annuncio.provvigione_source = result.extracted.provvigione.file_pdf;
+        }
         if (!result.codice_pratica) {
           result.codice_pratica = scrapeCodicePraticaFromText(attachmentText) || "";
         }
@@ -1216,6 +1242,15 @@ async function prepareZapierScraperResult(event, body, files) {
     }
 
     result.notes.push(`Allegato non classificato: ${resolvedAttachment.file_name}`);
+  }
+
+  if (
+    result.extracted.annuncio &&
+    isMissingValue(result.extracted.annuncio.provvigione_percentuale) &&
+    !isMissingValue(result.extracted.provvigione?.provvigione_percentuale)
+  ) {
+    result.extracted.annuncio.provvigione_percentuale = result.extracted.provvigione.provvigione_percentuale;
+    result.extracted.annuncio.provvigione_source = result.extracted.provvigione.file_pdf;
   }
 
   finalizeZapierResult(result);

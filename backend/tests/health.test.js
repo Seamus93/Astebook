@@ -220,6 +220,43 @@ test("Admin login can read and update runtime settings", async () => {
 
     assert.equal(updateResponse.status, 200);
     assert.equal(updatePayload.ok, true);
+
+    const templateUrl = "https://docs.google.com/document/d/template-id/edit";
+    const templateUpdateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        document_template_url: templateUrl,
+      }),
+    });
+    assert.equal(templateUpdateResponse.status, 200);
+
+    const ocrUpdateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        pdf_app_ocr_endpoint: "https://api.pdf-app.net/ocr",
+        document_template_url: "",
+      }),
+    });
+    assert.equal(ocrUpdateResponse.status, 200);
+
+    const updatedSettingsResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/admin/settings?reveal=1`,
+      {
+        headers: { cookie },
+      }
+    );
+    const updatedSettingsPayload = await updatedSettingsResponse.json();
+
+    assert.equal(updatedSettingsPayload.settings.document_template_url, templateUrl);
+    assert.equal(updatedSettingsPayload.settings.pdf_app_ocr_endpoint, "https://api.pdf-app.net/ocr");
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

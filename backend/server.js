@@ -292,13 +292,18 @@ app.get("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
 app.post("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
   const body = req.body || {};
   const settings = {};
-  if (body.processing_ui_token) settings.processing_ui_token = String(body.processing_ui_token);
-  if (body.zapier_webhook_token) settings.zapier_webhook_token = String(body.zapier_webhook_token);
-  if (body.admin_session_secret) settings.admin_session_secret = String(body.admin_session_secret);
-  if (body.pdf_app_api_key) settings.pdf_app_api_key = String(body.pdf_app_api_key);
-  if (body.pdf_app_ocr_endpoint !== undefined) settings.pdf_app_ocr_endpoint = String(body.pdf_app_ocr_endpoint);
-  if (body.pdf_app_job_endpoint !== undefined) settings.pdf_app_job_endpoint = String(body.pdf_app_job_endpoint);
-  if (body.document_template_url !== undefined) settings.document_template_url = String(body.document_template_url);
+  const assignIfFilled = (bodyKey, settingsKey = bodyKey) => {
+    const value = body[bodyKey];
+    if (typeof value === "string" && value.trim()) settings[settingsKey] = value.trim();
+  };
+
+  assignIfFilled("processing_ui_token");
+  assignIfFilled("zapier_webhook_token");
+  assignIfFilled("admin_session_secret");
+  assignIfFilled("pdf_app_api_key");
+  assignIfFilled("pdf_app_ocr_endpoint");
+  assignIfFilled("pdf_app_job_endpoint");
+  assignIfFilled("document_template_url");
 
   await updateRuntimeSettings({
     settings,

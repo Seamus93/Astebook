@@ -105,6 +105,32 @@ select {
   color: white;
 }
 
+.notification-button {
+  position: relative;
+}
+
+.notification-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: grid;
+  place-items: center;
+  min-width: 19px;
+  height: 19px;
+  padding: 0 5px;
+  border-radius: 999px;
+  border: 2px solid var(--panel);
+  background: #111827;
+  color: white;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.notification-count[hidden] {
+  display: none;
+}
+
 .primary-button {
   min-height: 40px;
   padding: 0 16px;
@@ -513,8 +539,67 @@ select {
 
 .settings-form,
 .filters-form,
+.notifications-list,
 .settings-summary {
   padding: 18px 20px;
+}
+
+.notifications-list {
+  display: grid;
+  gap: 10px;
+  max-height: min(620px, calc(100vh - 160px));
+  overflow: auto;
+}
+
+.notification-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  color: var(--text);
+  text-align: left;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.notification-item:hover {
+  border-color: #a8c9d8;
+  background: var(--accent-soft);
+}
+
+.notification-item-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.notification-item-header strong {
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.notification-item-header span {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #111827;
+  color: white;
+  padding: 3px 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.notification-item ul {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--muted);
+}
+
+.notification-item li + li {
+  margin-top: 4px;
+}
+
+.notification-empty {
+  padding: 0;
 }
 
 .settings-form,

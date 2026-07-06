@@ -24,6 +24,10 @@
             <button id="settingsButton" class="icon-button" type="button" title="Impostazioni">
               <span class="material-symbols-outlined" aria-hidden="true">settings</span>
             </button>
+            <button id="notificationsButton" class="icon-button notification-button" type="button" title="Lavorazioni bloccate">
+              <span class="material-symbols-outlined" aria-hidden="true">notifications</span>
+              <span id="notificationsCount" class="notification-count" hidden>0</span>
+            </button>
             <form method="post" action="/admin/logout">
               <button class="icon-button" type="submit" title="Esci">
                 <span class="material-symbols-outlined" aria-hidden="true">logout</span>
@@ -109,6 +113,21 @@
         </section>
       </section>
     </main>
+
+    <div id="notificationsModal" class="modal-backdrop" hidden>
+      <section class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="notificationsTitle">
+        <header class="modal-header">
+          <div>
+            <p class="eyebrow">Lavorazioni bloccate</p>
+            <h2 id="notificationsTitle">Notifiche</h2>
+          </div>
+          <button id="closeNotificationsButton" class="icon-button" type="button" title="Chiudi">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </header>
+        <div id="notificationsPane" class="notifications-list"></div>
+      </section>
+    </div>
 
     <div id="filtersModal" class="modal-backdrop" hidden>
       <section class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="filtersTitle">

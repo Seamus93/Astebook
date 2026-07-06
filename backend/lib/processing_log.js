@@ -88,6 +88,70 @@ function eventErrorCount(event) {
   return missingFields + stepErrors + genericError;
 }
 
+function eventErrorSummary(event) {
+  const missingFields = Array.isArray(event.error?.missing_fields)
+    ? event.error.missing_fields.map((field) => field.message || field.field || "Dato mancante")
+    : [];
+  const stepErrors = Array.isArray(event.steps)
+    ? event.steps
+        .filter((step) => step.level === "error")
+        .map((step) => step.message || "Errore elaborazione")
+    : [];
+  const genericError = event.error?.message && missingFields.length === 0 ? [event.error.message] : [];
+  return [...missingFields, ...stepErrors, ...genericError];
+}
+
+function eventWorkflowIssue(event) {
+  const steps = Array.isArray(event.steps) ? event.steps : [];
+  const missingFields = Array.isArray(event.error?.missing_fields) ? event.error.missing_fields : [];
+
+  if (event.status === "completed" && eventErrorCount(event) === 0) return null;
+  if (!event.received_at) {
+    return {
+      step: "Mail",
+      message: "Mail non ricevuta correttamente.",
+      details: [],
+    };
+  }
+
+  const ocrStep = steps.find(
+    (step) =>
+      /PDF-app OCR skipped|PDF-app OCR failed/i.test(step.message || "") ||
+      (step.level === "error" && /ocr/i.test(step.message || ""))
+  );
+  if (ocrStep) {
+    return {
+      step: "OCR",
+      message: ocrStep.data?.reason || ocrStep.data?.error || ocrStep.message || "OCR non completato.",
+      details: eventErrorSummary(event).slice(0, 6),
+    };
+  }
+
+  const scraperStep = steps.find(
+    (step) => step.level === "error" && /scraper|extraction|estrazione/i.test(step.message || "")
+  );
+  if (scraperStep || missingFields.length > 0 || event.result?.ready_for_zapier === false) {
+    return {
+      step: "Scraper",
+      message:
+        missingFields.length > 0
+          ? `${missingFields.length} dati mancanti dopo l'estrazione.`
+          : scraperStep?.message || "Estrazione incompleta.",
+      details: eventErrorSummary(event).slice(0, 6),
+    };
+  }
+
+  if (event.status === "failed" || event.error) {
+    return {
+      step: "Completo",
+      message: event.error?.message || "Lavorazione non completata.",
+      details: eventErrorSummary(event).slice(0, 6),
+    };
+  }
+
+  return null;
+}
+
 export async function createProcessingEvent({ source, status = "received", body, files, metadata = {} }) {
   await ensureLogFile();
   const event = {
@@ -162,6 +226,8 @@ export async function listProcessingEvents({ limit = 100 } = {}) {
       has_result: Boolean(event.result),
       has_error: Boolean(event.error),
       error_count: eventErrorCount(event),
+      error_summary: eventErrorSummary(event),
+      workflow_issue: eventWorkflowIssue(event),
       search: eventSearchSummary(event),
     }));
 }

@@ -1,5 +1,10 @@
 const eventList = document.querySelector("#eventList");
 const refreshButton = document.querySelector("#refreshButton");
+const notificationsButton = document.querySelector("#notificationsButton");
+const notificationsCount = document.querySelector("#notificationsCount");
+const closeNotificationsButton = document.querySelector("#closeNotificationsButton");
+const notificationsModal = document.querySelector("#notificationsModal");
+const notificationsPane = document.querySelector("#notificationsPane");
 const eventSearchInput = document.querySelector("#eventSearchInput");
 const filtersButton = document.querySelector("#filtersButton");
 const closeFiltersButton = document.querySelector("#closeFiltersButton");
@@ -185,6 +190,55 @@ function syncFilterButtonState() {
   const count = activeFilterCount();
   filtersButton.classList.toggle("active", count > 0);
   filtersButton.title = count > 0 ? `Filtri attivi: ${count}` : "Filtri";
+}
+
+function eventsWithWorkflowIssues() {
+  return allEvents.filter((event) => event.workflow_issue);
+}
+
+function renderNotifications() {
+  const events = eventsWithWorkflowIssues();
+  notificationsCount.hidden = events.length === 0;
+  notificationsCount.textContent = events.length > 99 ? "99+" : String(events.length);
+  notificationsButton.classList.toggle("active", events.length > 0);
+  notificationsButton.title = events.length > 0 ? `${events.length} lavorazioni bloccate` : "Nessuna lavorazione bloccata";
+
+  notificationsPane.innerHTML = "";
+  if (!events.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state notification-empty";
+    empty.textContent = "Nessuna lavorazione bloccata.";
+    notificationsPane.append(empty);
+    return;
+  }
+
+  events.forEach((event) => {
+    const item = document.createElement("button");
+    item.type = "button";
+    item.className = "notification-item";
+
+    const header = document.createElement("div");
+    header.className = "notification-item-header";
+    const title = document.createElement("strong");
+    title.textContent = titleFor(event);
+    const count = document.createElement("span");
+    count.textContent = event.workflow_issue.step;
+    header.append(title, count);
+
+    const list = document.createElement("ul");
+    [event.workflow_issue.message, ...(event.workflow_issue.details || [])].filter(Boolean).slice(0, 6).forEach((message) => {
+      const row = document.createElement("li");
+      row.textContent = message;
+      list.append(row);
+    });
+
+    item.append(header, list);
+    item.addEventListener("click", async () => {
+      notificationsModal.hidden = true;
+      await loadEvent(event.id);
+    });
+    notificationsPane.append(item);
+  });
 }
 
 function readFiltersFromForm() {
@@ -482,6 +536,7 @@ async function loadEvents() {
   const response = await apiFetch("/api/v1/processing-events");
   const data = await response.json();
   allEvents = data.events || [];
+  renderNotifications();
   renderEventList();
 
   if (!selectedId && allEvents[0] && !isLoadingEvent) {
@@ -619,6 +674,16 @@ reprocessButton.addEventListener("click", async () => {
   window.alert("Riprocessamento non riuscito.");
 });
 settingsButton.addEventListener("click", openSettings);
+notificationsButton.addEventListener("click", () => {
+  renderNotifications();
+  notificationsModal.hidden = false;
+});
+closeNotificationsButton.addEventListener("click", () => {
+  notificationsModal.hidden = true;
+});
+notificationsModal.addEventListener("click", (event) => {
+  if (event.target === notificationsModal) notificationsModal.hidden = true;
+});
 closeSettingsButton.addEventListener("click", closeSettings);
 settingsModal.addEventListener("click", (event) => {
   if (event.target === settingsModal) closeSettings();

@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { scrapePropostaFromText } from "../scrapers/scrape_proposta.js";
-import { buildDocumentFields } from "../lib/document_builder.js";
+import { buildDocumentFields, fillTemplate } from "../lib/document_builder.js";
 
 test("proposal address prefers property context over company and IBAN context", () => {
   const text = [
@@ -79,4 +79,25 @@ test("proposal cadastral parser keeps multiple cadastral rows", () => {
     fields.catasto_identificazione,
     "Foglio 463, mapp. 174, sub 733, cat A/10\nFoglio 463, mapp. 174"
   );
+});
+
+test("document placeholders without values are rendered empty", () => {
+  const fields = buildDocumentFields({
+    result: {
+      codice_pratica: "TEST",
+      extracted: {
+        proposta: {
+          indirizzo_immobile: "Via Quirino Majorana 171",
+          catasto: {},
+        },
+        annuncio: {},
+      },
+    },
+  });
+
+  assert.equal(fields.indirizzo, "Via Quirino Majorana 171");
+  assert.equal(fields.comune, " ");
+  assert.equal(fields.provincia, " ");
+  assert.equal(fields.cap, " ");
+  assert.equal(fillTemplate("Nel Comune di {{comune}} ({{provincia}}), {{indirizzo}} {{cap}} {{missing}}", fields), "Nel Comune di   ( ), Via Quirino Majorana 171    ");
 });

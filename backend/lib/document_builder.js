@@ -15,7 +15,7 @@ function valueAt(obj, path) {
   return path.split(".").reduce((current, key) => current?.[key], obj);
 }
 
-function firstValue(obj, paths, fallback = "-") {
+function firstValue(obj, paths, fallback = " ") {
   for (const path of paths) {
     const value = valueAt(obj, path);
     if (value !== undefined && value !== null && String(value).trim() !== "") return value;
@@ -24,7 +24,7 @@ function firstValue(obj, paths, fallback = "-") {
 }
 
 function money(value) {
-  if (value === "-" || value === null || value === undefined || value === "") return "-";
+  if (value === "-" || value === null || value === undefined || String(value).trim() === "") return " ";
   const number = typeof value === "number" ? value : Number(String(value).replace(/\./g, "").replace(",", "."));
   if (!Number.isFinite(number)) return String(value);
   return new Intl.NumberFormat("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number);
@@ -57,7 +57,7 @@ function catastoIdentification(proposta) {
     : [];
   const lines = voci.map(catastoLine).filter(Boolean);
   if (lines.length) return lines.join("\n");
-  return catastoLine(proposta?.catasto) || "-";
+  return catastoLine(proposta?.catasto) || " ";
 }
 
 export function buildDocumentFields(event) {
@@ -69,7 +69,7 @@ export function buildDocumentFields(event) {
     result.codice_pratica ||
     event?.metadata?.zap_run_id ||
     event?.metadata?.email_id ||
-    "-";
+    " ";
 
   return {
     comune: firstValue({ proposta, annuncio }, ["annuncio.comune", "proposta.comune"]),
@@ -93,7 +93,7 @@ export function buildDocumentFields(event) {
     offerta_minima_eur: money(firstValue({ annuncio, proposta }, ["annuncio.offerta_minima", "proposta.prezzo_offerto"])),
     rilancio_minimo_eur: money(firstValue({ annuncio }, ["annuncio.rilancio_minimo"], 1000)),
     iban_cauzione: firstValue({ proposta }, ["proposta.iban_beneficiario"]),
-    beneficiario_cauzione: firstValue({ proposta }, ["proposta.beneficiario_cauzione"], "-"),
+    beneficiario_cauzione: firstValue({ proposta }, ["proposta.beneficiario_cauzione"]),
     codice_pratica: codicePratica,
     proviggione: firstValue({ annuncio }, ["annuncio.provvigione_percentuale"], 3),
     data_apertura_pubblicazione: firstValue({ result }, ["result.data_apertura_pubblicazione"], currentItalianDate()),
@@ -113,7 +113,7 @@ export function buildDocumentFields(event) {
 export function fillTemplate(template, fields) {
   return template.replace(/\{\{([^}]+)\}\}/g, (_match, key) => {
     const value = fields[String(key).trim()];
-    return value === undefined || value === null || value === "" ? "-" : String(value);
+    return value === undefined || value === null || String(value).trim() === "" ? " " : String(value);
   });
 }
 
@@ -250,7 +250,7 @@ export async function buildDocumentDocx(event) {
     },
     paragraphLoop: true,
     linebreaks: true,
-    nullGetter: () => "-",
+    nullGetter: () => " ",
   });
   doc.render(buildDocumentFields(event));
   return doc.getZip().generate({

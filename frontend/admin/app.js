@@ -49,6 +49,7 @@ const pdfAppOcrEndpoint = document.querySelector("#pdfAppOcrEndpoint");
 const pdfAppJobEndpoint = document.querySelector("#pdfAppJobEndpoint");
 const documentTemplateUrl = document.querySelector("#documentTemplateUrl");
 const adminPassword = document.querySelector("#adminPassword");
+const panelStorageKey = "astebook_collapsed_panels";
 
 const secretInputs = {
   processing_ui_token: processingUiToken,
@@ -87,6 +88,47 @@ let activeFilters = {
   hasError: "",
   hasFiles: "",
 };
+
+function collapsedPanelSet() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem(panelStorageKey) || "[]"));
+  } catch {
+    return new Set();
+  }
+}
+
+function saveCollapsedPanels(values) {
+  localStorage.setItem(panelStorageKey, JSON.stringify(Array.from(values)));
+}
+
+function panelKey(panel) {
+  return panel.querySelector(".panel-toggle")?.textContent.replace(/\s+/g, " ").trim() || "";
+}
+
+function setPanelCollapsed(panel, collapsed, persist = true) {
+  const toggle = panel.querySelector(".panel-toggle");
+  const chevron = panel.querySelector(".panel-chevron");
+  panel.classList.toggle("collapsed", collapsed);
+  toggle?.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  if (chevron) chevron.textContent = collapsed ? "expand_more" : "expand_less";
+
+  if (!persist) return;
+  const values = collapsedPanelSet();
+  const key = panelKey(panel);
+  if (collapsed) values.add(key);
+  else values.delete(key);
+  saveCollapsedPanels(values);
+}
+
+function initCollapsiblePanels() {
+  const collapsed = collapsedPanelSet();
+  document.querySelectorAll(".collapsible-panel").forEach((panel) => {
+    setPanelCollapsed(panel, collapsed.has(panelKey(panel)), false);
+    panel.querySelector(".panel-toggle")?.addEventListener("click", () => {
+      setPanelCollapsed(panel, !panel.classList.contains("collapsed"));
+    });
+  });
+}
 
 async function apiFetch(url, options = {}) {
   const headers = {
@@ -851,5 +893,6 @@ settingsForm.addEventListener("submit", async (event) => {
   settingsStatus.textContent = "Errore durante il salvataggio.";
 });
 
+initCollapsiblePanels();
 loadEvents();
 loadSettings();

@@ -513,6 +513,14 @@ function renderEventList() {
     meta.textContent = `${event.status} - ${formatDate(event.received_at)}`;
     button.append(title, meta);
 
+    if (event.error_count > 0) {
+      const badge = document.createElement("span");
+      badge.className = "event-error-badge";
+      badge.textContent = event.error_count > 99 ? "99+" : String(event.error_count);
+      badge.title = `${event.error_count} errori presenti`;
+      button.append(badge);
+    }
+
     button.addEventListener("click", () => loadEvent(event.id));
     eventList.appendChild(button);
   });

@@ -79,6 +79,15 @@ function eventSearchSummary(event) {
   };
 }
 
+function eventErrorCount(event) {
+  const missingFields = Array.isArray(event.error?.missing_fields) ? event.error.missing_fields.length : 0;
+  const stepErrors = Array.isArray(event.steps)
+    ? event.steps.filter((step) => step.level === "error").length
+    : 0;
+  const genericError = event.error && missingFields === 0 ? 1 : 0;
+  return missingFields + stepErrors + genericError;
+}
+
 export async function createProcessingEvent({ source, status = "received", body, files, metadata = {} }) {
   await ensureLogFile();
   const event = {
@@ -152,6 +161,7 @@ export async function listProcessingEvents({ limit = 100 } = {}) {
       file_count: event.request?.files?.length || 0,
       has_result: Boolean(event.result),
       has_error: Boolean(event.error),
+      error_count: eventErrorCount(event),
       search: eventSearchSummary(event),
     }));
 }

@@ -177,12 +177,13 @@ select {
 }
 
 .event-item {
+  position: relative;
   border: 0;
   border-radius: 0;
   background: var(--panel);
   color: var(--text);
   text-align: left;
-  padding: 14px 16px;
+  padding: 14px 44px 14px 16px;
   cursor: pointer;
 }
 
@@ -204,6 +205,24 @@ select {
   color: var(--muted);
   font-size: 13px;
   margin-top: 4px;
+}
+
+.event-error-badge {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  display: grid !important;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #111827;
+  color: #ffffff !important;
+  font-size: 11px !important;
+  font-weight: 800;
+  line-height: 1;
+  margin: 0 !important;
 }
 
 .event-empty {

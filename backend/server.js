@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { createHmac, timingSafeEqual } from "node:crypto";
+import { existsSync } from "node:fs";
 
 import { mergeAnnuncioProposta } from "./lib/merge_json.js";
 import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale } from "./lib/ai.js";
@@ -252,7 +253,10 @@ app.post("/admin/logout", (_req, res) => {
   res.redirect("/admin/login");
 });
 
-app.use("/admin", requireAdminSession, express.static(join(process.cwd(), "frontend", "admin")));
+const reactAdminDir = join(process.cwd(), "frontend", "dist");
+const legacyAdminDir = join(process.cwd(), "frontend", "admin");
+const adminStaticDir = existsSync(join(reactAdminDir, "index.html")) ? reactAdminDir : legacyAdminDir;
+app.use("/admin", requireAdminSession, express.static(adminStaticDir));
 
 function redactSecret(value) {
   if (!value) return "";

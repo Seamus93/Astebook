@@ -7,7 +7,8 @@
     "start:4000": "set PORT=4000&& node backend/server.js",
     "lint": "node scripts/check-js.js",
     "test": "node --test backend/tests/*.test.js",
-    "build": "npm run lint",
+    "build": "npm run lint && vite build",
+    "frontend:dev": "vite --host 0.0.0.0",
     "ci": "npm run lint && npm test && npm audit --audit-level=high",
     "ngrok": "ngrok http 4000",
     "all": "concurrently \"npm run start:4000\" \"npm run ngrok\""
@@ -21,9 +22,13 @@
     "openai": "^6.7.0",
     "pdf-parse": "^2.4.4",
     "pdfkit": "^0.19.1",
-    "pizzip": "^3.2.0"
+    "pizzip": "^3.2.0",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "@vitejs/plugin-react": "^6.0.3",
+    "concurrently": "^9.2.1",
+    "vite": "^8.1.3"
   }
 }

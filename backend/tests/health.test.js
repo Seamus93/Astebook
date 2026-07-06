@@ -53,7 +53,8 @@ test("Zapier intake creates a processing event visible from the UI API", async (
       body: JSON.stringify({
         subject: "Fwd: RM_Roma_TOL_202949480010 PROCEDURA COMPETITIVA",
         from: "cliente@example.com",
-        email_body_text: "Corpo della mail",
+        email_body_text:
+          "<div>Appartamento all'asta Via Roma 1, Roma</div><div>Offerta minima: € 210.000,00</div>",
         zap_run_id: "zap-test-1",
         all_attachments: localFileUrl,
         attachment_1_attachment: `${localFileUrl}?attachment=1`,
@@ -69,6 +70,8 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.ok(intakePayload.event_id);
     assert.equal(intakePayload.result.ready_for_zapier, false);
     assert.equal(intakePayload.result.email.has_body_text, true);
+    assert.equal(intakePayload.result.extracted.annuncio.indirizzo, "Via Roma, 1, Roma");
+    assert.equal(intakePayload.result.extracted.annuncio.offerta_minima, 210000);
     assert.equal(intakePayload.result.attachments.length, 2);
     assert.equal(intakePayload.result.codice_pratica, "RM_ROMA_TOL_202949480010");
 

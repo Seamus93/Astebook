@@ -18,7 +18,7 @@ Trattasi di {{descrizione_immobile}}
 
 Identificazione catastale:
 Censito al N.C.E.U. del medesimo Comune
-Foglio {{catasto_fg}}, mapp. {{catasto_mappale}}, sub {{catasto_sub}}, cat {{catasto_categoria}}
+{{catasto_identificazione}}
 oltre eventuale comproprieta di spazi ed enti comuni e/o condominiali, se esistenti.
 
 Si precisa che:

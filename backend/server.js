@@ -919,6 +919,23 @@ export function mergeExtractedProposta(current, next) {
     merged.file_pdf = next.file_pdf || merged.file_pdf;
     merged.source_format = next.source_format || merged.source_format;
   }
+  const currentVoci = Array.isArray(current.catasto_voci)
+    ? current.catasto_voci
+    : Array.isArray(current.catasto?.voci)
+    ? current.catasto.voci
+    : [];
+  const nextVoci = Array.isArray(next.catasto_voci)
+    ? next.catasto_voci
+    : Array.isArray(next.catasto?.voci)
+    ? next.catasto.voci
+    : [];
+  const mergedVoci = nextWins
+    ? mergeCatastoVoci(nextVoci, currentVoci)
+    : mergeCatastoVoci(currentVoci, nextVoci);
+  if (mergedVoci.length) {
+    merged.catasto.voci = mergedVoci;
+    merged.catasto_voci = mergedVoci;
+  }
 
   const mergeValue = (key) => {
     if (!isMissingValue(next[key]) && (isMissingValue(merged[key]) || nextWins)) merged[key] = next[key];
@@ -942,6 +959,21 @@ export function mergeExtractedProposta(current, next) {
   ["foglio", "particella", "subalterno", "sezione", "categoria"].forEach((key) => mergeNestedValue("catasto", key));
 
   return merged;
+}
+
+function mergeCatastoVoci(primary = [], fallback = []) {
+  const merged = [];
+  const add = (voce) => {
+    if (!voce || typeof voce !== "object") return;
+    const key = [voce.foglio, voce.mappale || voce.particella, voce.subalterno, voce.sezione, voce.categoria]
+      .map((value) => String(value || "").trim().toLowerCase())
+      .join("|");
+    if (!key.replace(/\|/g, "")) return;
+    if (!merged.some((item) => item.key === key)) merged.push({ key, voce });
+  };
+  primary.forEach(add);
+  fallback.forEach(add);
+  return merged.map((item) => item.voce);
 }
 
 function finalizeZapierResult(result) {

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { scrapePropostaFromText } from "../scrapers/scrape_proposta.js";
+import { buildDocumentFields } from "../lib/document_builder.js";
 
 test("proposal address prefers property context over company and IBAN context", () => {
   const text = [
@@ -33,4 +34,49 @@ test("proposal cadastral parser extracts foglio mappale subalterno and categoria
   assert.equal(result.catasto.mappale, "174");
   assert.equal(result.catasto.subalterno, "733");
   assert.equal(result.catasto.categoria, "A/10");
+});
+
+test("proposal cadastral parser keeps multiple cadastral rows", () => {
+  const text = [
+    "1. Descrizione Immobile",
+    "Immobile sito a Roma in Via Quirino Majorana n. 171 censito al N.C.E.U. del medesimo Comune",
+    "- foglio 463, part. 174, sub 733, cat. A/10",
+    "Via Quirino Majorana n. 171",
+    "censito al N.C.T del medesimo Comune",
+    "-foglio 463, mappale 174",
+  ].join("\n");
+
+  const result = scrapePropostaFromText(text, "Proposta scannerizzata.pdf");
+
+  assert.equal(result.catasto_voci.length, 2);
+  assert.deepEqual(result.catasto_voci[0], {
+    foglio: "463",
+    particella: "174",
+    mappale: "174",
+    subalterno: "733",
+    sezione: null,
+    categoria: "A/10",
+  });
+  assert.deepEqual(result.catasto_voci[1], {
+    foglio: "463",
+    particella: "174",
+    mappale: "174",
+    subalterno: null,
+    sezione: null,
+    categoria: null,
+  });
+
+  const fields = buildDocumentFields({
+    result: {
+      codice_pratica: "TEST",
+      extracted: {
+        proposta: result,
+        annuncio: {},
+      },
+    },
+  });
+  assert.equal(
+    fields.catasto_identificazione,
+    "Foglio 463, mapp. 174, sub 733, cat A/10\nFoglio 463, mapp. 174"
+  );
 });

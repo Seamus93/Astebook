@@ -10,6 +10,7 @@ export function scrapePropostaFromText(text, fileName = "proposta.txt") {
   const T = norm(text || "");
   const importi = scrapeImporti(T);
   const termini = scrapeTermini(T);
+  const catasto = scrapeCatasto(T);
 
   return {
     file_pdf: fileName,
@@ -21,7 +22,8 @@ export function scrapePropostaFromText(text, fileName = "proposta.txt") {
     iban_beneficiario: importi.iban_beneficiario,
     irrevocabile_giorni: termini.irrevocabile_giorni,
     rogito_entro_giorni: termini.rogito_entro_giorni,
-    catasto: scrapeCatasto(T),
+    catasto,
+    catasto_voci: catasto.voci,
     raw_length: T.length
   };
 }

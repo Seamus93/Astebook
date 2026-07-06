@@ -38,6 +38,28 @@ function currentItalianDate() {
   });
 }
 
+function catastoLine(voce) {
+  if (!voce || typeof voce !== "object") return "";
+  const parts = [];
+  if (voce.foglio) parts.push(`Foglio ${voce.foglio}`);
+  if (voce.mappale || voce.particella) parts.push(`mapp. ${voce.mappale || voce.particella}`);
+  if (voce.subalterno) parts.push(`sub ${voce.subalterno}`);
+  if (voce.categoria) parts.push(`cat ${voce.categoria}`);
+  if (voce.sezione) parts.push(`sez. ${voce.sezione}`);
+  return parts.join(", ");
+}
+
+function catastoIdentification(proposta) {
+  const voci = Array.isArray(proposta?.catasto_voci)
+    ? proposta.catasto_voci
+    : Array.isArray(proposta?.catasto?.voci)
+    ? proposta.catasto.voci
+    : [];
+  const lines = voci.map(catastoLine).filter(Boolean);
+  if (lines.length) return lines.join("\n");
+  return catastoLine(proposta?.catasto) || "-";
+}
+
 export function buildDocumentFields(event) {
   const result = event?.result || {};
   const extracted = result.extracted || {};
@@ -65,6 +87,7 @@ export function buildDocumentFields(event) {
     catasto_mappale: firstValue({ proposta }, ["proposta.catasto.mappale", "proposta.catasto.particella"]),
     catasto_sub: firstValue({ proposta }, ["proposta.catasto.subalterno"]),
     catasto_categoria: firstValue({ proposta, annuncio }, ["proposta.catasto.categoria", "annuncio.categoria_macro"]),
+    catasto_identificazione: catastoIdentification(proposta),
     stato_occupazione: firstValue({ annuncio }, ["annuncio.stato"], "non indicato"),
     prezzo_base_eur: money(firstValue({ proposta, annuncio }, ["proposta.prezzo_offerto", "annuncio.offerta_minima"])),
     offerta_minima_eur: money(firstValue({ annuncio, proposta }, ["annuncio.offerta_minima", "proposta.prezzo_offerto"])),

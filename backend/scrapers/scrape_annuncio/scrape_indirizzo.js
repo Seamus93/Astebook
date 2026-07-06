@@ -33,6 +33,15 @@ function buildAddressFromRaw(indirizzoRaw) {
     .replace(/\s{2,}/g, " ")
     .trim();
 
+  const cityFirst = s.match(
+    /^([A-Za-zÀ-ÖØ-öø-ÿ'’.\- ]+),\s*(via|viale|corso|piazza|largo|vicolo|strada|piazzale|vico|borgo)\s+([A-Za-zÀ-ÖØ-öø-ÿ'’.\- ]+?)\s*,\s*([0-9A-Z]+)$/i
+  );
+  if (cityFirst) {
+    const citta = cityFirst[1].trim();
+    const via = `${cityFirst[2][0].toUpperCase()}${cityFirst[2].slice(1).toLowerCase()} ${cityFirst[3].trim()}`;
+    return formatAddress(via, cityFirst[4].trim(), citta);
+  }
+
   const patterns = [
     /(via|viale|corso|piazza|largo|vicolo|strada|piazzale|vico|borgo)\s+([A-Za-zÀ-ÖØ-öø-ÿ'’.\- ]+?)\s*,?\s*([0-9A-Z]+)\s*,?\s*(?:\b\d{5}\b\s*)?([A-Za-zÀ-ÖØ-öø-ÿ'’.\- ]+)$/i,
     /(via|viale|corso|piazza|largo|vicolo|strada|piazzale|vico|borgo)\s+([A-Za-zÀ-ÖØ-öø-ÿ'’.\- ]+?)\s*,\s*([0-9A-Z]+)\s*,?\s*(?:\b\d{5}\b\s*)?([A-Za-zÀ-ÖØ-öø-ÿ'’.\- ]+)$/i,

@@ -863,6 +863,31 @@ function hasUsefulAnnuncioData(annuncio) {
   ].some((value) => !isMissingValue(value));
 }
 
+function comparableText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\b(via|viale|piazza|corso|largo|vicolo|strada|piazzale|vico|borgo)\b/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function addSourceConflictNotes(result) {
+  const annuncioAddress = result.extracted?.annuncio?.indirizzo;
+  const propostaAddress = result.extracted?.proposta?.indirizzo_immobile;
+  if (
+    !isMissingValue(annuncioAddress) &&
+    !isMissingValue(propostaAddress) &&
+    comparableText(annuncioAddress) !== comparableText(propostaAddress)
+  ) {
+    addUniqueNote(
+      result,
+      `Conflitto indirizzo: Annuncio "${annuncioAddress}" diverso da Proposta "${propostaAddress}".`
+    );
+  }
+}
+
 function mergeExtractedProposta(current, next) {
   if (!current) return next;
   if (!next) return current;
@@ -906,6 +931,7 @@ function mergeExtractedProposta(current, next) {
 }
 
 function finalizeZapierResult(result) {
+  addSourceConflictNotes(result);
   result.missing_fields = collectMissingFields(result);
   result.ready_for_zapier =
     Boolean(result.extracted.annuncio || result.extracted.proposta) && result.missing_fields.length === 0;

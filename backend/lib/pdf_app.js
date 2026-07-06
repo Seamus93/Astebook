@@ -20,6 +20,7 @@ function findTextDeep(value, seen = new Set()) {
     "rawText",
     "markdown",
     "content",
+    "result",
   ];
 
   for (const key of preferredKeys) {
@@ -122,18 +123,20 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
 
   const body = {
     versionMode: "2",
+    v2rawText: true,
+    v2Layout: false,
+    v2Forms: true,
+    v2Signatures: true,
+    async: false,
+    pdfConvertZoomFactor: 1,
+    zoom_factor_img: 1,
+    fileUrls: [fileUrl],
     file_url: fileUrl,
     fileUrl,
     url: fileUrl,
     urls: [fileUrl],
     filename: fileName,
     file_name: fileName,
-    v2rawText: true,
-    v2Layout: false,
-    v2Forms: true,
-    v2Signatures: true,
-    pdfConvertZoomFactor: 1,
-    zoom_factor_img: 1,
     extract_plain_text: true,
     extractPlainText: true,
     extract_layout: false,

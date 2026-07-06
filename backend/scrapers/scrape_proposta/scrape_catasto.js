@@ -25,12 +25,12 @@ function scrapeCatastoVoci(text) {
     if (!/\bfoglio\b/i.test(line)) continue;
 
     const current = normalizeVoce({
-      foglio: pick(line, /\bfoglio\b\s*[:\-]?\s*([0-9A-Za-z/]+)/i),
-      particella: pick(line, /\b(?:particella|part\.?|mappale|mapp\.?)\s*[:\-]?\s*([0-9A-Za-z/]+)/i),
-      mappale: pick(line, /\b(?:mappale|mapp\.?)\s*[:\-]?\s*([0-9A-Za-z/]+)/i),
-      subalterno: pick(line, /\b(?:subalterno|sub\.?)\s*[:\-]?\s*([0-9A-Za-z/]+)/i),
+      foglio: pick(line, /\bfoglio\b\s*[:\-]?\s*([0-9][0-9A-Za-z/]*)/i),
+      particella: pick(line, /\b(?:particella|part\.?|mappale|mapp\.?)\s*[:\-]?\s*([0-9][0-9A-Za-z/]*)/i),
+      mappale: pick(line, /\b(?:mappale|mapp\.?)\s*[:\-]?\s*([0-9][0-9A-Za-z/]*)/i),
+      subalterno: pick(line, /\b(?:subalterno|sub\.?)\s*[:\-]?\s*([0-9][0-9A-Za-z/]*)/i),
       sezione: pick(line, /\bsezione\b\s*[:\-]?\s*([A-Z0-9]{1,3})/i),
-      categoria: pick(line, /\b(?:cat\.?|categoria)\s*[:\-]?\s*([A-Z][0-9]?(?:\/[0-9]+)?)/i),
+      categoria: pick(line, /\b(?:categoria|cat\.|cat\b)\s*[:\-]?\s*([A-Z][0-9]?(?:\/[0-9]+)?)/i),
     });
 
     addUniqueVoce(voci, current);
@@ -41,12 +41,12 @@ function scrapeCatastoVoci(text) {
 
 function fallbackCatasto(text) {
   return normalizeVoce({
-    foglio: pick(text, /\bfoglio\b\s*[:\-]?\s*([0-9A-Za-z/]+)/i),
-    particella: pick(text, /\b(?:particella|part\.?|mappale|mapp\.?)\s*[:\-]?\s*([0-9A-Za-z/]+)/i),
-    mappale: pick(text, /\b(?:mappale|mapp\.?)\s*[:\-]?\s*([0-9A-Za-z/]+)/i),
-    subalterno: pick(text, /\b(?:subalterno|sub\.?)\s*[:\-]?\s*([0-9A-Za-z/]+)/i),
+    foglio: pick(text, /\bfoglio\b\s*[:\-]?\s*([0-9][0-9A-Za-z/]*)/i),
+    particella: pick(text, /\b(?:particella|part\.?|mappale|mapp\.?)\s*[:\-]?\s*([0-9][0-9A-Za-z/]*)/i),
+    mappale: pick(text, /\b(?:mappale|mapp\.?)\s*[:\-]?\s*([0-9][0-9A-Za-z/]*)/i),
+    subalterno: pick(text, /\b(?:subalterno|sub\.?)\s*[:\-]?\s*([0-9][0-9A-Za-z/]*)/i),
     sezione: pick(text, /\bsezione\b\s*[:\-]?\s*([A-Z0-9]{1,3})/i),
-    categoria: pick(text, /\b(?:cat\.?|categoria)\s*[:\-]?\s*([A-Z][0-9]?(?:\/[0-9]+)?)/i),
+    categoria: pick(text, /\b(?:categoria|cat\.|cat\b)\s*[:\-]?\s*([A-Z][0-9]?(?:\/[0-9]+)?)/i),
   });
 }
 

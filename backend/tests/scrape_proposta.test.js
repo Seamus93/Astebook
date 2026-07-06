@@ -101,3 +101,37 @@ test("document placeholders without values are rendered empty", () => {
   assert.equal(fields.cap, " ");
   assert.equal(fillTemplate("Nel Comune di {{comune}} ({{provincia}}), {{indirizzo}} {{cap}} {{missing}}", fields), "Nel Comune di   ( ), Via Quirino Majorana 171    ");
 });
+
+test("proposal parser extracts company proponente block", () => {
+  const text = [
+    "In caso di società:",
+    "La Società italiana Investimenti Immobiliari S.r.l., con sede in Ascoli Piceno (AP), Via degli Anemoni n. 9/a, iscritta",
+    "al Registro delle Imprese di Ascoli Piceno n. REA – AP-206487, c.f. e P.IVA 02359420441 in persona del Dott.",
+    "Augusto Paolini, amministratore unico e legale rappresentante, documento di identità (C.I.) n. CA66060LP, cell.",
+    "3208183295, munito dei poteri di legale rappresentanza come esso dichiara (il “Proponente”)",
+    "*****",
+  ].join("\n");
+
+  const result = scrapePropostaFromText(text, "Proposta scannerizzata.pdf");
+
+  assert.equal(result.proponente.nominativo, "italiana Investimenti Immobiliari S.r.l.");
+  assert.equal(result.proponente.societa, "italiana Investimenti Immobiliari S.r.l.");
+  assert.equal(result.proponente.sede, "Ascoli Piceno (AP), Via degli Anemoni n. 9/a");
+  assert.equal(result.proponente.rappresentante, "Augusto Paolini");
+  assert.equal(result.proponente.codice_fiscale, "02359420441");
+  assert.equal(result.proponente.partita_iva, "02359420441");
+  assert.equal(result.proponente.documento, "CA66060LP");
+  assert.equal(result.proponente.cellulare, "3208183295");
+});
+
+test("proposal cadastral parser ignores non numeric mappale false positives", () => {
+  const result = scrapePropostaFromText(
+    "Identificazione catastale foglio 463 particolare descrizione sub 733 cat. A/10",
+    "Proposta scannerizzata.pdf"
+  );
+
+  assert.equal(result.catasto.foglio, "463");
+  assert.equal(result.catasto.mappale, null);
+  assert.equal(result.catasto.subalterno, "733");
+  assert.equal(result.catasto.categoria, "A/10");
+});

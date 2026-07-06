@@ -27,7 +27,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -98,6 +99,12 @@ input {
   color: var(--accent);
 }
 
+.icon-button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: white;
+}
+
 .primary-button {
   min-height: 40px;
   padding: 0 16px;
@@ -133,6 +140,42 @@ input {
   background: var(--line);
 }
 
+.search-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 38px;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.search-field {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.search-field input {
+  min-width: 0;
+  height: 36px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.search-field:focus-within {
+  border-color: #a8c9d8;
+  box-shadow: 0 0 0 3px rgba(20, 108, 148, 0.12);
+}
+
 .event-item {
   border: 0;
   border-radius: 0;
@@ -161,6 +204,12 @@ input {
   color: var(--muted);
   font-size: 13px;
   margin-top: 4px;
+}
+
+.event-empty {
+  padding: 18px 16px;
+  background: var(--panel);
+  color: var(--muted);
 }
 
 .detail {
@@ -425,6 +474,10 @@ input {
   box-shadow: var(--shadow);
 }
 
+.modal-narrow {
+  width: min(620px, 100%);
+}
+
 .modal-header {
   display: flex;
   justify-content: space-between;
@@ -440,20 +493,38 @@ input {
 }
 
 .settings-form,
+.filters-form,
 .settings-summary {
   padding: 18px 20px;
 }
 
-.settings-form {
+.settings-form,
+.filters-form {
   display: grid;
   gap: 14px;
   border-bottom: 1px solid var(--line);
 }
 
-.settings-form label {
+.settings-form label,
+.filters-form label {
   display: grid;
   gap: 7px;
   font-weight: 800;
+}
+
+.filters-form input,
+.filters-form select {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .secret-field {
@@ -567,7 +638,8 @@ input {
   }
 
   .kv-row,
-  .setting-card {
+  .setting-card,
+  .filters-grid {
     grid-template-columns: 1fr;
     gap: 4px;
   }

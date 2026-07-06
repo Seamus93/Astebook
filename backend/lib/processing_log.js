@@ -44,6 +44,41 @@ async function writeEvents(events) {
   await writeFile(logFile, content ? `${content}\n` : "", "utf8");
 }
 
+function valueAt(obj, path) {
+  return path.split(".").reduce((current, key) => current?.[key], obj);
+}
+
+function firstValue(obj, paths, fallback = "") {
+  for (const path of paths) {
+    const value = valueAt(obj, path);
+    if (value !== undefined && value !== null && String(value).trim() !== "") return String(value);
+  }
+  return fallback;
+}
+
+function eventSearchSummary(event) {
+  const result = event.result || {};
+  const extracted = result.extracted || {};
+  const annuncio = extracted.annuncio || result.zapier_response?.annuncio || {};
+  const proposta = extracted.proposta || result.zapier_response?.proposta || {};
+  const body = event.request?.body || {};
+
+  return {
+    subject: firstValue({ event, body }, ["event.metadata.subject", "body.subject"]),
+    from: firstValue({ event, body }, ["event.metadata.from", "body.from", "body.sender"]),
+    codice_pratica: firstValue({ result, event }, ["result.codice_pratica", "event.metadata.codice_pratica"]),
+    procedura: firstValue({ result, event, body }, ["result.codice_pratica", "event.metadata.subject", "body.subject"]),
+    proponente: firstValue(
+      { proposta, body },
+      ["proposta.proponente.nominativo", "proposta.proponente", "body.proponente", "body.nominativo"]
+    ),
+    azienda: firstValue(
+      { annuncio, proposta, body },
+      ["annuncio.azienda", "annuncio.procedura", "proposta.azienda", "body.azienda", "body.company"]
+    ),
+  };
+}
+
 export async function createProcessingEvent({ source, status = "received", body, files, metadata = {} }) {
   await ensureLogFile();
   const event = {
@@ -117,6 +152,7 @@ export async function listProcessingEvents({ limit = 100 } = {}) {
       file_count: event.request?.files?.length || 0,
       has_result: Boolean(event.result),
       has_error: Boolean(event.error),
+      search: eventSearchSummary(event),
     }));
 }
 

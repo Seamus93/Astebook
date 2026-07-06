@@ -1,5 +1,20 @@
 const eventList = document.querySelector("#eventList");
 const refreshButton = document.querySelector("#refreshButton");
+const eventSearchInput = document.querySelector("#eventSearchInput");
+const filtersButton = document.querySelector("#filtersButton");
+const closeFiltersButton = document.querySelector("#closeFiltersButton");
+const filtersModal = document.querySelector("#filtersModal");
+const filtersForm = document.querySelector("#filtersForm");
+const resetFiltersButton = document.querySelector("#resetFiltersButton");
+const filterStatus = document.querySelector("#filterStatus");
+const filterProcedure = document.querySelector("#filterProcedure");
+const filterProponente = document.querySelector("#filterProponente");
+const filterAzienda = document.querySelector("#filterAzienda");
+const filterEmail = document.querySelector("#filterEmail");
+const filterDateFrom = document.querySelector("#filterDateFrom");
+const filterDateTo = document.querySelector("#filterDateTo");
+const filterHasError = document.querySelector("#filterHasError");
+const filterHasFiles = document.querySelector("#filterHasFiles");
 const documentButton = document.querySelector("#documentButton");
 const reprocessButton = document.querySelector("#reprocessButton");
 const settingsButton = document.querySelector("#settingsButton");
@@ -51,6 +66,19 @@ let selectedId = null;
 let isLoadingEvent = false;
 let accessToken = localStorage.getItem("astebook_ui_token") || "";
 let revealedSettings = null;
+let allEvents = [];
+let activeFilters = {
+  query: "",
+  status: "",
+  procedure: "",
+  proponente: "",
+  azienda: "",
+  email: "",
+  dateFrom: "",
+  dateTo: "",
+  hasError: "",
+  hasFiles: "",
+};
 
 async function apiFetch(url, options = {}) {
   const headers = {
@@ -88,6 +116,107 @@ function primitiveText(value) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "boolean") return value ? "Si" : "No";
   return String(value);
+}
+
+function normalizeSearch(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function includesText(value, query) {
+  return !query || normalizeSearch(value).includes(normalizeSearch(query));
+}
+
+function eventSearchText(event) {
+  return [
+    titleFor(event),
+    event.status,
+    event.source,
+    event.search?.subject,
+    event.search?.from,
+    event.search?.codice_pratica,
+    event.search?.procedura,
+    event.search?.proponente,
+    event.search?.azienda,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isSameOrAfterDate(value, date) {
+  if (!date) return true;
+  if (!value) return false;
+  return new Date(value) >= new Date(`${date}T00:00:00`);
+}
+
+function isSameOrBeforeDate(value, date) {
+  if (!date) return true;
+  if (!value) return false;
+  return new Date(value) <= new Date(`${date}T23:59:59`);
+}
+
+function matchesBooleanFilter(value, filterValue) {
+  if (!filterValue) return true;
+  return filterValue === "yes" ? Boolean(value) : !value;
+}
+
+function eventMatchesFilters(event) {
+  return (
+    includesText(eventSearchText(event), activeFilters.query) &&
+    (!activeFilters.status || event.status === activeFilters.status) &&
+    includesText(`${event.search?.procedura || ""} ${event.search?.codice_pratica || ""}`, activeFilters.procedure) &&
+    includesText(event.search?.proponente, activeFilters.proponente) &&
+    includesText(event.search?.azienda, activeFilters.azienda) &&
+    includesText(`${event.search?.from || ""} ${event.search?.subject || ""}`, activeFilters.email) &&
+    isSameOrAfterDate(event.received_at, activeFilters.dateFrom) &&
+    isSameOrBeforeDate(event.received_at, activeFilters.dateTo) &&
+    matchesBooleanFilter(event.has_error, activeFilters.hasError) &&
+    matchesBooleanFilter(event.file_count > 0, activeFilters.hasFiles)
+  );
+}
+
+function activeFilterCount() {
+  return Object.entries(activeFilters).filter(([key, value]) => key !== "query" && value).length;
+}
+
+function syncFilterButtonState() {
+  const count = activeFilterCount();
+  filtersButton.classList.toggle("active", count > 0);
+  filtersButton.title = count > 0 ? `Filtri attivi: ${count}` : "Filtri";
+}
+
+function readFiltersFromForm() {
+  activeFilters = {
+    ...activeFilters,
+    status: filterStatus.value,
+    procedure: filterProcedure.value.trim(),
+    proponente: filterProponente.value.trim(),
+    azienda: filterAzienda.value.trim(),
+    email: filterEmail.value.trim(),
+    dateFrom: filterDateFrom.value,
+    dateTo: filterDateTo.value,
+    hasError: filterHasError.value,
+    hasFiles: filterHasFiles.value,
+  };
+}
+
+function resetFilters() {
+  filtersForm.reset();
+  activeFilters = {
+    query: eventSearchInput.value.trim(),
+    status: "",
+    procedure: "",
+    proponente: "",
+    azienda: "",
+    email: "",
+    dateFrom: "",
+    dateTo: "",
+    hasError: "",
+    hasFiles: "",
+  };
+  renderEventList();
 }
 
 function hasExtractedData(event) {
@@ -352,9 +481,28 @@ function closeSettings() {
 async function loadEvents() {
   const response = await apiFetch("/api/v1/processing-events");
   const data = await response.json();
-  eventList.innerHTML = "";
+  allEvents = data.events || [];
+  renderEventList();
 
-  data.events.forEach((event) => {
+  if (!selectedId && allEvents[0] && !isLoadingEvent) {
+    await loadEvent(allEvents[0].id);
+  }
+}
+
+function renderEventList() {
+  eventList.innerHTML = "";
+  const events = allEvents.filter(eventMatchesFilters);
+
+  if (!events.length) {
+    const empty = document.createElement("div");
+    empty.className = "event-empty";
+    empty.textContent = "Nessuna lavorazione trovata.";
+    eventList.append(empty);
+    syncFilterButtonState();
+    return;
+  }
+
+  events.forEach((event) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = `event-item${event.id === selectedId ? " active" : ""}`;
@@ -368,10 +516,7 @@ async function loadEvents() {
     button.addEventListener("click", () => loadEvent(event.id));
     eventList.appendChild(button);
   });
-
-  if (!selectedId && data.events[0] && !isLoadingEvent) {
-    await loadEvent(data.events[0].id);
-  }
+  syncFilterButtonState();
 }
 
 async function loadEvent(id) {
@@ -426,6 +571,26 @@ async function loadEvent(id) {
 }
 
 refreshButton.addEventListener("click", loadEvents);
+eventSearchInput.addEventListener("input", () => {
+  activeFilters.query = eventSearchInput.value.trim();
+  renderEventList();
+});
+filtersButton.addEventListener("click", () => {
+  filtersModal.hidden = false;
+});
+closeFiltersButton.addEventListener("click", () => {
+  filtersModal.hidden = true;
+});
+filtersModal.addEventListener("click", (event) => {
+  if (event.target === filtersModal) filtersModal.hidden = true;
+});
+filtersForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  readFiltersFromForm();
+  filtersModal.hidden = true;
+  renderEventList();
+});
+resetFiltersButton.addEventListener("click", resetFilters);
 documentButton.addEventListener("click", () => {
   if (!selectedId) return;
   window.open(`/api/v1/processing-events/${selectedId}/document?format=pdf`, "_blank", "noopener");

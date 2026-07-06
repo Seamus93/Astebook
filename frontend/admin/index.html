@@ -31,6 +31,15 @@
             </form>
           </div>
         </div>
+        <div class="search-bar">
+          <label class="search-field" for="eventSearchInput">
+            <span class="material-symbols-outlined" aria-hidden="true">search</span>
+            <input id="eventSearchInput" type="search" placeholder="Cerca procedura, proponente, email..." />
+          </label>
+          <button id="filtersButton" class="icon-button" type="button" title="Filtri">
+            <span class="material-symbols-outlined" aria-hidden="true">filter_list</span>
+          </button>
+        </div>
         <div id="eventList" class="event-list"></div>
       </aside>
 
@@ -100,6 +109,86 @@
         </section>
       </section>
     </main>
+
+    <div id="filtersModal" class="modal-backdrop" hidden>
+      <section class="modal modal-narrow" role="dialog" aria-modal="true" aria-labelledby="filtersTitle">
+        <header class="modal-header">
+          <div>
+            <p class="eyebrow">Ricerca lavorazioni</p>
+            <h2 id="filtersTitle">Filtri</h2>
+          </div>
+          <button id="closeFiltersButton" class="icon-button" type="button" title="Chiudi">
+            <span class="material-symbols-outlined" aria-hidden="true">close</span>
+          </button>
+        </header>
+
+        <form id="filtersForm" class="filters-form">
+          <label>
+            <span>Stato</span>
+            <select id="filterStatus" name="status">
+              <option value="">Tutti</option>
+              <option value="received">Ricevuto</option>
+              <option value="processing">In lavorazione</option>
+              <option value="extracting">Estrazione</option>
+              <option value="completed">Completato</option>
+              <option value="failed">Errore</option>
+            </select>
+          </label>
+          <label>
+            <span>Procedura / Codice pratica</span>
+            <input id="filterProcedure" name="procedure" type="text" placeholder="RM_Roma_TOL_..." />
+          </label>
+          <label>
+            <span>Proponente</span>
+            <input id="filterProponente" name="proponente" type="text" placeholder="Nome proponente" />
+          </label>
+          <label>
+            <span>Azienda</span>
+            <input id="filterAzienda" name="azienda" type="text" placeholder="Azienda o procedura" />
+          </label>
+          <label>
+            <span>Email</span>
+            <input id="filterEmail" name="email" type="text" placeholder="mittente o dominio" />
+          </label>
+          <div class="filters-grid">
+            <label>
+              <span>Ricevuto da</span>
+              <input id="filterDateFrom" name="date_from" type="date" />
+            </label>
+            <label>
+              <span>Ricevuto a</span>
+              <input id="filterDateTo" name="date_to" type="date" />
+            </label>
+          </div>
+          <div class="filters-grid">
+            <label>
+              <span>Errori</span>
+              <select id="filterHasError" name="has_error">
+                <option value="">Tutti</option>
+                <option value="yes">Solo con errori</option>
+                <option value="no">Solo senza errori</option>
+              </select>
+            </label>
+            <label>
+              <span>File</span>
+              <select id="filterHasFiles" name="has_files">
+                <option value="">Tutti</option>
+                <option value="yes">Solo con file</option>
+                <option value="no">Solo senza file</option>
+              </select>
+            </label>
+          </div>
+
+          <div class="modal-actions">
+            <button id="resetFiltersButton" class="secondary-button" type="button">
+              <span class="material-symbols-outlined" aria-hidden="true">restart_alt</span>
+              Reset
+            </button>
+            <button class="primary-button" type="submit">Applica</button>
+          </div>
+        </form>
+      </section>
+    </div>
 
     <div id="settingsModal" class="modal-backdrop" hidden>
       <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">

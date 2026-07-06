@@ -429,9 +429,42 @@ select {
 }
 
 .data-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   cursor: pointer;
   padding: 11px 12px;
   font-weight: 800;
+}
+
+.data-section > summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.file-section[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.file-descriptor {
+  padding: 10px 12px;
+}
+
+.file-descriptor .kv-row {
+  padding: 7px 0;
+  background: transparent;
+}
+
+.file-steps {
+  padding: 0 12px 12px;
+}
+
+.file-steps .step {
+  margin-top: 10px;
+  margin-bottom: 0;
 }
 
 .kv-list {

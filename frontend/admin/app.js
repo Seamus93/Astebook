@@ -33,7 +33,10 @@ const updatedAt = document.querySelector("#updatedAt");
 const fileCount = document.querySelector("#fileCount");
 const requestPane = document.querySelector("#requestPane");
 const stepsPane = document.querySelector("#stepsPane");
+const filesPane = document.querySelector("#filesPane");
 const resultPane = document.querySelector("#resultPane");
+const notesPane = document.querySelector("#notesPane");
+const missingFieldsPane = document.querySelector("#missingFieldsPane");
 const errorPane = document.querySelector("#errorPane");
 const settingsForm = document.querySelector("#settingsForm");
 const settingsPane = document.querySelector("#settingsPane");
@@ -454,6 +457,150 @@ function renderStructured(container, value, emptyLabel) {
   appendValue(container, "Valore", value);
 }
 
+function fileNameFromStep(step) {
+  return step?.data?.file_name || step?.data?.file_pdf || step?.data?.file || null;
+}
+
+function isFileStep(step) {
+  return Boolean(fileNameFromStep(step));
+}
+
+function pipelineSteps(event) {
+  return (event.steps || []).filter((step) => !isFileStep(step));
+}
+
+function fileStepGroups(event) {
+  const groups = new Map();
+  (event.result?.attachments || event.request?.files || []).forEach((file) => {
+    const fileName = file.file_name || file.originalname || file.name || file.field_name || "File";
+    if (!groups.has(fileName)) groups.set(fileName, { file, steps: [] });
+  });
+
+  (event.steps || []).filter(isFileStep).forEach((step) => {
+    const fileName = fileNameFromStep(step);
+    if (!groups.has(fileName)) groups.set(fileName, { file: { file_name: fileName }, steps: [] });
+    groups.get(fileName).steps.push(step);
+  });
+
+  return Array.from(groups.entries()).map(([fileName, group]) => ({ fileName, ...group }));
+}
+
+function renderStepItem(step) {
+  const item = document.createElement("div");
+  item.className = `step ${step.level === "error" ? "error" : ""}`;
+
+  const message = document.createElement("strong");
+  message.textContent = step.message;
+  const date = document.createElement("span");
+  date.textContent = formatDate(step.at);
+  item.append(message, date);
+
+  if (step.data) {
+    const dataContainer = document.createElement("div");
+    dataContainer.className = "step-data";
+    renderStructured(dataContainer, step.data, "Nessun dettaglio.");
+    item.append(dataContainer);
+  }
+
+  return item;
+}
+
+function renderPipelineSteps(event) {
+  stepsPane.innerHTML = "";
+  const steps = pipelineSteps(event);
+  if (!steps.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Nessuno step generale registrato.";
+    stepsPane.append(empty);
+    return;
+  }
+
+  steps.forEach((step) => stepsPane.append(renderStepItem(step)));
+}
+
+function renderFileSections(event) {
+  filesPane.innerHTML = "";
+  const groups = fileStepGroups(event);
+  if (!groups.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Nessun file ricevuto.";
+    filesPane.append(empty);
+    return;
+  }
+
+  groups.forEach(({ fileName, file, steps }) => {
+    const details = document.createElement("details");
+    details.className = "data-section file-section";
+    details.open = steps.some((step) => step.level === "error");
+
+    const summary = document.createElement("summary");
+    const title = document.createElement("span");
+    title.textContent = fileName;
+    const meta = document.createElement("small");
+    meta.textContent = `${file.format || file.mime_type || file.mimetype || "-"} · ${steps.length} log`;
+    summary.append(title, meta);
+    details.append(summary);
+
+    const descriptor = {
+      field_name: file.field_name || file.fieldname || null,
+      mime_type: file.mime_type || file.mimetype || null,
+      format: file.format || null,
+      kind: file.kind || null,
+      supported_by_scraper: file.supported_by_scraper,
+      size: file.size || null,
+    };
+    const descriptorContainer = document.createElement("div");
+    descriptorContainer.className = "file-descriptor";
+    renderStructured(descriptorContainer, descriptor, "Nessun dettaglio file.");
+    details.append(descriptorContainer);
+
+    if (steps.length) {
+      const stepList = document.createElement("div");
+      stepList.className = "file-steps";
+      steps.forEach((step) => stepList.append(renderStepItem(step)));
+      details.append(stepList);
+    }
+
+    filesPane.append(details);
+  });
+}
+
+function renderNotes(event) {
+  renderStructured(notesPane, event.result?.notes || [], "Nessuna nota.");
+}
+
+function renderMissingFields(event) {
+  renderStructured(
+    missingFieldsPane,
+    event.result?.missing_fields || event.error?.missing_fields || [],
+    "Nessun campo mancante."
+  );
+}
+
+function pipelineErrors(event) {
+  const stepErrors = (event.steps || [])
+    .filter((step) => step.level === "error")
+    .map((step) => ({
+      step: step.message,
+      at: step.at,
+      file: fileNameFromStep(step),
+      detail: step.data?.error || step.data?.reason || null,
+    }));
+  const genericError = event.error?.message
+    ? [{ step: "Errore evento", detail: event.error.message }]
+    : [];
+  return [...stepErrors, ...genericError];
+}
+
+function extractedResultView(event) {
+  const result = { ...(event.result || {}) };
+  delete result.notes;
+  delete result.missing_fields;
+  return result;
+}
+
 function renderSettingsSummary(payload) {
   settingsPane.innerHTML = "";
   const settings = payload.settings || {};
@@ -598,36 +745,12 @@ async function loadEvent(id) {
   updatedAt.textContent = formatDate(event.updated_at);
   fileCount.textContent = event.request?.files?.length || 0;
   renderStructured(requestPane, event.request, "Nessun payload ricevuto.");
-  renderStructured(resultPane, event.result, "Nessun dato estratto.");
-  renderStructured(errorPane, event.error, "Nessun errore.");
-
-  stepsPane.innerHTML = "";
-  if (!event.steps?.length) {
-    const empty = document.createElement("p");
-    empty.className = "empty-state";
-    empty.textContent = "Nessuno step registrato.";
-    stepsPane.append(empty);
-  }
-
-  (event.steps || []).forEach((step) => {
-    const item = document.createElement("div");
-    item.className = `step ${step.level === "error" ? "error" : ""}`;
-
-    const message = document.createElement("strong");
-    message.textContent = step.message;
-    const date = document.createElement("span");
-    date.textContent = formatDate(step.at);
-    item.append(message, date);
-
-    if (step.data) {
-      const dataContainer = document.createElement("div");
-      dataContainer.className = "step-data";
-      renderStructured(dataContainer, step.data, "Nessun dettaglio.");
-      item.append(dataContainer);
-    }
-
-    stepsPane.appendChild(item);
-  });
+  renderStructured(resultPane, extractedResultView(event), "Nessun dato estratto.");
+  renderPipelineSteps(event);
+  renderFileSections(event);
+  renderNotes(event);
+  renderMissingFields(event);
+  renderStructured(errorPane, pipelineErrors(event), "Nessun errore pipeline.");
 
   isLoadingEvent = false;
   await loadEvents();

@@ -149,7 +149,7 @@ test("Admin UI requires login before serving the processing interface", async ()
     });
 
     assert.equal(response.status, 302);
-    assert.equal(response.headers.get("location"), "/admin/login");
+    assert.equal(response.headers.get("location"), "/login");
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -163,7 +163,7 @@ test("Admin login can read and update runtime settings", async () => {
 
   try {
     const { port } = server.address();
-    const loginResponse = await fetch(`http://127.0.0.1:${port}/admin/login`, {
+    const loginResponse = await fetch(`http://127.0.0.1:${port}/login`, {
       method: "POST",
       headers: { "content-type": "application/x-www-form-urlencoded" },
       body: new URLSearchParams({
@@ -194,6 +194,26 @@ test("Admin login can read and update runtime settings", async () => {
 
     assert.equal(adminUiResponse.status, 200);
     assert.match(adminUiHtml, /Astebook Processing/);
+
+    const oldLoginResponse = await fetch(`http://127.0.0.1:${port}/admin/login`, {
+      redirect: "manual",
+    });
+    assert.equal(oldLoginResponse.status, 302);
+    assert.equal(oldLoginResponse.headers.get("location"), "/login");
+
+    const recoveryResponse = await fetch(`http://127.0.0.1:${port}/recover-login`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        email: "admin@example.com",
+      }),
+    });
+    const recoveryHtml = await recoveryResponse.text();
+    assert.equal(recoveryResponse.status, 200);
+    assert.match(recoveryHtml, /SMTP non configurato/);
+    assert.match(recoveryHtml, /test-password/);
 
     const revealResponse = await fetch(
       `http://127.0.0.1:${port}/api/v1/admin/settings?reveal=1`,

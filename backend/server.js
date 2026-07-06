@@ -1,6 +1,7 @@
 ﻿import express from "express";
 import multer from "multer";
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
 import { pathToFileURL } from "node:url";
 import { join } from "node:path";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -28,6 +29,7 @@ import {
 import {
   createRuntimeAdmin,
   getEffectiveSetting,
+  getRuntimeAdminPlainPassword,
   getRuntimeAdminUsername,
   getRuntimeSettings,
   hasRuntimeAdmin,
@@ -73,6 +75,46 @@ async function hasConfiguredAdmin() {
 
 async function getAdminLoginUsername() {
   return process.env.ADMIN_USERNAME || (await getRuntimeAdminUsername()) || "admin";
+}
+
+async function getAdminRecoveryCredentials() {
+  return {
+    username: await getAdminLoginUsername(),
+    password: process.env.ADMIN_PASSWORD || (await getRuntimeAdminPlainPassword()) || null,
+  };
+}
+
+function hasSmtpConfig() {
+  return Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
+}
+
+async function sendRecoveryEmail({ to, credentials }) {
+  if (!hasSmtpConfig()) return false;
+  const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: Number(process.env.SMTP_PORT || 587),
+    secure: process.env.SMTP_SECURE === "true",
+    auth: process.env.SMTP_USER
+      ? {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASSWORD || "",
+        }
+      : undefined,
+  });
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM,
+    to,
+    subject: "Credenziali Astebook",
+    text: [
+      "Credenziali di accesso Astebook:",
+      "",
+      `URL: ${process.env.PUBLIC_BASE_URL || "/login"}`,
+      `Utente: ${credentials.username}`,
+      `Password: ${credentials.password || "Non recuperabile: reimpostala dalla console admin."}`,
+    ].join("\n"),
+  });
+  return true;
 }
 
 async function signAdminSession(username, expiresAt) {
@@ -137,9 +179,17 @@ async function verifyAdminCredentials(username, password) {
   return verifyRuntimeAdmin({ username, password });
 }
 
-function adminLoginPage({ errorMessage = "", mode = "login", username = "admin" } = {}) {
+function adminLoginPage({ errorMessage = "", infoMessage = "", mode = "login", username = "", recovery = null } = {}) {
   const errorHtml = errorMessage ? `<p class="error">${escapeHtml(errorMessage)}</p>` : "";
+  const infoHtml = infoMessage ? `<p class="info">${escapeHtml(infoMessage)}</p>` : "";
   const isSetup = mode === "setup";
+  const recoveryHtml = recovery
+    ? `<div class="recovery-result">
+        <strong>Credenziali</strong>
+        <span>Utente: ${escapeHtml(recovery.username)}</span>
+        <span>Password: ${escapeHtml(recovery.password || "Non recuperabile: reimpostala dalla console admin.")}</span>
+      </div>`
+    : "";
   return `<!doctype html>
 <html lang="it">
   <head>
@@ -153,21 +203,39 @@ function adminLoginPage({ errorMessage = "", mode = "login", username = "admin" 
       label { display: block; margin: 14px 0 6px; font-weight: 700; }
       input { width: 100%; box-sizing: border-box; border: 1px solid #c9d1dd; border-radius: 6px; padding: 11px 12px; font: inherit; }
       button { width: 100%; border: 0; border-radius: 6px; padding: 12px; margin-top: 18px; background: #17202a; color: white; font-weight: 800; cursor: pointer; }
+      button.secondary { background: white; color: #17202a; border: 1px solid #c9d1dd; }
       .error { color: #b42318; margin: 0 0 12px; }
+      .info { color: #146c94; margin: 0 0 12px; }
       .hint { color: #647084; font-size: 13px; margin: 14px 0 0; }
+      details { margin-top: 18px; border-top: 1px solid #e4e8ef; padding-top: 14px; }
+      summary { cursor: pointer; font-weight: 700; }
+      .recovery-result { display: grid; gap: 6px; margin-top: 14px; padding: 12px; border: 1px solid #c9d1dd; border-radius: 6px; background: #f9fafc; }
     </style>
   </head>
   <body>
-    <form method="post" action="${isSetup ? "/admin/setup" : "/admin/login"}">
+    <form method="post" action="${isSetup ? "/setup" : "/login"}">
       <h1>${isSetup ? "Crea admin Astebook" : "Astebook"}</h1>
       ${errorHtml}
+      ${infoHtml}
       <label for="username">Utente</label>
       <input id="username" name="username" autocomplete="username" value="${escapeHtml(username)}" />
       <label for="password">Password</label>
       <input id="password" name="password" type="password" autocomplete="current-password" autofocus />
       <button type="submit">${isSetup ? "Crea admin" : "Entra"}</button>
       <p class="hint">${isSetup ? "Il primo utente diventa admin e viene autenticato automaticamente." : "Accesso alla UI processing e ai log operativi."}</p>
+      ${
+        isSetup
+          ? ""
+          : `<details>
+              <summary>Utente o Password dimenticata?</summary>
+              <label for="recoveryEmail">Email</label>
+              <input id="recoveryEmail" name="email" type="email" form="recoveryForm" placeholder="nome@example.com" />
+              <button class="secondary" type="submit" form="recoveryForm">Invia credenziali</button>
+              ${recoveryHtml}
+            </details>`
+      }
     </form>
+    <form id="recoveryForm" method="post" action="/recover-login"></form>
   </body>
 </html>`;
 }
@@ -179,24 +247,26 @@ async function requireAdminSession(req, res, next) {
   }
 
   if (!(await hasConfiguredAdmin())) {
-    res.redirect("/admin/setup");
+    res.redirect("/setup");
     return;
   }
 
-  res.redirect("/admin/login");
+  res.redirect("/login");
 }
 
-app.get("/admin/setup", async (_req, res) => {
+app.get("/admin/setup", (_req, res) => res.redirect("/setup"));
+app.post("/admin/setup", (_req, res) => res.redirect(307, "/setup"));
+app.get("/setup", async (_req, res) => {
   if (await hasConfiguredAdmin()) {
-    res.redirect("/admin/login");
+    res.redirect("/login");
     return;
   }
   res.type("html").send(adminLoginPage({ mode: "setup", username: "admin" }));
 });
 
-app.post("/admin/setup", async (req, res) => {
+app.post("/setup", async (req, res) => {
   if (await hasConfiguredAdmin()) {
-    res.redirect("/admin/login");
+    res.redirect("/login");
     return;
   }
 
@@ -218,15 +288,17 @@ app.post("/admin/setup", async (req, res) => {
   }
 });
 
-app.get("/admin/login", async (_req, res) => {
+app.get("/admin/login", (_req, res) => res.redirect("/login"));
+app.post("/admin/login", (_req, res) => res.redirect(307, "/login"));
+app.get("/login", async (_req, res) => {
   if (!(await hasConfiguredAdmin())) {
-    res.redirect("/admin/setup");
+    res.redirect("/setup");
     return;
   }
   res.type("html").send(adminLoginPage({ username: await getAdminLoginUsername() }));
 });
 
-app.post("/admin/login", async (req, res) => {
+app.post("/login", async (req, res) => {
   const username = String(req.body.username || "");
   const password = String(req.body.password || "");
 
@@ -245,13 +317,57 @@ app.post("/admin/login", async (req, res) => {
   );
 });
 
-app.post("/admin/logout", (_req, res) => {
+app.post("/recover-login", async (req, res) => {
+  if (!(await hasConfiguredAdmin())) {
+    res.redirect("/setup");
+    return;
+  }
+
+  const email = String(req.body.email || "").trim();
+  const credentials = await getAdminRecoveryCredentials();
+  if (!email) {
+    res.status(400).type("html").send(
+      adminLoginPage({
+        username: credentials.username,
+        errorMessage: "Inserisci una email per il recupero.",
+      })
+    );
+    return;
+  }
+
+  try {
+    const sent = await sendRecoveryEmail({ to: email, credentials });
+    res.type("html").send(
+      adminLoginPage({
+        username: credentials.username,
+        infoMessage: sent
+          ? `Credenziali inviate a ${email}.`
+          : "SMTP non configurato: credenziali mostrate qui sotto.",
+        recovery: sent ? null : credentials,
+      })
+    );
+  } catch (error) {
+    res.status(500).type("html").send(
+      adminLoginPage({
+        username: credentials.username,
+        errorMessage: `Invio email non riuscito: ${error.message || String(error)}`,
+        recovery: credentials,
+      })
+    );
+  }
+});
+
+function clearAdminSession(res) {
   res.setHeader(
     "Set-Cookie",
     `${adminCookieName}=; HttpOnly; SameSite=Lax; Path=/; Max-Age=0`
   );
-  res.redirect("/admin/login");
-});
+  res.redirect("/login");
+}
+
+app.get("/logout", (_req, res) => clearAdminSession(res));
+app.post("/logout", (_req, res) => clearAdminSession(res));
+app.post("/admin/logout", (_req, res) => clearAdminSession(res));
 
 const reactAdminDir = join(process.cwd(), "frontend", "dist");
 const legacyAdminDir = join(process.cwd(), "frontend", "admin");

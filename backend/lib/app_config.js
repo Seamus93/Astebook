@@ -78,6 +78,7 @@ export async function createRuntimeAdmin({ username, password }) {
   config.admin = {
     username,
     password_hash: hashPassword(password),
+    password_plain: String(password),
     created_at: new Date().toISOString(),
   };
   if (!config.settings.admin_session_secret) {
@@ -104,6 +105,11 @@ export async function getRuntimeAdminUsername() {
   return config.admin?.username || null;
 }
 
+export async function getRuntimeAdminPlainPassword() {
+  const config = await readConfig();
+  return config.admin?.password_plain || null;
+}
+
 export async function updateRuntimeSettings(input) {
   const config = await readConfig();
   config.settings = {
@@ -118,6 +124,7 @@ export async function updateRuntimeSettings(input) {
       throw new Error("Admin non configurato.");
     }
     config.admin.password_hash = hashPassword(input.admin_password);
+    config.admin.password_plain = String(input.admin_password);
     config.admin.updated_at = new Date().toISOString();
   }
 

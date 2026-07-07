@@ -83,6 +83,47 @@ function renderEventList() {
   }
 }
 
+function formatJson(value) {
+  if (value === null || value === undefined) return '-';
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function formatFiles(files) {
+  if (!Array.isArray(files) || files.length === 0) return '-';
+  return files
+    .map((file) => `• ${file.originalname || file.file_name || file.fieldname || 'file'} (${file.mimetype || file.mime_type || 'unknown'}, ${file.size ?? 'n/a'})`)
+    .join('\n');
+}
+
+function formatSteps(steps) {
+  if (!Array.isArray(steps) || steps.length === 0) return '-';
+  return steps
+    .map((step) => `• [${step.level}] ${step.message || ''}${step.data ? `\n  ${JSON.stringify(step.data, null, 2)}` : ''}`)
+    .join('\n\n');
+}
+
+function formatNotes(ev) {
+  const notes = [];
+  if (ev.error?.message) notes.push(`Errore: ${ev.error.message}`);
+  if (Array.isArray(ev.error?.missing_fields) && ev.error.missing_fields.length) {
+    notes.push(`Missing fields:\n${ev.error.missing_fields.map((field) => `- ${field.message || field.field || JSON.stringify(field)}`).join('\n')}`);
+  }
+  if (Array.isArray(ev.steps)) {
+    const infos = ev.steps.filter((step) => step.level !== 'info' || /warning|error/i.test(step.level));
+    if (infos.length) {
+      notes.push(`Step notes:\n${infos.map((step) => `- ${step.level}: ${step.message || ''}`).join('\n')}`);
+    }
+  }
+  if (notes.length === 0 && ev.result?.notes) {
+    notes.push(`Notes:\n${JSON.stringify(ev.result.notes, null, 2)}`);
+  }
+  return notes.length ? notes.join('\n\n') : '-';
+}
+
 async function selectEvent(id) {
   try {
     const resp = await apiFetch(`/api/v1/processing-events/${id}`);
@@ -98,13 +139,36 @@ async function selectEvent(id) {
     document.getElementById('selectedStatus').textContent = ev.status || '-';
     document.getElementById('receivedAt').textContent = ev.received_at || '-';
     document.getElementById('updatedAt').textContent = ev.updated_at || '-';
-    document.getElementById('fileCount').textContent = Array.isArray(ev.files) ? ev.files.length : '-';
-    const reqPane = document.getElementById('requestPane');
-    reqPane.textContent = JSON.stringify(ev.request || {}, null, 2);
-    const resultPane = document.getElementById('resultPane');
-    resultPane.textContent = JSON.stringify(ev.result || {}, null, 2);
-    const missingPane = document.getElementById('missingFieldsPane');
-    missingPane.textContent = JSON.stringify(ev.missing_fields || [], null, 2);
+    document.getElementById('fileCount').textContent = Array.isArray(ev.request?.files) ? ev.request.files.length : '-';
+
+    document.getElementById('requestPane').textContent = formatJson(ev.request || {});
+    document.getElementById('stepsPane').textContent = formatSteps(ev.steps);
+    document.getElementById('filesPane').textContent = formatFiles(ev.request?.files);
+    document.getElementById('resultPane').textContent = formatJson(ev.result || {});
+    document.getElementById('missingFieldsPane').textContent =
+      formatJson(ev.error?.missing_fields || ev.result?.missing_fields || []);
+    document.getElementById('notesPane').textContent = formatNotes(ev);
+
+    const reprocessButton = document.getElementById('reprocessButton');
+    const documentButton = document.getElementById('documentButton');
+    const canReprocess = ev.source === 'zapier.email_activation';
+    reprocessButton.disabled = !canReprocess;
+    documentButton.disabled = false;
+    reprocessButton.onclick = async () => {
+      try {
+        const res = await apiFetch(`/api/v1/processing-events/${id}/reprocess`, { method: 'POST' });
+        if (!res.ok) {
+          console.warn('Reprocess failed', res.status);
+          return;
+        }
+        await selectEvent(id);
+      } catch (error) {
+        console.error('reprocess failed', error);
+      }
+    };
+    documentButton.onclick = () => {
+      window.open(`/api/v1/processing-events/${id}/document?format=pdf`, '_blank', 'noopener');
+    };
   } catch (err) {
     console.error('selectEvent', err);
   }

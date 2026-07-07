@@ -187,6 +187,7 @@ export default function initAdminClient() {
   const baseInput = qs('aiBaseUrl');
   if (baseInput) baseInput.addEventListener('input', suggestModelBasedOnBaseUrl);
   loadSettings();
+  loadEvents();
 }
 
 if (document.readyState === 'loading') {

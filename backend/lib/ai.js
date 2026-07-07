@@ -1,6 +1,8 @@
 ﻿// lib/ai.js
+// lib/ai.js
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import { getEffectiveSetting } from "./app_config.js";
 import {
   AI_FIELD_AGENTS,
   PROMPT_ANNUNCIO,
@@ -8,18 +10,39 @@ import {
   PROMPT_PROPOSTA,
   PROMPT_PROVVIGIONE,
 } from "../ai_agents/extraction_agents.js";
+
 dotenv.config();
 
-const apiKey = process.env.OPENAI_API_KEY;
 let openaiClient = null;
+let currentConfig = null;
 
-export function getOpenAIClient() {
+export async function getOpenAIClient() {
+  const apiKey = await getEffectiveSetting(
+    "AI_API_KEY",
+    "ai_api_key"
+  );
+
+  const baseURL =
+    (await getEffectiveSetting(
+      "AI_BASE_URL",
+      "ai_base_url"
+    )) || "https://api.openai.com/v1";
+
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY mancante. Imposta la variabile d'ambiente o il file .env.");
+    throw new Error("AI_API_KEY non configurata.");
   }
-  if (!openaiClient) {
-    openaiClient = new OpenAI({ apiKey });
+
+  const configHash = `${baseURL}|${apiKey}`;
+
+  if (!openaiClient || currentConfig !== configHash) {
+    currentConfig = configHash;
+
+    openaiClient = new OpenAI({
+      apiKey,
+      baseURL,
+    });
   }
+
   return openaiClient;
 }
 
@@ -197,19 +220,21 @@ export const schemaCodicePratica = {
 /* --------------- CALLERS (Responses API corretto) --------------- */
 
 async function callJsonSchema({ prompt, content, fileName, schema }) {
-  // schema: oggetto con { name, schema, strict }
   if (process.env.ASTEBOOK_AI_MOCK === "1") {
     return mockJsonFromSchema(schema.schema, { content, fileName });
   }
 
-  const openai = getOpenAIClient();
+  const openai = await getOpenAIClient();
+
+  const model =
+    (await getEffectiveSetting("AI_MODEL", "ai_model")) || "gpt-4o-mini";
+
   const resp = await openai.responses.create({
-    model: "gpt-4o-mini",
+    model,
     temperature: 0,
     text: {
       format: {
         type: "json_schema",
-        // <-- QUI servono questi campi a livello di format:
         name: schema.name,
         schema: schema.schema,
         strict: schema.strict ?? true,
@@ -348,7 +373,7 @@ export async function aiExtractProposta({ text, fileName }) {
 export async function aiExtractPropostaVision({ imageUrl, imageData, fileName }) {
   const payloadUrl = imageUrl || (imageData ? `data:application/pdf;base64,${imageData}` : null);
   if (!payloadUrl) return null;
-  const openai = getOpenAIClient();
+  const openai = await getOpenAIClient();
   const resp = await openai.responses.create({
     model: "gpt-4o-mini",
     temperature: 0,

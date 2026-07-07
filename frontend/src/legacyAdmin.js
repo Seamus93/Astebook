@@ -44,6 +44,9 @@ const settingsStatus = document.querySelector("#settingsStatus");
 const processingUiToken = document.querySelector("#processingUiToken");
 const zapierWebhookToken = document.querySelector("#zapierWebhookToken");
 const adminSessionSecret = document.querySelector("#adminSessionSecret");
+const aiApiKey = document.querySelector("#aiApiKey");
+const aiBaseUrl = document.querySelector("#aiBaseUrl");
+const aiModel = document.querySelector("#aiModel");
 const pdfAppApiKey = document.querySelector("#pdfAppApiKey");
 const pdfAppOcrEndpoint = document.querySelector("#pdfAppOcrEndpoint");
 const pdfAppJobEndpoint = document.querySelector("#pdfAppJobEndpoint");
@@ -55,6 +58,9 @@ const secretInputs = {
   processing_ui_token: processingUiToken,
   zapier_webhook_token: zapierWebhookToken,
   admin_session_secret: adminSessionSecret,
+  ai_api_key: aiApiKey,
+  ai_base_url: aiBaseUrl,
+  ai_model: aiModel,
   pdf_app_api_key: pdfAppApiKey,
   pdf_app_ocr_endpoint: pdfAppOcrEndpoint,
   pdf_app_job_endpoint: pdfAppJobEndpoint,
@@ -65,6 +71,9 @@ const inputSecrets = {
   processingUiToken: "processing_ui_token",
   zapierWebhookToken: "zapier_webhook_token",
   adminSessionSecret: "admin_session_secret",
+  aiApiKey: "ai_api_key",
+  aiBaseUrl: "ai_base_url",
+  aiModel: "ai_model",
   pdfAppApiKey: "pdf_app_api_key",
   pdfAppOcrEndpoint: "pdf_app_ocr_endpoint",
   pdfAppJobEndpoint: "pdf_app_job_endpoint",

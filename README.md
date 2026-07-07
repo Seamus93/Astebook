@@ -30,7 +30,7 @@ npm start
 Variabili principali:
 
 ```text
-OPENAI_API_KEY=
+ai_api_key=
 GOOGLE_MAPS_API_KEY=
 PORT=3000
 HOST_PORT=3000

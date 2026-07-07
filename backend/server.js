@@ -397,6 +397,9 @@ app.get("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
       processing_ui_token: secretValue("PROCESSING_UI_TOKEN", "processing_ui_token"),
       zapier_webhook_token: secretValue("ZAPIER_WEBHOOK_TOKEN", "zapier_webhook_token"),
       admin_session_secret: secretValue("ADMIN_SESSION_SECRET", "admin_session_secret"),
+      ai_api_key: secretValue("ai_api_key", "ai_api_key"),    
+      ai_base_url: secretValue("ai_base_url", "ai_base_url"),
+      ai_model: secretValue("ai_model", "ai_model"),
       pdf_app_api_key: secretValue("PDF_APP_API_KEY", "pdf_app_api_key"),
       pdf_app_ocr_endpoint:
         process.env.PDF_APP_OCR_ENDPOINT || settings.pdf_app_ocr_endpoint || "",
@@ -419,6 +422,9 @@ app.post("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
   assignIfFilled("processing_ui_token");
   assignIfFilled("zapier_webhook_token");
   assignIfFilled("admin_session_secret");
+  assignIfFilled("ai_api_key");
+  assignIfFilled("ai_base_url");
+  assignIfFilled("ai_model");
   assignIfFilled("pdf_app_api_key");
   assignIfFilled("pdf_app_ocr_endpoint");
   assignIfFilled("pdf_app_job_endpoint");

@@ -34,8 +34,16 @@ async function readEvents() {
   const raw = await readFile(logFile, "utf8");
   return raw
     .split("\n")
+    .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => JSON.parse(line));
+    .flatMap((line) => {
+      try {
+        return [JSON.parse(line)];
+      } catch (error) {
+        console.error("[processing_log] invalid JSONL line skipped", error);
+        return [];
+      }
+    });
 }
 
 async function writeEvents(events) {

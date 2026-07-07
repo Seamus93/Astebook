@@ -22,6 +22,12 @@ export async function getOpenAIClient() {
     "ai_api_key"
   );
 
+    console.log("AI CONFIG", {
+    hasApiKey: Boolean(apiKey),
+    apiKeyLength: apiKey?.length,
+    baseURL,
+  });
+
   const baseURL =
     (await getEffectiveSetting(
       "AI_BASE_URL",

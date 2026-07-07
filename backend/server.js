@@ -368,9 +368,14 @@ app.post("/logout", (_req, res) => clearAdminSession(res));
 app.post("/admin/logout", (_req, res) => clearAdminSession(res));
 
 const reactAdminDir = join(process.cwd(), "frontend", "dist");
-const legacyAdminDir = join(process.cwd(), "frontend", "admin");
-const adminStaticDir = existsSync(join(reactAdminDir, "index.html")) ? reactAdminDir : legacyAdminDir;
-app.use("/admin", requireAdminSession, express.static(adminStaticDir));
+if (!existsSync(join(reactAdminDir, "index.html"))) {
+  console.warn("React admin build not found at frontend/dist; please run 'npm run build' in the frontend folder before deploying.");
+}
+app.use("/admin", requireAdminSession, express.static(reactAdminDir));
+// SPA fallback: serve index.html for any admin route (lets React Router handle client-side routing)
+app.get("/admin/*", requireAdminSession, (_req, res) => {
+  res.sendFile(join(reactAdminDir, "index.html"));
+});
 
 function redactSecret(value) {
   if (!value) return "";

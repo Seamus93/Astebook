@@ -1,4 +1,4 @@
-﻿import express from "express";
+import express from "express";
 import multer from "multer";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
@@ -8,18 +8,16 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { existsSync } from "node:fs";
 
 import { mergeAnnuncioProposta } from "./lib/merge_json.js";
-import { aiExtractAnnuncio, aiExtractProposta, aiExtractProvvigionePercentuale } from "./lib/ai.js";
+import {
+  aiExtractAnnuncio,
+  aiExtractCodicePratica,
+  aiExtractProposta,
+  aiExtractProvvigionePercentuale,
+} from "./lib/ai.js";
 import { parseDocxBuffer } from "./lib/docx.js";
-import { buildDocumentDocx, buildDocumentHtml, buildDocumentPdf, buildDocumentText } from "./lib/document_builder.js";
+import { buildDocumentDocx, buildDocumentPdf } from "./lib/document_builder.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
 import { ocrFileUrlWithPdfApp } from "./lib/pdf_app.js";
-import { scrapeAnnuncioFromText } from "./scrapers/scrape_annuncio.js";
-import { scrapeProvvigionePercentuale } from "./scrapers/scrape_provvigione.js";
-import {
-  resolveCodicePraticaFromPayload,
-  scrapeCodicePraticaFromText,
-} from "./scrapers/scrape_annuncio/scrape_codice_pratica.js";
-import { scrapePropostaFromText } from "./scrapers/scrape_proposta.js";
 import {
   createProcessingEvent,
   getProcessingEvent,
@@ -563,14 +561,18 @@ app.get("/api/v1/processing-events/:id/document", requireProcessingUiToken, asyn
   const fileName = `astebook-${event.id}.${format === "doc" ? "doc" : format}`;
 
   if (format === "html") {
-    res.type("html").send(buildDocumentHtml(event));
+    res.status(410).json({
+      ok: false,
+      error: "Formato legacy non supportato. Usa format=pdf o format=docx con DOCUMENT_TEMPLATE_URL.",
+    });
     return;
   }
 
   if (format === "doc") {
-    res.setHeader("content-type", "application/msword; charset=utf-8");
-    res.setHeader("content-disposition", `inline; filename="${fileName}"`);
-    res.send(buildDocumentHtml(event));
+    res.status(410).json({
+      ok: false,
+      error: "Formato legacy non supportato. Usa format=docx.",
+    });
     return;
   }
 
@@ -595,7 +597,10 @@ app.get("/api/v1/processing-events/:id/document", requireProcessingUiToken, asyn
   }
 
   if (format === "txt") {
-    res.type("text/plain").send(buildDocumentText(event));
+    res.status(410).json({
+      ok: false,
+      error: "Formato legacy non supportato. Usa format=pdf o format=docx.",
+    });
     return;
   }
 
@@ -813,6 +818,22 @@ function firstBodyValue(body, keys) {
   return keys.map((key) => body?.[key]).find((value) => value !== undefined && value !== null) || "";
 }
 
+function normalizeDirectCodicePratica(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/\s*([-_])\s*/g, "_")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .toUpperCase();
+  return normalized || null;
+}
+
+function directCodicePraticaFromPayload(body) {
+  return normalizeDirectCodicePratica(
+    firstBodyValue(body, ["codice_pratica", "codicePratica", "practice_code", "practiceCode", "sigla"])
+  );
+}
+
 function resolveEmailText(body) {
   return String(
     firstBodyValue(body, [
@@ -849,7 +870,7 @@ function resolveProvvigioneText(body) {
   );
 }
 
-function normalizeEmailTextForScraper(text) {
+function normalizeEmailTextForExtraction(text) {
   return String(text || "")
     .replace(/<br\s*\/?>/gi, "\n")
     .replace(/<\/(p|div|li|tr|h[1-6])>/gi, "\n")
@@ -1163,7 +1184,7 @@ function normalizeAttachmentDescriptor(raw) {
     size: raw?.size || null,
     url: typeof url === "string" && /^https?:\/\//i.test(url) ? url : null,
     kind: attachmentKind(fileName),
-    supported_by_scraper: isPdfAttachment({
+    supported_by_extraction: isPdfAttachment({
       file_name: fileName,
       mime_type: mimeType,
     }) || isDocxAttachment({ file_name: fileName, mime_type: mimeType }) || isImageAttachment({ file_name: fileName, mime_type: mimeType }),
@@ -1357,6 +1378,7 @@ function addUniqueNote(result, note) {
 async function runAiExtractionPipeline({ body = {}, files = [], eventId, source = "zapier.email_activation" }) {
   const event = { id: eventId };
   const emailText = resolveEmailText(body);
+  const initialCodicePratica = directCodicePraticaFromPayload(body) || "";
   const attachmentInputs = collectZapierAttachments(body, files);
   const attachments = attachmentInputs.map(({ buffer, ...safeDescriptor }) => safeDescriptor);
   const result = {
@@ -1364,7 +1386,7 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
     mode: "ai_extraction_pipeline",
     source,
     ready_for_zapier: false,
-    codice_pratica: resolveCodicePraticaFromPayload(body) || "",
+    codice_pratica: initialCodicePratica,
     email: {
       subject: firstBodyValue(body, ["subject", "email_subject", "oggetto"]) || null,
       from: firstBodyValue(body, ["from", "email_from", "mittente"]) || null,
@@ -1387,12 +1409,25 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
       message: "Payload normalized for AI extraction",
       data: {
         attachment_count: attachments.length,
-        initially_supported_count: attachments.filter((attachment) => attachment.supported_by_scraper).length,
+        initially_supported_count: attachments.filter((attachment) => attachment.supported_by_extraction).length,
       },
     }
   );
 
-  const emailAnnouncementText = normalizeEmailTextForScraper(emailText);
+  const emailAnnouncementText = normalizeEmailTextForExtraction(emailText);
+  if (!result.codice_pratica) {
+    const codiceAi = await extractCodicePraticaAiOnly({
+      text: [
+        firstBodyValue(body, ["subject", "email_subject", "oggetto"]),
+        emailAnnouncementText,
+      ].filter(Boolean).join("\n"),
+      fileName: "Oggetto e corpo email",
+      eventId: event.id,
+      result,
+    });
+    result.codice_pratica = codiceAi || "";
+  }
+
   if (emailAnnouncementText) {
     const emailAnnouncement = await extractAnnuncioAiFirst({
       text: emailAnnouncementText,
@@ -1403,9 +1438,6 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
     });
     if (hasUsefulAnnuncioData(emailAnnouncement)) {
       result.extracted.annuncio = emailAnnouncement;
-      if (!result.codice_pratica) {
-        result.codice_pratica = scrapeCodicePraticaFromText(emailAnnouncementText) || "";
-      }
       await updateProcessingEvent(event.id, { result }, {
         message: "Email body announcement extracted",
         data: emailAnnouncement,
@@ -1459,7 +1491,7 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
         error: buildMissingFieldsError(result),
       },
       {
-        message: "No supported scraper input found",
+        message: "No supported AI extraction input found",
         data: {
           accepted_formats: ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/*"],
           received_files: attachments.map((attachment) => ({
@@ -1492,7 +1524,7 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
       size: resolvedAttachment.size,
       url: resolvedAttachment.url,
       kind: resolvedAttachment.kind,
-      supported_by_scraper: ["pdf", "docx", "image"].includes(resolvedAttachment.format),
+      supported_by_extraction: ["pdf", "docx", "image"].includes(resolvedAttachment.format),
       format: resolvedAttachment.format,
     };
     const existingIndex = result.attachments.findIndex(
@@ -1565,7 +1597,12 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
           result.extracted.annuncio.provvigione_source = result.extracted.provvigione.file_pdf;
         }
         if (!result.codice_pratica) {
-          result.codice_pratica = scrapeCodicePraticaFromText(attachmentText) || "";
+          result.codice_pratica = await extractCodicePraticaAiOnly({
+            text: attachmentText,
+            fileName: resolvedAttachment.file_name,
+            eventId: event.id,
+            result,
+          }) || "";
         }
         await updateProcessingEvent(event.id, { result }, {
           message: "Auction announcement extracted",
@@ -1618,95 +1655,74 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
 }
 
 async function extractAnnuncioAiFirst({ text, fileName, eventId, result, fallbackMessage }) {
-  const local = scrapeAnnuncioFromText(text, fileName);
   try {
-    const ai = await aiExtractAnnuncio({ text, fileName });
-    return mergeMissingValues(ai, local);
+    return await aiExtractAnnuncio({ text, fileName });
   } catch (error) {
     await updateProcessingEvent(eventId, {}, {
       level: "error",
-      message: "Announcement AI extraction failed; local fallback",
+      message: "Announcement AI extraction failed",
       data: {
         file_name: fileName,
         error: error.message || String(error),
       },
     });
     addUniqueNote(result, `${fileName}: AI annuncio fallita (${error.message || String(error)})`);
-    await updateProcessingEvent(eventId, {}, {
-      message: fallbackMessage || "Announcement local fallback completed",
-      data: local,
-    });
-    return local;
+    throw error;
   }
 }
 
 async function extractPropostaAiFirst({ text, fileName, eventId, result }) {
-  const local = scrapePropostaFromText(text, fileName);
   try {
-    const ai = await aiExtractProposta({ text, fileName });
-    return mergeMissingValues(ai, local);
+    return await aiExtractProposta({ text, fileName });
   } catch (error) {
     await updateProcessingEvent(eventId, {}, {
       level: "error",
-      message: "Proposal AI extraction failed; local fallback",
+      message: "Proposal AI extraction failed",
       data: {
         file_name: fileName,
         error: error.message || String(error),
       },
     });
     addUniqueNote(result, `${fileName}: AI proposta fallita (${error.message || String(error)})`);
-    await updateProcessingEvent(eventId, {}, {
-      message: "Proposal local fallback completed",
-      data: local,
-    });
-    return local;
+    throw error;
   }
 }
 
 async function extractProvvigioneAiFirst({ text, fileName, eventId, result }) {
-  const local = scrapeProvvigionePercentuale(text);
   try {
     const ai = await aiExtractProvvigionePercentuale({ text, fileName });
-    return typeof ai?.provvigione_percentuale === "number" ? ai.provvigione_percentuale : local;
+    return typeof ai?.provvigione_percentuale === "number" ? ai.provvigione_percentuale : null;
   } catch (error) {
     await updateProcessingEvent(eventId, {}, {
       level: "error",
-      message: "Commission AI extraction failed; local fallback",
+      message: "Commission AI extraction failed",
       data: {
         file_name: fileName,
         error: error.message || String(error),
       },
     });
     addUniqueNote(result, `${fileName}: AI provvigione fallita (${error.message || String(error)})`);
-    return local;
+    throw error;
   }
 }
 
-function mergeMissingValues(primary, fallback) {
-  if (!primary || typeof primary !== "object") return fallback;
-  if (!fallback || typeof fallback !== "object") return primary;
-  const merged = Array.isArray(primary) ? [...primary] : { ...primary };
-  Object.entries(fallback).forEach(([key, fallbackValue]) => {
-    const primaryValue = merged[key];
-    if (isMissingValue(primaryValue)) {
-      merged[key] = fallbackValue;
-      return;
-    }
-    if (
-      primaryValue &&
-      fallbackValue &&
-      typeof primaryValue === "object" &&
-      typeof fallbackValue === "object" &&
-      !Array.isArray(primaryValue) &&
-      !Array.isArray(fallbackValue)
-    ) {
-      merged[key] = mergeMissingValues(primaryValue, fallbackValue);
-    }
-    if (Array.isArray(primaryValue) && primaryValue.length === 0 && Array.isArray(fallbackValue)) {
-      merged[key] = fallbackValue;
-    }
-  });
-  return merged;
+async function extractCodicePraticaAiOnly({ text, fileName, eventId, result }) {
+  if (!String(text || "").trim()) return null;
+  try {
+    const ai = await aiExtractCodicePratica({ text, fileName });
+    return ai?.codice_pratica || null;
+  } catch (error) {
+    await updateProcessingEvent(eventId, {}, {
+      level: "error",
+      message: "Practice code AI extraction failed",
+      data: {
+        file_name: fileName,
+        error: error.message || String(error),
+      },
+    });
+    addUniqueNote(result, `${fileName}: AI codice pratica fallita (${error.message || String(error)})`);
+    return null;
+  }
 }
 
 async function buildMergedFromExtractionResult(result) {
@@ -1958,303 +1974,6 @@ app.post("/callAI", upload, async (req, res) => {
   }
 });
 
-app.post("/callAI-legacy", upload, async (req, res) => {
-  let processingEvent = null;
-  try {
-    const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};
-    processingEvent = await createProcessingEvent({
-      source: "callAI",
-      status: "processing",
-      body,
-      files: req.files,
-      metadata: {
-        subject: body.subject || body.email_subject || body.oggetto || null,
-        from: body.from || body.email_from || body.mittente || null,
-        zap_run_id: body.zap_run_id || body.zapRunId || null,
-        email_id: body.email_id || body.message_id || body.gmail_id || null,
-      },
-    });
-    const rawEmailBody = typeof body.email_body_text === "string" ? body.email_body_text : "";
-    const codice_pratica =
-      resolveCodicePraticaFromPayload(body) || scrapeCodicePraticaFromText(rawEmailBody);
-    const provvigioneOcrText =
-      typeof body.provvigione_ocr === "string"
-        ? body.provvigione_ocr
-        : typeof body.provvigione_ocr_text === "string"
-        ? body.provvigione_ocr_text
-        : "";
-    const files = Array.isArray(req.files) ? req.files : [];
-    await updateProcessingEvent(
-      processingEvent.id,
-      { status: "extracting" },
-      {
-        message: "Validated input and started extraction",
-        data: {
-          codice_pratica,
-          has_email_body: rawEmailBody.trim().length > 0,
-          file_count: files.length,
-        },
-      }
-    );
-
-    const propostaUploadFile = fileByField(files, "proposta") || firstFile(files);
-
-    const hasAnnuncioEmail = rawEmailBody.trim().length > 0;
-    if (!hasAnnuncioEmail) {
-      throw new Error("Manca annuncio: popola 'email_body_text' con il testo dell'annuncio.");
-    }
-
-    const annuncioFileName = body.annuncio_name || "AnnuncioEmail.txt";
-    const annuncioText = rawEmailBody;
-
-    // Proposta: OCR testo prioritario; PDF come fallback (upload/base64/url).
-    let proBuf = null;
-    let proName = body.proposta_name || "Proposta.txt";
-    if (propostaUploadFile?.buffer) {
-      proBuf = propostaUploadFile.buffer;
-      proName = propostaUploadFile.originalname || body.proposta_name || "Proposta.pdf";
-    } else if (body.proposta_base64) {
-      const parts = String(body.proposta_base64).split(",");
-      const payload = parts.length > 1 ? parts[1] : parts[0];
-      proBuf = Buffer.from(payload, "base64");
-      proName = body.proposta_name || "Proposta.pdf";
-    } else if (body.proposta_url) {
-      const url = String(body.proposta_url).trim();
-      if (url) {
-        const resp = await fetch(url);
-        if (!resp.ok)
-          throw new Error(`Download proposta fallito: ${resp.status} ${resp.statusText}`);
-        const arrayBuf = await resp.arrayBuffer();
-        proBuf = Buffer.from(arrayBuf);
-        proName = body.proposta_name || "Proposta.pdf";
-      }
-    }
-
-    // testo proposta: OCR sempre usato se presente
-    const propostaTextBody =
-      typeof body.proposta_ocr === "string"
-        ? body.proposta_ocr
-        : typeof body.proposta_text === "string"
-        ? body.proposta_text
-        : typeof body.proposta_ocr_text === "string"
-        ? body.proposta_ocr_text
-        : typeof body.ocr_text === "string"
-        ? body.ocr_text
-        : "";
-
-    let combinedProText = propostaTextBody;
-    if (!combinedProText.trim()) {
-      if (!proBuf) {
-        throw new Error("Manca testo OCR della proposta (proposta_ocr) e nessun PDF fornito.");
-      }
-      const parsedPro = await parsePdfBuffer(proBuf);
-      combinedProText = parsedPro?.text || "";
-    }
-    const aiAnnuncio = await aiExtractAnnuncio({
-      text: annuncioText,
-      fileName: annuncioFileName,
-      mode: "email",
-    });
-    await updateProcessingEvent(processingEvent.id, { status: "extracting" }, {
-      message: "Auction announcement extracted",
-      data: aiAnnuncio,
-    });
-
-    let aiProposta = await aiExtractProposta({ text: combinedProText, fileName: proName });
-    await updateProcessingEvent(processingEvent.id, { status: "extracting" }, {
-      message: "Proposal extracted",
-      data: aiProposta,
-    });
-
-    let provvigioneFromOcr = null;
-    if (provvigioneOcrText.trim()) {
-      const aiProvvigione = await aiExtractProvvigionePercentuale({
-        text: provvigioneOcrText,
-        fileName: "provvigione_ocr.txt",
-      });
-      if (typeof aiProvvigione?.provvigione_percentuale === "number") {
-        provvigioneFromOcr = aiProvvigione.provvigione_percentuale;
-      }
-    }
-
-    // BIC lookup da IBAN (se presente)
-    if (aiProposta.iban_beneficiario) {
-      const { bic, bank } = await fetchIbanInfo(aiProposta.iban_beneficiario);
-      if (!aiProposta.bic_cauzione) aiProposta.bic_cauzione = bic;
-      if (!aiProposta.beneficiario_cauzione) aiProposta.beneficiario_cauzione = bank;
-    }
-    // Fallback beneficiario dal testo proposta (es. "intestato a ...")
-    if (!aiProposta.beneficiario_cauzione && combinedProText) {
-      const m = combinedProText.match(/intestat[oa]\s+a\s+([^\n;,]+?)(?=\s*(iban|iban:|IBAN|Iban|;|,|\n))/i);
-      if (m?.[1]) aiProposta.beneficiario_cauzione = m[1].trim();
-    }
-
-    const addressCandidate = aiProposta?.indirizzo_immobile || aiAnnuncio?.indirizzo || null;
-    const geocoded = await geocodeAddress(addressCandidate);
-
-    const data_apertura_pubblicazione = computeDataAperturaPubblicazione();
-    const data_redazione_oggi = formatLocalISODate(new Date());
-    const anno_redazione_oggi = new Date().getFullYear();
-    const dataTermineDepositoRaw = aiAnnuncio.data_termine_deposito || null;
-    const dataTermineDepositoISO = toISOFromITDate(dataTermineDepositoRaw);
-    const dataGaraAnnuncioISO = toISOFromITDate(aiAnnuncio.data_vendita);
-    let data_termine_deposito = dataTermineDepositoISO || dataTermineDepositoRaw || null;
-    const ora_termine_deposito = aiAnnuncio.ora_termine_deposito || null;
-    let data_gara = null;
-    let dataGaraComputed = false;
-    if (dataTermineDepositoISO) {
-      // +2 giorni pieni -> gara il terzo giorno di calendario (weekend inclusi).
-      data_gara = addDaysToISODate(dataTermineDepositoISO, 3);
-      dataGaraComputed = true;
-    } else if (dataGaraAnnuncioISO) {
-      data_gara = dataGaraAnnuncioISO;
-      if (!data_termine_deposito) {
-        data_termine_deposito = addDaysToISODate(dataGaraAnnuncioISO, -3);
-      }
-    }
-    if (dataGaraComputed && data_gara) data_gara = shiftISOToNextBusinessDay(data_gara);
-    const ora_gara_inizio = aiAnnuncio.ora_gara_inizio || "09:00";
-    const ora_gara_fine = aiAnnuncio.ora_gara_fine || "12:00";
-    const provvigione_percentuale =
-      typeof provvigioneFromOcr === "number" && provvigioneFromOcr > 0
-        ? provvigioneFromOcr
-        : typeof aiAnnuncio.provvigione_percentuale === "number" && aiAnnuncio.provvigione_percentuale > 0
-        ? aiAnnuncio.provvigione_percentuale
-        : 3;
-
-    const merged = mergeAnnuncioProposta(
-      {
-        file_pdf: aiAnnuncio.file_pdf,
-        indirizzo: aiAnnuncio.indirizzo,
-        data_vendita: aiAnnuncio.data_vendita,
-        ora_vendita: aiAnnuncio.ora_vendita,
-        offerta_minima: aiAnnuncio.offerta_minima,
-        rilancio_minimo: 1000,
-        offerta_minima_ammissibile:
-          aiAnnuncio.offerta_minima != null
-            ? Number(aiAnnuncio.offerta_minima) + 1000
-            : null,
-        stato: aiAnnuncio.stato,
-        ora_gara_inizio: aiAnnuncio.ora_gara_inizio,
-        ora_gara_fine: aiAnnuncio.ora_gara_fine,
-        termine_richieste_visite_data: aiAnnuncio.termine_richieste_visite_data,
-        termine_richieste_visite_ora: aiAnnuncio.termine_richieste_visite_ora,
-        data_termine_deposito: aiAnnuncio.data_termine_deposito,
-        ora_termine_deposito: aiAnnuncio.ora_termine_deposito,
-        descrizione: aiAnnuncio.descrizione,
-        provvigione_percentuale,
-      },
-      {
-        file_pdf: aiProposta.file_pdf,
-        proponente: aiProposta.proponente,
-        indirizzo_immobile: aiProposta.indirizzo_immobile,
-        descrizione_immobile: aiProposta.descrizione_immobile,
-        prezzo_offerto: aiProposta.prezzo_offerto,
-        deposito_cauzionale: aiProposta.deposito_cauzionale,
-        cauzione_percentuale: aiProposta.cauzione_percentuale,
-        iban_beneficiario: aiProposta.iban_beneficiario,
-        bic_cauzione: aiProposta.bic_cauzione,
-        beneficiario_cauzione: aiProposta.beneficiario_cauzione,
-        irrevocabile_giorni: aiProposta.irrevocabile_giorni,
-        rogito_entro_giorni: aiProposta.rogito_entro_giorni,
-        catasto: aiProposta.catasto,
-        luogo_redazione: aiProposta.luogo_redazione,
-        data_redazione: aiProposta.data_redazione,
-        anno_redazione: aiProposta.anno_redazione,
-      }
-    );
-
-    if (geocoded) {
-      if (geocoded.indirizzo) merged.immobile.indirizzo = geocoded.indirizzo;
-      if (geocoded.comune) merged.immobile.comune = geocoded.comune;
-      if (geocoded.cap) merged.immobile.cap = geocoded.cap;
-      if (geocoded.provincia) merged.immobile.provincia = geocoded.provincia;
-    }
-
-    merged.deposito = merged.deposito || {};
-    merged.deposito.data_termine_deposito =
-      merged.deposito.data_termine_deposito ?? data_termine_deposito;
-    merged.deposito.ora_termine_deposito =
-      merged.deposito.ora_termine_deposito ?? ora_termine_deposito;
-    merged.gara.data_gara = data_gara;
-    merged.gara.ora_inizio = merged.gara.ora_inizio || ora_gara_inizio;
-    merged.gara.ora_fine = merged.gara.ora_fine || ora_gara_fine;
-    merged.data_apertura_pubblicazione = data_apertura_pubblicazione;
-    merged.codice_pratica = codice_pratica;
-    if (merged.redazione) {
-      merged.redazione.data = data_redazione_oggi;
-      merged.redazione.anno = anno_redazione_oggi;
-    }
-
-    // Default numerici a 0 se mancanti
-    ensureNumberDefaults(merged.gara, ["offerta_minima", "offerta_minima_ammissibile", "rilancio_minimo"]);
-    ensureNumberDefaults(merged.deposito, ["deposito_cauzionale"]);
-    ensureNumberDefaults(merged.termini, ["irrevocabile_giorni", "rogito_entro_giorni"]);
-    ensureNumberDefaults(merged.redazione, ["anno"]);
-
-    // Output date in formato testuale italiano ("10 dicembre 2025")
-    const formatDateFields = (obj, keys) => {
-      keys.forEach((k) => {
-        if (obj && obj[k]) obj[k] = toItalianTextDate(obj[k]);
-      });
-    };
-
-    formatDateFields(merged.gara, ["data", "data_gara", "data_vendita"]);
-    formatDateFields(merged.asta, ["data"]);
-    formatDateFields(merged.visite, ["termine_data"]);
-    formatDateFields(merged.deposito, ["data_termine_deposito"]);
-    formatDateFields(merged.redazione, ["data"]);
-    merged.data_apertura_pubblicazione = toItalianTextDate(merged.data_apertura_pubblicazione);
-
-    // Formatta importi come stringhe italiane 0.000,00
-    const formatMoneyFields = (obj, keys) => {
-      keys.forEach((k) => {
-        if (obj && obj[k] !== undefined) obj[k] = formatMoneyIT(obj[k]);
-      });
-    };
-    formatMoneyFields(merged.gara, ["offerta_minima", "offerta_minima_ammissibile", "rilancio_minimo"]);
-    formatMoneyFields(merged.deposito, ["deposito_cauzionale"]);
-
-    // Sostituisci i null residui con stringa vuota
-    replaceNullishWithEmptyString(merged);
-
-    const responsePayload = { ok: true, codice_pratica: codice_pratica || "", merged };
-    await updateProcessingEvent(
-      processingEvent.id,
-      {
-        status: "completed",
-        result: responsePayload,
-      },
-      {
-        message: "Processing completed",
-        data: {
-          codice_pratica: responsePayload.codice_pratica,
-        },
-      }
-    );
-
-    res.json(responsePayload);
-  } catch (error) {
-    console.error("[callAI] error", error);
-    if (processingEvent?.id) {
-      await updateProcessingEvent(
-        processingEvent.id,
-        {
-          status: "failed",
-          error: {
-            message: error.message || String(error),
-            stack: error.stack || null,
-          },
-        },
-        {
-          level: "error",
-          message: "Processing failed",
-        }
-      );
-    }
-    res.status(500).json({ ok: false, error: error.message || String(error) });
-  }
-});
 
 export function startServer(port = process.env.PORT || 3000) {
   return app.listen(port, () => console.log(`Server up on http://localhost:${port}`));

@@ -127,16 +127,16 @@ function eventWorkflowIssue(event) {
     };
   }
 
-  const scraperStep = steps.find(
-    (step) => step.level === "error" && /scraper|extraction|estrazione/i.test(step.message || "")
+  const extractionStep = steps.find(
+    (step) => step.level === "error" && /extraction|estrazione/i.test(step.message || "")
   );
-  if (scraperStep || missingFields.length > 0 || event.result?.ready_for_zapier === false) {
+  if (extractionStep || missingFields.length > 0 || event.result?.ready_for_zapier === false) {
     return {
-      step: "Scraper",
+      step: "AI Extraction",
       message:
         missingFields.length > 0
           ? `${missingFields.length} dati mancanti dopo l'estrazione.`
-          : scraperStep?.message || "Estrazione incompleta.",
+          : extractionStep?.message || "Estrazione incompleta.",
       details: eventErrorSummary(event).slice(0, 6),
     };
   }

@@ -11,8 +11,8 @@ process.env.ADMIN_PASSWORD = "test-password";
 process.env.ADMIN_SESSION_SECRET = "test-session-secret";
 process.env.PROCESSING_UI_TOKEN = "test-ui-token";
 process.env.ZAPIER_WEBHOOK_TOKEN = "test-webhook-token";
+process.env.ASTEBOOK_AI_MOCK = "1";
 const { app, mergeExtractedProposta } = await import("../server.js");
-const { scrapeProvvigionePercentuale } = await import("../scrapers/scrape_provvigione.js");
 
 test.after(async () => {
   await rm(runtimeDir, { recursive: true, force: true });
@@ -70,8 +70,7 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.ok(intakePayload.event_id);
     assert.equal(intakePayload.result.ready_for_zapier, false);
     assert.equal(intakePayload.result.email.has_body_text, true);
-    assert.equal(intakePayload.result.extracted.annuncio.indirizzo, "Via Roma, 1, Roma");
-    assert.equal(intakePayload.result.extracted.annuncio.offerta_minima, 210000);
+    assert.equal(intakePayload.result.extracted.annuncio.file_pdf, "Corpo email");
     assert.equal(intakePayload.result.attachments.length, 2);
     assert.equal(intakePayload.result.codice_pratica, "RM_ROMA_TOL_202949480010");
 
@@ -106,11 +105,11 @@ test("Zapier intake creates a processing event visible from the UI API", async (
         headers: { "x-astebook-token": "test-ui-token" },
       }
     );
-    const documentBytes = Buffer.from(await documentResponse.arrayBuffer());
+    const documentPayload = await documentResponse.json();
 
-    assert.equal(documentResponse.status, 200);
-    assert.equal(documentResponse.headers.get("content-type"), "application/pdf");
-    assert.equal(documentBytes.subarray(0, 4).toString("utf8"), "%PDF");
+    assert.equal(documentResponse.status, 500);
+    assert.equal(documentPayload.error, "Generazione PDF fallita.");
+    assert.match(documentPayload.detail, /DOCUMENT_TEMPLATE_URL non configurato/);
 
     const docxResponse = await fetch(
       `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/document?format=docx`,
@@ -358,12 +357,4 @@ test("DOCX generation returns a clear error when template download is not a DOCX
       server.close((error) => (error ? reject(error) : resolve()));
     });
   }
-});
-
-test("provvigione percentage is extracted near commission labels", () => {
-  assert.equal(
-    scrapeProvvigionePercentuale("Costo di mediazione dovuto a I-RESALES nella misura pari al 4%"),
-    4
-  );
-  assert.equal(scrapeProvvigionePercentuale("Riferimento catastale foglio 463 sub 733"), null);
 });

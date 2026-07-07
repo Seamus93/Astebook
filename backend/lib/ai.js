@@ -2,6 +2,7 @@
 import OpenAI from "openai";
 import dotenv from "dotenv";
 import {
+  AI_FIELD_AGENTS,
   PROMPT_ANNUNCIO,
   PROMPT_INDIRIZZO,
   PROMPT_PROPOSTA,
@@ -180,10 +181,27 @@ export const schemaIndirizzo = {
   strict: true,
 };
 
+export const schemaCodicePratica = {
+  name: "CodicePraticaSchema",
+  schema: {
+    type: "object",
+    required: ["codice_pratica"],
+    properties: {
+      codice_pratica: { type: ["string", "null"] },
+    },
+    additionalProperties: false,
+  },
+  strict: true,
+};
+
 /* --------------- CALLERS (Responses API corretto) --------------- */
 
 async function callJsonSchema({ prompt, content, fileName, schema }) {
   // schema: oggetto con { name, schema, strict }
+  if (process.env.ASTEBOOK_AI_MOCK === "1") {
+    return mockJsonFromSchema(schema.schema, { content, fileName });
+  }
+
   const openai = getOpenAIClient();
   const resp = await openai.responses.create({
     model: "gpt-4o-mini",
@@ -228,6 +246,48 @@ export async function aiExtractProvvigionePercentuale({ text, fileName }) {
   json.provvigione_percentuale = normalizePercent(json.provvigione_percentuale);
   if (json.provvigione_percentuale == null) json.provvigione_percentuale = guess;
 
+  return json;
+}
+
+function mockJsonFromSchema(schema, { content = "", fileName = null } = {}) {
+  if (!schema || typeof schema !== "object") return null;
+  if (Array.isArray(schema.type)) {
+    const firstNonNull = schema.type.find((type) => type !== "null");
+    if (!firstNonNull) return null;
+    return mockJsonFromSchema({ ...schema, type: firstNonNull }, { content, fileName });
+  }
+  if (schema.type === "object") {
+    const value = {};
+    Object.entries(schema.properties || {}).forEach(([key, childSchema]) => {
+      value[key] = mockJsonFromSchema(childSchema, { content, fileName });
+    });
+    if ("file_pdf" in value) value.file_pdf = fileName || null;
+    if ("raw_length" in value) value.raw_length = String(content || "").length;
+    if ("codice_pratica" in value) value.codice_pratica = "RM_ROMA_TOL_202949480010";
+    return value;
+  }
+  if (schema.type === "array") return [];
+  if (schema.type === "number" || schema.type === "integer") return null;
+  if (schema.type === "boolean") return null;
+  return null;
+}
+
+export async function aiExtractCodicePratica({ text, fileName }) {
+  const content = clampText(text || "", 20_000);
+  const json = await callJsonSchema({
+    prompt: AI_FIELD_AGENTS.annuncio.codice_pratica.prompt,
+    content,
+    fileName: fileName || "codice_pratica.txt",
+    schema: schemaCodicePratica,
+  });
+  if (json.codice_pratica) {
+    json.codice_pratica = String(json.codice_pratica)
+      .trim()
+      .replace(/\s*([-_])\s*/g, "_")
+      .replace(/\s+/g, "_")
+      .replace(/_+/g, "_")
+      .toUpperCase();
+  }
   return json;
 }
 

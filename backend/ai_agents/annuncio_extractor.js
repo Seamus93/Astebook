@@ -2,7 +2,7 @@ export const annuncioExtractorAgent = {
   id: "annuncio_document_extractor",
   description: "Estrae dati strutturati da annunci immobiliari d'asta.",
   prompt: `
-Sei uno scraper documentale. Questo e il testo di una scheda "ANNUNCIO" da portale immobiliare d'asta.
+Sei un agente AI di estrazione documentale. Questo e il testo di una scheda "ANNUNCIO" da portale immobiliare d'asta.
 Estrai i campi richiesti e restituisci SOLO JSON conforme allo schema. NON inventare valori: se mancano -> null.
 Normalizza:
 - importi come numeri ma formattati come stringhe "00.000,00" (punto ogni 3 cifre, virgola per i centesimi),

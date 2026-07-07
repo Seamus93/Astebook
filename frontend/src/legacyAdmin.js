@@ -349,12 +349,12 @@ const workflowSteps = [
     failed: (event) => event.steps?.some((step) => step.level === "error" && /ocr/i.test(step.message)),
   },
   {
-    key: "scraper",
-    label: "Scraper",
+    key: "extraction",
+    label: "AI",
     icon: "fact_check",
     done: hasExtractedData,
     failed: (event) =>
-      event.steps?.some((step) => step.level === "error" && /scraper|extraction|estrazione/i.test(step.message)) ||
+      event.steps?.some((step) => step.level === "error" && /extraction|estrazione/i.test(step.message)) ||
       event.status === "failed",
   },
   {
@@ -590,7 +590,7 @@ function renderFileSections(event) {
       mime_type: file.mime_type || file.mimetype || null,
       format: file.format || null,
       kind: file.kind || null,
-      supported_by_scraper: file.supported_by_scraper,
+      supported_by_extraction: file.supported_by_extraction,
       size: file.size || null,
     };
     const descriptorContainer = document.createElement("div");

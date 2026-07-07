@@ -1,4 +1,3 @@
-import PDFDocument from "pdfkit";
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
 import { execFile } from "node:child_process";
@@ -6,7 +5,6 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { disciplinareTemplate } from "../templates/disciplinare.js";
 import { getEffectiveSetting } from "./app_config.js";
 
 const execFileAsync = promisify(execFile);
@@ -110,43 +108,6 @@ export function buildDocumentFields(event) {
   };
 }
 
-export function fillTemplate(template, fields) {
-  return template.replace(/\{\{([^}]+)\}\}/g, (_match, key) => {
-    const value = fields[String(key).trim()];
-    return value === undefined || value === null || String(value).trim() === "" ? " " : String(value);
-  });
-}
-
-export function buildDocumentText(event) {
-  return fillTemplate(disciplinareTemplate, buildDocumentFields(event));
-}
-
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-export function buildDocumentHtml(event) {
-  const text = buildDocumentText(event);
-  return `<!doctype html>
-<html lang="it">
-  <head>
-    <meta charset="utf-8" />
-    <title>Disciplinare Astebook</title>
-    <style>
-      body { margin: 0; background: #f4f6f8; color: #111827; font-family: Georgia, "Times New Roman", serif; }
-      main { width: min(900px, calc(100vw - 32px)); margin: 24px auto; background: white; padding: 56px 64px; box-shadow: 0 16px 50px rgba(17,24,39,.14); }
-      pre { white-space: pre-wrap; font: inherit; line-height: 1.45; margin: 0; }
-      @media print { body { background: white; } main { width: auto; margin: 0; box-shadow: none; padding: 0; } }
-    </style>
-  </head>
-  <body><main><pre>${escapeHtml(text)}</pre></main></body>
-</html>`;
-}
-
 async function convertDocxToPdf(docxBuffer) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "astebook-doc-"));
   const docxPath = path.join(tempDir, "disciplinare.docx");
@@ -163,27 +124,12 @@ async function convertDocxToPdf(docxBuffer) {
   }
 }
 
-async function buildTextPdf(event) {
-  const text = buildDocumentText(event);
-  const doc = new PDFDocument({ size: "A4", margin: 54, bufferPages: true });
-  const chunks = [];
-  doc.on("data", (chunk) => chunks.push(chunk));
-  doc.font("Times-Roman").fontSize(11).text(text, {
-    align: "left",
-    lineGap: 3,
-  });
-  doc.end();
-  return new Promise((resolve) => {
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-  });
-}
-
 export async function buildDocumentPdf(event) {
   const templateUrl = await getEffectiveSetting("DOCUMENT_TEMPLATE_URL", "document_template_url");
-  if (!templateUrl) return buildTextPdf(event);
+  if (!templateUrl) throw new Error("DOCUMENT_TEMPLATE_URL non configurato.");
 
   const docx = await buildDocumentDocx(event);
-  if (!docx) return buildTextPdf(event);
+  if (!docx) throw new Error("Template DOCX non disponibile.");
   return convertDocxToPdf(docx);
 }
 

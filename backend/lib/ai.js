@@ -1,6 +1,12 @@
 ﻿// lib/ai.js
 import OpenAI from "openai";
 import dotenv from "dotenv";
+import {
+  PROMPT_ANNUNCIO,
+  PROMPT_INDIRIZZO,
+  PROMPT_PROPOSTA,
+  PROMPT_PROVVIGIONE,
+} from "../ai_agents/extraction_agents.js";
 dotenv.config();
 
 const apiKey = process.env.OPENAI_API_KEY;
@@ -143,47 +149,36 @@ export const schemaProvvigione = {
   strict: true,
 };
 
-
-/* --------------- PROMPT --------------- */
-
-const PROMPT_ANNUNCIO = `
-Sei uno scraper documentale. Questo e il testo di una scheda "ANNUNCIO" da portale immobiliare d'asta.
-Estrai i campi richiesti e restituisci SOLO JSON conforme allo schema. NON inventare valori: se mancano -> null.
-Normalizza:
-- importi come numeri ma formattati come stringhe "00.000,00" (punto ogni 3 cifre, virgola per i centesimi),
-- date in formato "gg/mm/aa",
-- orari HH:MM cercati vicino a "Data vendita/gara",
-- SI/NO in "SI" | "NO".
-- ora_gara_inizio / ora_gara_fine (da formule "gara dalle HH:MM alle HH:MM").
-- data_termine_deposito / ora_termine_deposito se trovi frasi tipo "offerta/proposta deve pervenire entro il DD/MM/YYYY ore HH:MM".
-- termine_richieste_visite_data (ISO) e termine_richieste_visite_ora (da frasi "Termine richieste visite...").
-- Se non c'e data gara esplicita, lascia null: verra calcolata a valle (+2 giorni dal termine deposito).
-- provvigione_percentuale: percentuale provvigione (numero, es. 4 per "4%"); cerca anche varianti/typo tipo "proviggione", "provvigioni", "proviggioni".
-Per l'indirizzo, formatta "Via/viale/corso/piazza ..., Civico, Citta" senza CAP e senza parole come "Appartamento all'asta".
-Per "descrizione", restituisci il blocco testuale sotto l'intestazione "Descrizione" (se presente), pulito da URL/contatti/pubblicita. Se non presente -> null.
-`;
-
-
-const PROMPT_PROPOSTA = `
-Sei uno scraper documentale. Questo è il testo di una "PROPOSTA" compilata dall'agente.
-Estrai i campi richiesti e restituisci SOLO JSON conforme allo schema. NON inventare valori: se mancano → null.
-Se trovi in fondo al documento le etichette "Luogo:" e "Data:", estrai:
-- luogo_redazione (stringa pulita)
-- data_redazione (ISO YYYY-MM-DD)
-- anno_redazione (intero, di solito l'anno della data)
-Regole: importi numerici; SI/NO in "SI"/"NO"; IBAN solo formati italiani (IT...).
-IBAN e beneficiario: se trovi indicazioni di conto/iban, estrai sempre iban_beneficiario; se è specificato un intestatario/beneficiario (anche azienda, es. "SAVOY REOCO S.r.l."), valorizza beneficiario_cauzione; se trovi un BIC, valorizza bic_cauzione.
-Catasto: se trovi più unità, inserisci tutte in catasto_voci (array di oggetti con foglio/particella/mappale/subalterno/categoria). Compila comunque il campo catasto principale con la prima unità.
-`;
-
-
-
-const PROMPT_PROVVIGIONE = `
-Sei uno scraper documentale. Questo e il testo OCR relativo alla clausola provvigione.
-Estrai solo la percentuale di provvigione e restituisci SOLO JSON conforme allo schema.
-Se non trovi una percentuale esplicita (es. "3%"), restituisci null.
-Ignora altri numeri (importi, date, riferimenti catastali).
-`;
+export const schemaIndirizzo = {
+  name: "IndirizzoSchema",
+  schema: {
+    type: "object",
+    required: [
+      "indirizzo",
+      "comune",
+      "provincia",
+      "cap",
+      "quartiere",
+      "municipio",
+      "zona",
+      "confidence",
+      "note",
+    ],
+    properties: {
+      indirizzo: { type: ["string", "null"] },
+      comune: { type: ["string", "null"] },
+      provincia: { type: ["string", "null"] },
+      cap: { type: ["string", "null"] },
+      quartiere: { type: ["string", "null"] },
+      municipio: { type: ["string", "null"] },
+      zona: { type: ["string", "null"] },
+      confidence: { type: ["number", "null"] },
+      note: { type: ["string", "null"] },
+    },
+    additionalProperties: false,
+  },
+  strict: true,
+};
 
 /* --------------- CALLERS (Responses API corretto) --------------- */
 
@@ -233,6 +228,29 @@ export async function aiExtractProvvigionePercentuale({ text, fileName }) {
   json.provvigione_percentuale = normalizePercent(json.provvigione_percentuale);
   if (json.provvigione_percentuale == null) json.provvigione_percentuale = guess;
 
+  return json;
+}
+
+export async function aiExtractIndirizzo({ address, context = "" }) {
+  const content = clampText(
+    [
+      `indirizzo=${address || ""}`,
+      context ? `contesto=${context}` : "",
+    ].filter(Boolean).join("\n"),
+    20_000
+  );
+
+  const json = await callJsonSchema({
+    prompt: PROMPT_INDIRIZZO,
+    content,
+    fileName: "indirizzo.txt",
+    schema: schemaIndirizzo,
+  });
+
+  if (typeof json.confidence === "number") {
+    json.confidence = Math.max(0, Math.min(1, json.confidence));
+  }
+  if (!json.indirizzo && address) json.indirizzo = String(address).trim();
   return json;
 }
 

@@ -8,7 +8,15 @@ async function apiFetch(url, options = {}) {
   const headers = { ...(options.headers || {}) };
   const token = getAccessToken();
   if (token) headers["x-astebook-token"] = token;
-  const resp = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+  let resp = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+  if (resp.status === 401) {
+    const newToken = window.prompt("Token UI Astebook") || "";
+    if (newToken) {
+      localStorage.setItem("astebook_ui_token", newToken);
+      headers["x-astebook-token"] = newToken;
+      resp = await fetch(url, { ...options, headers, credentials: 'same-origin' });
+    }
+  }
   return resp;
 }
 
@@ -38,6 +46,67 @@ async function loadSettings() {
     suggestModelBasedOnBaseUrl();
   } catch (err) {
     console.error('loadSettings', err);
+  }
+}
+
+let allEvents = [];
+
+async function loadEvents() {
+  try {
+    const resp = await apiFetch('/api/v1/processing-events');
+    if (!resp.ok) {
+      console.warn('Failed to load events', resp.status);
+      return;
+    }
+    const data = await resp.json();
+    allEvents = data.events || [];
+    renderEventList();
+    if (allEvents.length) selectEvent(allEvents[0].id);
+  } catch (err) {
+    console.error('loadEvents', err);
+  }
+}
+
+function renderEventList() {
+  const container = document.getElementById('eventList');
+  if (!container) return;
+  container.innerHTML = '';
+  for (const ev of allEvents) {
+    const title = ev.metadata?.subject || ev.metadata?.email_id || ev.metadata?.zap_run_id || ev.id;
+    const el = document.createElement('button');
+    el.type = 'button';
+    el.className = 'event-item';
+    el.textContent = `${title} — ${ev.status || ''}`;
+    el.dataset.eventId = ev.id;
+    el.addEventListener('click', () => selectEvent(ev.id));
+    container.appendChild(el);
+  }
+}
+
+async function selectEvent(id) {
+  try {
+    const resp = await apiFetch(`/api/v1/processing-events/${id}`);
+    if (!resp.ok) {
+      console.warn('Failed to load event', resp.status);
+      return;
+    }
+    const data = await resp.json();
+    const ev = data.event;
+    if (!ev) return;
+    document.getElementById('selectedTitle').textContent = ev.metadata?.subject || ev.id;
+    document.getElementById('selectedSource').textContent = ev.source || '-';
+    document.getElementById('selectedStatus').textContent = ev.status || '-';
+    document.getElementById('receivedAt').textContent = ev.received_at || '-';
+    document.getElementById('updatedAt').textContent = ev.updated_at || '-';
+    document.getElementById('fileCount').textContent = Array.isArray(ev.files) ? ev.files.length : '-';
+    const reqPane = document.getElementById('requestPane');
+    reqPane.textContent = JSON.stringify(ev.request || {}, null, 2);
+    const resultPane = document.getElementById('resultPane');
+    resultPane.textContent = JSON.stringify(ev.result || {}, null, 2);
+    const missingPane = document.getElementById('missingFieldsPane');
+    missingPane.textContent = JSON.stringify(ev.missing_fields || [], null, 2);
+  } catch (err) {
+    console.error('selectEvent', err);
   }
 }
 

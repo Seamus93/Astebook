@@ -875,6 +875,9 @@ settingsForm.addEventListener("submit", async (event) => {
     processing_ui_token: processingUiToken.value.trim(),
     zapier_webhook_token: zapierWebhookToken.value.trim(),
     admin_session_secret: adminSessionSecret.value.trim(),
+    ai_api_key: aiApiKey.value.trim(),
+    ai_base_url: aiBaseUrl.value.trim(),
+    ai_model: aiModel.value.trim(),
     pdf_app_api_key: pdfAppApiKey.value.trim(),
     pdf_app_ocr_endpoint: pdfAppOcrEndpoint.value.trim(),
     pdf_app_job_endpoint: pdfAppJobEndpoint.value.trim(),
@@ -891,6 +894,9 @@ settingsForm.addEventListener("submit", async (event) => {
     processingUiToken.value = "";
     zapierWebhookToken.value = "";
     adminSessionSecret.value = "";
+    aiApiKey.value = "";
+    aiBaseUrl.value = "";
+    aiModel.value = "";
     pdfAppApiKey.value = "";
     adminPassword.value = "";
     revealedSettings = null;

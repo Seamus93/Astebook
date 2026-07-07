@@ -21,7 +21,6 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 
 COPY --from=build /app/backend ./backend
-COPY --from=build /app/frontend/admin ./frontend/admin
 COPY --from=build /app/frontend/dist ./frontend/dist
 COPY --from=build /app/scripts ./scripts
 

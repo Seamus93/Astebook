@@ -22,17 +22,17 @@ export async function getOpenAIClient() {
     "ai_api_key"
   );
 
-    console.log("AI CONFIG", {
-    hasApiKey: Boolean(apiKey),
-    apiKeyLength: apiKey?.length,
-    baseURL,
-  });
-
   const baseURL =
     (await getEffectiveSetting(
       "AI_BASE_URL",
       "ai_base_url"
     )) || "https://api.openai.com/v1";
+
+  // Log presence (not value) of API config for diagnostics
+  console.log("AI CONFIG", {
+    hasApiKey: Boolean(apiKey),
+    baseURL,
+  });
 
   if (!apiKey) {
     throw new Error("AI_API_KEY non configurata.");
@@ -50,6 +50,62 @@ export async function getOpenAIClient() {
   }
 
   return openaiClient;
+}
+
+export async function getEffectiveAiModel() {
+  const raw = (await getEffectiveSetting("AI_MODEL", "ai_model")) || "";
+  const baseURL = (await getEffectiveSetting("AI_BASE_URL", "ai_base_url")) || "";
+
+  // normalize common prefixes like `openai/` that may be stored from the UI
+  let model = String(raw || "").trim();
+  if (model.startsWith("openai/")) model = model.slice("openai/".length);
+
+  // sensible defaults: prefer gpt-4o-mini for both OpenAI and OpenRouter unless overridden
+  if (!model) {
+    model = "gpt-4o-mini";
+  }
+
+  // If using OpenRouter, ensure we don't send provider prefixes
+  if (baseURL.includes("openrouter") && model.startsWith("openai/")) {
+    model = model.slice("openai/".length);
+  }
+
+  return model;
+}
+
+async function createChatCompletion(params) {
+  try {
+    const client = await getOpenAIClient();
+    return await client.chat.completions.create(params);
+  } catch (err) {
+    const msg = String(err?.message || "").toLowerCase();
+    const status = err?.status || err?.statusCode || null;
+    const baseURL = (await getEffectiveSetting("AI_BASE_URL", "ai_base_url")) || "";
+    const apiKey = await getEffectiveSetting("AI_API_KEY", "ai_api_key");
+
+    if ((msg.includes("missing authentication header") || status === 401) && baseURL.includes("openrouter")) {
+      // Retry with explicit Authorization header via fetch (OpenRouter sometimes rejects when header missing)
+      const url = baseURL.replace(/\/$/, "") + "/chat/completions";
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify(params),
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        const e = new Error(`OpenRouter request failed: ${res.status} ${text}`);
+        e.status = res.status;
+        throw e;
+      }
+      const data = await res.json();
+      return data;
+    }
+
+    throw err;
+  }
 }
 
 // taglia testo se enorme (per sicurezza token)
@@ -230,12 +286,8 @@ async function callJsonSchema({ prompt, content, fileName, schema }) {
     return mockJsonFromSchema(schema.schema, { content, fileName });
   }
 
-  const openai = await getOpenAIClient();
-
-  const model =
-    (await getEffectiveSetting("AI_MODEL", "ai_model")) || "gpt-4o-mini";
-
-  const resp = await openai.chat.completions.create({
+  const model = await getEffectiveAiModel();
+  const resp = await createChatCompletion({
     model,
     temperature: 0,
     response_format: { type: "json_object" },
@@ -387,13 +439,8 @@ export async function aiExtractPropostaVision({ imageUrl, imageData, fileName })
 
   if (!payloadUrl) return null;
 
-  const openai = await getOpenAIClient();
-
-  const model =
-    (await getEffectiveSetting("AI_MODEL", "ai_model")) ||
-    "gpt-4o-mini";
-
-  const resp = await openai.chat.completions.create({
+  const model = await getEffectiveAiModel();
+  const resp = await createChatCompletion({
     model,
     temperature: 0,
     response_format: {

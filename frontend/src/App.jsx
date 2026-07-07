@@ -164,7 +164,7 @@ const adminMarkup = String.raw`
 
 export default function App() {
   useEffect(() => {
-    import("./legacyAdmin.js");
+    import("./adminClient.js");
   }, []);
 
   return <div dangerouslySetInnerHTML={{ __html: adminMarkup }} />;

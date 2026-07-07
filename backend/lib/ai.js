@@ -229,32 +229,37 @@ async function callJsonSchema({ prompt, content, fileName, schema }) {
   const model =
     (await getEffectiveSetting("AI_MODEL", "ai_model")) || "gpt-4o-mini";
 
-  const resp = await openai.responses.create({
+  const resp = await openai.chat.completions.create({
     model,
     temperature: 0,
-    text: {
-      format: {
-        type: "json_schema",
-        name: schema.name,
-        schema: schema.schema,
-        strict: schema.strict ?? true,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: "Restituisci esclusivamente JSON valido. Non aggiungere testo fuori dal JSON.",
       },
-    },
-    input: [
-      { role: "system", content: "Restituisci solo JSON valido che rispetta lo schema." },
-      { role: "user", content: `${prompt}\n\n[file_pdf=${fileName ?? "file.pdf"}]\n\n${content}` },
+      {
+        role: "user",
+        content: `${prompt}
+
+Schema JSON richiesto:
+${JSON.stringify(schema.schema)}
+
+[file_pdf=${fileName ?? "file.pdf"}]
+
+${content}`,
+      },
     ],
   });
 
-  const raw = resp.output_text ?? "";
-  let json;
+  const raw = resp.choices?.[0]?.message?.content ?? "";
+
   try {
-    json = JSON.parse(raw);
+    return JSON.parse(raw);
   } catch {
     const m = raw.match(/\{[\s\S]*\}$/);
-    json = m ? JSON.parse(m[0]) : {};
+    return m ? JSON.parse(m[0]) : {};
   }
-  return json;
 }
 
 export async function aiExtractProvvigionePercentuale({ text, fileName }) {
@@ -371,39 +376,52 @@ export async function aiExtractProposta({ text, fileName }) {
 }
 
 export async function aiExtractPropostaVision({ imageUrl, imageData, fileName }) {
-  const payloadUrl = imageUrl || (imageData ? `data:application/pdf;base64,${imageData}` : null);
+  const payloadUrl =
+    imageUrl || (imageData ? `data:application/pdf;base64,${imageData}` : null);
+
   if (!payloadUrl) return null;
+
   const openai = await getOpenAIClient();
-  const resp = await openai.responses.create({
-    model: "gpt-4o-mini",
+
+  const model =
+    (await getEffectiveSetting("AI_MODEL", "ai_model")) ||
+    "gpt-4o-mini";
+
+  const resp = await openai.chat.completions.create({
+    model,
     temperature: 0,
-    text: {
-      format: {
-        type: "json_schema",
-        name: schemaProposta.name,
-        schema: schemaProposta.schema,
-        strict: schemaProposta.strict ?? true,
-      },
+    response_format: {
+      type: "json_object",
     },
-    input: [
-      { role: "system", content: "Restituisci solo JSON valido che rispetta lo schema." },
+    messages: [
+      {
+        role: "system",
+        content:
+          "Restituisci esclusivamente un JSON valido conforme allo schema richiesto.",
+      },
       {
         role: "user",
         content: [
           {
-            type: "input_text",
-            text: `${PROMPT_PROPOSTA}\n\n[file_pdf=${fileName ?? "proposta.pdf"}]\nIl documento Ã¨ scannerizzato; leggi il contenuto dell'immagine e estrai i campi dello schema.`,
+            type: "text",
+            text: `${PROMPT_PROPOSTA} [file_pdf=${fileName ?? "proposta.pdf"}] Il documento è scannerizzato. Leggi il contenuto dell'immagine ed estrai tutti i campi richiesti.`,
           },
-          { type: "input_image", image_url: payloadUrl },
+          {
+            type: "image_url",
+            image_url: {
+              url: payloadUrl,
+            },
+          },
         ],
       },
     ],
   });
 
-  const raw = resp.output_text ?? "";
+  const raw = resp.choices?.[0]?.message?.content ?? "";
+
   try {
     const json = JSON.parse(raw);
-    json.raw_length = json.raw_length ?? null;
+    json.raw_length ??= null;
     if (!json.file_pdf) json.file_pdf = fileName || null;
     return json;
   } catch {

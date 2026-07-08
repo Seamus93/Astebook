@@ -80,7 +80,7 @@ const adminMarkup = String.raw`
               <span class="material-symbols-outlined panel-chevron" aria-hidden="true">expand_less</span>
             </button>
             <div class="panel-body">
-              <div id="${id}" class="${className}"></div>
+              <pre id="${id}" class="${className}"></pre>
             </div>
           </article>`
           )

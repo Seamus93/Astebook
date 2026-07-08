@@ -529,44 +529,62 @@ async function selectEvent(id) {
     renderWorkflowStatus(ev);
     // Render request payload but hide large raw body fields; show cleaned body separately
     const requestPane = document.getElementById('requestPane');
-    const filteredRequest = { ...(ev.request || {}) };
-    // Remove common large/raw body keys so UI shows the cleaned version instead
-    ['email_body_html','email_body','body','message','html','raw_body','plain_body','body_text','body_plain'].forEach(k => delete filteredRequest[k]);
-    renderStructured(requestPane, filteredRequest, 'Nessun payload ricevuto.');
-
-    // Show cleaned body sent to AI (if available)
     const emailData = ev.result?.email || {};
-    if (emailData.cleaned_body) {
-      const emailSection = document.createElement('div');
-      emailSection.className = 'data-section';
-      const emailLabel = document.createElement('summary');
-      emailLabel.textContent = "Body inviato all'AI";
-      emailLabel.style.fontWeight = '600';
-      emailSection.appendChild(emailLabel);
-      const cleanedPre = document.createElement('pre');
-      cleanedPre.className = 'kv-value';
-      cleanedPre.style.whiteSpace = 'pre-wrap';
-      cleanedPre.style.margin = '8px 0';
-      cleanedPre.textContent = emailData.cleaned_body;
-      emailSection.appendChild(cleanedPre);
-      requestPane.insertBefore(emailSection, requestPane.firstChild);
+
+    const filteredRequest = structuredClone(ev.request || {});
+    if (filteredRequest.body) {
+    [
+        'email_body_html',
+        'email_body',
+        'body',
+        'message',
+        'html',
+        'raw_body',
+        'plain_body',
+        'body_text',
+        'body_plain'
+    ].forEach((k) => delete filteredRequest.body[k]);
     }
 
-    // Toggle to show original payload HTML (only if present)
+    renderStructured(requestPane, filteredRequest, 'Nessun payload ricevuto.');
+
     if (emailData.original_body) {
-      const originalDetails = document.createElement('details');
-      originalDetails.className = 'data-section';
-      originalDetails.open = false;
-      const originalSummary = document.createElement('summary');
-      originalSummary.textContent = 'Mostra payload originale';
-      originalDetails.appendChild(originalSummary);
-      const originalPre = document.createElement('pre');
-      originalPre.style.whiteSpace = 'pre-wrap';
-      originalPre.style.maxHeight = '40vh';
-      originalPre.style.overflow = 'auto';
-      originalPre.innerHTML = escapeHtml(emailData.original_body);
-      originalDetails.appendChild(originalPre);
-      requestPane.insertBefore(originalDetails, requestPane.firstChild);
+    const originalDetails = document.createElement('details');
+    originalDetails.className = 'data-section';
+    originalDetails.open = false;
+
+    const originalSummary = document.createElement('summary');
+    originalSummary.textContent = 'Mostra payload originale';
+    originalDetails.appendChild(originalSummary);
+
+    const originalPre = document.createElement('pre');
+    originalPre.className = 'kv-value';
+    originalPre.style.whiteSpace = 'pre-wrap';
+    originalPre.style.maxHeight = '40vh';
+    originalPre.style.overflow = 'auto';
+    originalPre.textContent = emailData.original_body;
+
+    originalDetails.appendChild(originalPre);
+    requestPane.insertBefore(originalDetails, requestPane.firstChild);
+    }
+
+    if (emailData.cleaned_body) {
+    const emailSection = document.createElement('details');
+    emailSection.className = 'data-section';
+    emailSection.open = true;
+
+    const emailLabel = document.createElement('summary');
+    emailLabel.textContent = "Body inviato all'AI";
+    emailSection.appendChild(emailLabel);
+
+    const cleanedPre = document.createElement('pre');
+    cleanedPre.className = 'kv-value';
+    cleanedPre.style.whiteSpace = 'pre-wrap';
+    cleanedPre.style.margin = '8px 12px';
+    cleanedPre.textContent = emailData.cleaned_body;
+
+    emailSection.appendChild(cleanedPre);
+    requestPane.insertBefore(emailSection, requestPane.firstChild);
     }
     renderPipelineSteps(ev);
     renderFileSections(ev);

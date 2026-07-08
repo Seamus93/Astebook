@@ -444,6 +444,31 @@ select {
   word-break: break-word;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 13px;
+  background: var(--panel-soft);
+  border-radius: 8px;
+}
+
+.json-code {
+  display: block;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.json-key {
+  color: #7c4dff;
+}
+
+.json-string {
+  color: #0b7a33;
+}
+
+.json-number {
+  color: #1f6feb;
+}
+
+.json-literal {
+  color: #b84300;
+  font-weight: 700;
 }
 
 .empty-state {

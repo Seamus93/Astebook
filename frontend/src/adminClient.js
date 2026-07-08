@@ -83,13 +83,399 @@ function renderEventList() {
   }
 }
 
-function formatJson(value) {
-  if (value === null || value === undefined) return '-';
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
+function escapeHtml(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function jsonSyntaxHighlight(value) {
+  const json = JSON.stringify(value, null, 2);
+  return escapeHtml(json)
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*"\s*?:)/g, '<span class="json-key">$1</span>')
+    .replace(/("(\\u[a-zA-Z0-9]{4}|\\[^u]|[^\\"])*")/g, '<span class="json-string">$1</span>')
+    .replace(/\b(true|false|null)\b/g, '<span class="json-literal">$1</span>')
+    .replace(/\b(-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?)\b/g, '<span class="json-number">$1</span>');
+}
+
+function renderJsonPane(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const isEmptyObject = value && typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0;
+  const isEmptyArray = Array.isArray(value) && value.length === 0;
+  if (value === null || value === undefined || isEmptyObject || isEmptyArray) {
+    el.innerHTML = '<div class="empty-state">Nessun dato disponibile</div>';
+    return;
   }
+  el.innerHTML = `<code class="json-code">${jsonSyntaxHighlight(value)}</code>`;
+}
+
+function isPlainObject(value) {
+  return value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function primitiveText(value) {
+  if (value === null || value === undefined || value === "") return "-";
+  if (typeof value === "boolean") return value ? "Si" : "No";
+  return String(value);
+}
+
+function labelFor(key) {
+  const labels = {
+    body: "Corpo email",
+    request: "Richiesta",
+    files: "File",
+    extracted: "Estratto",
+    missing_fields: "Campi mancanti",
+    error: "Errore",
+    notes: "Note",
+    file_name: "Nome file",
+    originalname: "Nome originale",
+    fieldname: "Field",
+    mimetype: "Mime type",
+    size: "Dimensione",
+    url: "URL",
+    subject: "Oggetto",
+    from: "Mittente",
+    codice_pratica: "Codice pratica",
+    zap_run_id: "Zap Run ID",
+    email_id: "Email ID",
+    status: "Stato",
+    source: "Origine",
+    received_at: "Ricevuto il",
+    updated_at: "Aggiornato il",
+    has_body_text: "Testo email disponibile",
+    note: "Nota",
+  };
+  return labels[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function appendValue(container, key, value) {
+  if (Array.isArray(value)) {
+    const details = document.createElement("details");
+    details.className = "data-section";
+    details.open = value.length <= 3;
+
+    const summary = document.createElement("summary");
+    summary.textContent = `${labelFor(key)} (${value.length})`;
+    details.appendChild(summary);
+
+    if (value.length === 0) {
+      const empty = document.createElement("p");
+      empty.className = "empty-state";
+      empty.textContent = "Nessun valore.";
+      details.appendChild(empty);
+    } else {
+      value.forEach((item, index) => appendValue(details, `${key} ${index + 1}`, item));
+    }
+
+    container.appendChild(details);
+    return;
+  }
+
+  if (isPlainObject(value)) {
+    const details = document.createElement("details");
+    details.className = "data-section";
+    details.open = true;
+
+    const summary = document.createElement("summary");
+    summary.textContent = labelFor(key);
+    details.appendChild(summary);
+
+    const list = document.createElement("div");
+    list.className = "kv-list";
+
+    Object.entries(value).forEach(([childKey, childValue]) => {
+      if (isPlainObject(childValue) || Array.isArray(childValue)) {
+        appendValue(details, childKey, childValue);
+        return;
+      }
+
+      const row = document.createElement("div");
+      row.className = "kv-row";
+      const keyEl = document.createElement("div");
+      keyEl.className = "kv-key";
+      keyEl.textContent = labelFor(childKey);
+      const valueEl = document.createElement("div");
+      valueEl.className = "kv-value";
+      valueEl.textContent = primitiveText(childValue);
+      row.append(keyEl, valueEl);
+      list.appendChild(row);
+    });
+
+    details.appendChild(list);
+    container.appendChild(details);
+    return;
+  }
+
+  const row = document.createElement("div");
+  row.className = "kv-row";
+  const keyEl = document.createElement("div");
+  keyEl.className = "kv-key";
+  keyEl.textContent = labelFor(key);
+  const valueEl = document.createElement("div");
+  valueEl.className = "kv-value";
+  valueEl.textContent = primitiveText(value);
+  row.append(keyEl, valueEl);
+  container.appendChild(row);
+}
+
+function renderStructured(container, value, emptyLabel) {
+  container.innerHTML = "";
+  const isEmpty =
+    value === null ||
+    value === undefined ||
+    value === "" ||
+    (Array.isArray(value) && value.length === 0) ||
+    (isPlainObject(value) && Object.keys(value).length === 0);
+
+  if (isEmpty) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = emptyLabel;
+    container.appendChild(empty);
+    return;
+  }
+
+  if (isPlainObject(value)) {
+    Object.entries(value).forEach(([key, childValue]) => appendValue(container, key, childValue));
+    return;
+  }
+
+  appendValue(container, "Valore", value);
+}
+
+function hasExtractedData(event) {
+  return Boolean(event.result?.extracted?.annuncio || event.result?.extracted?.proposta);
+}
+
+function workflowStateLabel(state) {
+  return {
+    done: "Completato",
+    failed: "Errore",
+    blocked: "Bloccato",
+    pending: "In attesa",
+  }[state] || state;
+}
+
+const workflowSteps = [
+  {
+    key: "mail",
+    label: "Mail",
+    icon: "mail",
+    done: (event) => Boolean(event.received_at || event.steps?.some((step) => /request received/i.test(step.message))),
+    failed: () => false,
+  },
+  {
+    key: "ocr",
+    label: "OCR",
+    icon: "document_scanner",
+    done: (event) => event.steps?.some((step) => /ocr completed/i.test(step.message)) || hasExtractedData(event),
+    failed: (event) => event.steps?.some((step) => step.level === "error" && /ocr/i.test(step.message)),
+  },
+  {
+    key: "scraper",
+    label: "Scraper",
+    icon: "fact_check",
+    done: hasExtractedData,
+    failed: (event) =>
+      event.steps?.some((step) => step.level === "error" && /scraper|extraction|estrazione/i.test(step.message)) ||
+      event.status === "failed",
+  },
+  {
+    key: "complete",
+    label: "Completo",
+    icon: "task_alt",
+    done: (event) => event.status === "completed" || Boolean(event.result?.ready_for_zapier),
+    failed: (event) => event.status === "failed",
+  },
+];
+
+function renderWorkflowStatus(event) {
+  const selectedStatus = document.getElementById("selectedStatus");
+  if (!selectedStatus) return;
+  selectedStatus.innerHTML = "";
+  selectedStatus.className = "workflow-status";
+  selectedStatus.setAttribute("aria-label", `Stato lavorazione: ${event.status}`);
+
+  let blocked = false;
+  workflowSteps.forEach((step, index) => {
+    const failed = !blocked && step.failed(event);
+    const done = !blocked && !failed && step.done(event);
+    const state = failed ? "failed" : blocked ? "blocked" : done ? "done" : "pending";
+    if (failed) blocked = true;
+
+    const item = document.createElement("div");
+    item.className = `workflow-step ${state}`;
+    item.title = `${step.label}: ${workflowStateLabel(state)}`;
+
+    const circle = document.createElement("span");
+    circle.className = "workflow-circle";
+    const icon = document.createElement("span");
+    icon.className = "material-symbols-outlined";
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = state === "done" ? "check" : state === "failed" ? "close" : state === "blocked" ? "lock" : step.icon;
+    circle.appendChild(icon);
+
+    const label = document.createElement("span");
+    label.className = "workflow-label";
+    label.textContent = step.label;
+
+    item.append(circle, label);
+    selectedStatus.appendChild(item);
+
+    if (index < workflowSteps.length - 1) {
+      const connector = document.createElement("span");
+      connector.className = `workflow-connector ${state === "done" ? "done" : failed ? "failed" : ""}`;
+      selectedStatus.appendChild(connector);
+    }
+  });
+}
+
+function fileNameFromStep(step) {
+  return step?.data?.file_name || step?.data?.file_pdf || step?.data?.file || null;
+}
+
+function isFileStep(step) {
+  return Boolean(fileNameFromStep(step));
+}
+
+function pipelineSteps(event) {
+  return (event.steps || []).filter((step) => !isFileStep(step));
+}
+
+function fileStepGroups(event) {
+  const groups = new Map();
+  (event.result?.attachments || event.request?.files || []).forEach((file) => {
+    const fileName = file.file_name || file.originalname || file.name || file.field_name || "File";
+    if (!groups.has(fileName)) groups.set(fileName, { file, steps: [] });
+  });
+
+  (event.steps || []).filter(isFileStep).forEach((step) => {
+    const fileName = fileNameFromStep(step);
+    if (!groups.has(fileName)) groups.set(fileName, { file: { file_name: fileName }, steps: [] });
+    groups.get(fileName).steps.push(step);
+  });
+
+  return Array.from(groups.entries()).map(([fileName, group]) => ({ fileName, ...group }));
+}
+
+function renderStepItem(step) {
+  const item = document.createElement("div");
+  item.className = `step ${step.level === "error" ? "error" : ""}`;
+
+  const message = document.createElement("strong");
+  message.textContent = step.message;
+  const date = document.createElement("span");
+  date.textContent = step.at || "";
+  item.append(message, date);
+
+  if (step.data) {
+    const dataContainer = document.createElement("div");
+    dataContainer.className = "step-data";
+    renderStructured(dataContainer, step.data, "Nessun dettaglio.");
+    item.appendChild(dataContainer);
+  }
+
+  return item;
+}
+
+function renderPipelineSteps(event) {
+  const stepsPane = document.getElementById("stepsPane");
+  if (!stepsPane) return;
+  stepsPane.innerHTML = "";
+  const steps = pipelineSteps(event);
+  if (!steps.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Nessuno step generale registrato.";
+    stepsPane.appendChild(empty);
+    return;
+  }
+  steps.forEach((step) => stepsPane.appendChild(renderStepItem(step)));
+}
+
+function renderFileSections(event) {
+  const filesPane = document.getElementById("filesPane");
+  if (!filesPane) return;
+  filesPane.innerHTML = "";
+  const groups = fileStepGroups(event);
+  if (!groups.length) {
+    const empty = document.createElement("p");
+    empty.className = "empty-state";
+    empty.textContent = "Nessun file ricevuto.";
+    filesPane.appendChild(empty);
+    return;
+  }
+
+  groups.forEach(({ fileName, file, steps }) => {
+    const details = document.createElement("details");
+    details.className = "data-section file-section";
+    details.open = steps.some((step) => step.level === "error");
+
+    const summary = document.createElement("summary");
+    const title = document.createElement("span");
+    title.textContent = fileName;
+    const meta = document.createElement("small");
+    meta.textContent = `${file.format || file.mime_type || file.mimetype || "-"} · ${steps.length} log`;
+    summary.append(title, meta);
+    details.appendChild(summary);
+
+    const descriptor = {
+      field_name: file.field_name || file.fieldname || null,
+      mime_type: file.file_mime_type || file.mimetype || file.mime_type || null,
+      format: file.format || null,
+      kind: file.kind || null,
+      supported_by_scraper: file.supported_by_scraper,
+      size: file.size || null,
+    };
+    const descriptorContainer = document.createElement("div");
+    descriptorContainer.className = "file-descriptor";
+    renderStructured(descriptorContainer, descriptor, "Nessun dettaglio file.");
+    details.appendChild(descriptorContainer);
+
+    if (steps.length) {
+      const stepList = document.createElement("div");
+      stepList.className = "file-steps";
+      steps.forEach((step) => stepList.appendChild(renderStepItem(step)));
+      details.appendChild(stepList);
+    }
+
+    filesPane.appendChild(details);
+  });
+}
+
+function renderNotes(event) {
+  renderStructured(document.getElementById("notesPane"), event.result?.notes || [], "Nessuna nota.");
+}
+
+function renderMissingFields(event) {
+  renderStructured(
+    document.getElementById("missingFieldsPane"),
+    event.result?.missing_fields || event.error?.missing_fields || [],
+    "Nessun campo mancante."
+  );
+}
+
+function pipelineErrors(event) {
+  const stepErrors = (event.steps || [])
+    .filter((step) => step.level === "error")
+    .map((step) => ({
+      step: step.message,
+      at: step.at,
+      file: fileNameFromStep(step),
+      detail: step.data?.error || step.data?.reason || null,
+    }));
+  const genericError = event.error?.message ? [{ step: "Errore evento", detail: event.error.message }] : [];
+  return [...stepErrors, ...genericError];
+}
+
+function extractedResultView(event) {
+  const result = { ...(event.result || {}) };
+  delete result.notes;
+  delete result.missing_fields;
+  return result;
 }
 
 function formatFiles(files) {
@@ -136,18 +522,18 @@ async function selectEvent(id) {
     if (!ev) return;
     document.getElementById('selectedTitle').textContent = ev.metadata?.subject || ev.id;
     document.getElementById('selectedSource').textContent = ev.source || '-';
-    document.getElementById('selectedStatus').textContent = ev.status || '-';
     document.getElementById('receivedAt').textContent = ev.received_at || '-';
     document.getElementById('updatedAt').textContent = ev.updated_at || '-';
     document.getElementById('fileCount').textContent = Array.isArray(ev.request?.files) ? ev.request.files.length : '-';
 
-    document.getElementById('requestPane').textContent = formatJson(ev.request || {});
-    document.getElementById('stepsPane').textContent = formatSteps(ev.steps);
-    document.getElementById('filesPane').textContent = formatFiles(ev.request?.files);
-    document.getElementById('resultPane').textContent = formatJson(ev.result || {});
-    document.getElementById('missingFieldsPane').textContent =
-      formatJson(ev.error?.missing_fields || ev.result?.missing_fields || []);
-    document.getElementById('notesPane').textContent = formatNotes(ev);
+    renderWorkflowStatus(ev);
+    renderStructured(document.getElementById('requestPane'), ev.request || {}, 'Nessun payload ricevuto.');
+    renderPipelineSteps(ev);
+    renderFileSections(ev);
+    renderStructured(document.getElementById('resultPane'), extractedResultView(ev), 'Nessun dato estratto.');
+    renderNotes(ev);
+    renderMissingFields(ev);
+    renderStructured(document.getElementById('errorPane'), pipelineErrors(ev), 'Nessun errore pipeline.');
 
     const reprocessButton = document.getElementById('reprocessButton');
     const documentButton = document.getElementById('documentButton');

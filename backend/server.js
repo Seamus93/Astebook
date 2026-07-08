@@ -1414,7 +1414,12 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
     }
   );
 
-  const emailAnnouncementText = normalizeEmailTextForExtraction(emailText);
+  const emailAnnouncementText = cleanEmailBodyForAI(emailText);
+  // persist original and cleaned bodies in the result so UI can display them
+  result.email = result.email || {};
+  result.email.original_body = String(emailText || "");
+  result.email.cleaned_body = String(emailAnnouncementText || "");
+  await updateProcessingEvent(event.id, { result }, { message: "Email body cleaned for AI" });
   if (!result.codice_pratica) {
     const codiceAi = await extractCodicePraticaAiOnly({
       text: [

@@ -527,7 +527,40 @@ async function selectEvent(id) {
     document.getElementById('fileCount').textContent = Array.isArray(ev.request?.files) ? ev.request.files.length : '-';
 
     renderWorkflowStatus(ev);
-    renderStructured(document.getElementById('requestPane'), ev.request || {}, 'Nessun payload ricevuto.');
+    // Render request payload but hide large raw body fields; show cleaned body separately
+    const requestPane = document.getElementById('requestPane');
+    const filteredRequest = { ...(ev.request || {}) };
+    // Remove common large/raw body keys so UI shows the cleaned version instead
+    ['email_body_html','email_body','body','message','html','raw_body','plain_body','body_text','body_plain'].forEach(k => delete filteredRequest[k]);
+    renderStructured(requestPane, filteredRequest, 'Nessun payload ricevuto.');
+
+    // Show cleaned body sent to AI
+    const emailData = ev.result?.email || {};
+    const emailSection = document.createElement('div');
+    emailSection.className = 'data-section';
+    const emailLabel = document.createElement('summary');
+    emailLabel.textContent = 'Body inviato all\'AI';
+    emailLabel.style.fontWeight = '600';
+    emailSection.appendChild(emailLabel);
+    const cleanedPre = document.createElement('pre');
+    cleanedPre.className = 'kv-value';
+    cleanedPre.style.whiteSpace = 'pre-wrap';
+    cleanedPre.textContent = emailData.cleaned_body || '-';
+    emailSection.appendChild(cleanedPre);
+
+    // Toggle to show original payload HTML
+    const originalDetails = document.createElement('details');
+    originalDetails.className = 'data-section';
+    const originalSummary = document.createElement('summary');
+    originalSummary.textContent = '▼ Mostra payload originale';
+    originalDetails.appendChild(originalSummary);
+    const originalPre = document.createElement('pre');
+    originalPre.style.whiteSpace = 'pre-wrap';
+    originalPre.innerHTML = escapeHtml(emailData.original_body || '-');
+    originalDetails.appendChild(originalPre);
+
+    requestPane.insertBefore(emailSection, requestPane.firstChild);
+    requestPane.insertBefore(originalDetails, requestPane.firstChild);
     renderPipelineSteps(ev);
     renderFileSections(ev);
     renderStructured(document.getElementById('resultPane'), extractedResultView(ev), 'Nessun dato estratto.');

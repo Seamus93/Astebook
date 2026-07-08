@@ -80,28 +80,43 @@ async function createChatCompletion(params) {
   } catch (err) {
     const msg = String(err?.message || "").toLowerCase();
     const status = err?.status || err?.statusCode || null;
-    const baseURL = (await getEffectiveSetting("AI_BASE_URL", "ai_base_url")) || "";
-    const apiKey = await getEffectiveSetting("AI_API_KEY", "ai_api_key");
 
-    if ((msg.includes("missing authentication header") || status === 401) && baseURL.includes("openrouter")) {
-      // Retry with explicit Authorization header via fetch (OpenRouter sometimes rejects when header missing)
+    const baseURL =
+      (await getEffectiveSetting("AI_BASE_URL", "ai_base_url")) || "";
+
+    const apiKey = String(
+      (await getEffectiveSetting("AI_API_KEY", "ai_api_key")) || ""
+    ).trim();
+
+    if (!apiKey) {
+      throw new Error("AI_API_KEY non configurata per OpenRouter.");
+    }
+
+    if (
+      (msg.includes("missing authentication header") || status === 401) &&
+      baseURL.includes("openrouter")
+    ) {
       const url = baseURL.replace(/\/$/, "") + "/chat/completions";
+
       const res = await fetch(url, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://astebook.it",
+          "X-Title": "Astebook",
         },
         body: JSON.stringify(params),
       });
+
       if (!res.ok) {
         const text = await res.text();
         const e = new Error(`OpenRouter request failed: ${res.status} ${text}`);
         e.status = res.status;
         throw e;
       }
-      const data = await res.json();
-      return data;
+
+      return await res.json();
     }
 
     throw err;

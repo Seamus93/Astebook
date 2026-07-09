@@ -705,6 +705,69 @@ select {
   display: none;
 }
 
+.toast-host {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 20;
+  display: grid;
+  gap: 10px;
+  width: min(460px, calc(100vw - 36px));
+}
+
+.toast {
+  display: grid;
+  grid-template-columns: 32px minmax(0, 1fr) 34px;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.toast.error {
+  border-color: #f0b7b2;
+}
+
+.toast-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: #fde8e6;
+  color: var(--bad);
+}
+
+.toast-body {
+  min-width: 0;
+}
+
+.toast-body strong,
+.toast-body p {
+  margin: 0;
+}
+
+.toast-body p {
+  margin-top: 3px;
+  color: var(--muted);
+}
+
+.toast-body ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+
+.toast-body li + li {
+  margin-top: 4px;
+}
+
+.toast-close {
+  width: 34px;
+  height: 34px;
+}
+
 .modal {
   width: min(760px, 100%);
   max-height: calc(100vh - 48px);

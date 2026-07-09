@@ -20,6 +20,37 @@ async function apiFetch(url, options = {}) {
   return resp;
 }
 
+function showToast({ title = "", message = "", items = [], tone = "error" } = {}) {
+  let host = document.getElementById("toastHost");
+  if (!host) {
+    host = document.createElement("div");
+    host.id = "toastHost";
+    host.className = "toast-host";
+    document.body.appendChild(host);
+  }
+
+  const toast = document.createElement("div");
+  toast.className = `toast ${tone}`;
+  const itemList = items.length
+    ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
+    : "";
+  toast.innerHTML = `
+    <div class="toast-icon"><span class="material-symbols-outlined" aria-hidden="true">${tone === "error" ? "error" : "info"}</span></div>
+    <div class="toast-body">
+      ${title ? `<strong>${escapeHtml(title)}</strong>` : ""}
+      ${message ? `<p>${escapeHtml(message)}</p>` : ""}
+      ${itemList}
+    </div>
+    <button class="icon-button toast-close" type="button" title="Chiudi">
+      <span class="material-symbols-outlined" aria-hidden="true">close</span>
+    </button>`;
+  host.appendChild(toast);
+
+  const close = () => toast.remove();
+  toast.querySelector(".toast-close")?.addEventListener("click", close);
+  window.setTimeout(close, 9000);
+}
+
 async function loadSettings() {
   try {
     const resp = await apiFetch('/api/v1/admin/settings?reveal=1');
@@ -765,8 +796,19 @@ async function selectEvent(id) {
     reprocessButton.onclick = async () => {
       try {
         const res = await apiFetch(`/api/v1/processing-events/${id}/reprocess`, { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
         if (!res.ok) {
-          console.warn('Reprocess failed', res.status);
+          const missing = Array.isArray(payload.missing_configuration)
+            ? payload.missing_configuration.map((item) => `${item.label}: ${item.detail}`)
+            : [];
+          showToast({
+            title: payload.error || "Reprocess non avviato",
+            message: missing.length
+              ? "Non sono state configurate queste cose:"
+              : payload.detail || `HTTP ${res.status}`,
+            items: missing,
+            tone: "error",
+          });
           return;
         }
         await selectEvent(id);

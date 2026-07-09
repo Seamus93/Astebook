@@ -403,6 +403,63 @@ function validateEmailRecipients(recipients) {
   }
 }
 
+function configIssue(key, label, detail) {
+  return { key, label, detail };
+}
+
+async function collectPipelineConfigurationIssues() {
+  const issues = [];
+  const aiApiKey = await getEffectiveSetting("AI_API_KEY", "ai_api_key");
+  const aiBaseUrl = await getEffectiveSetting("AI_BASE_URL", "ai_base_url");
+  const aiModel = await getEffectiveSetting("AI_MODEL", "ai_model");
+  const pdfAppApiKey = await getEffectiveSetting("PDF_APP_API_KEY", "pdf_app_api_key");
+  const pdfAppOcrEndpoint = await getEffectiveSetting("PDF_APP_OCR_ENDPOINT", "pdf_app_ocr_endpoint");
+  const documentTemplateUrl = await getEffectiveSetting("DOCUMENT_TEMPLATE_URL", "document_template_url");
+  const documentSendTo = await getEffectiveSetting("DOCUMENT_SEND_TO", "document_send_to");
+
+  if (process.env.ASTEBOOK_AI_MOCK !== "1" && !String(aiApiKey || "").trim()) {
+    issues.push(configIssue("ai_api_key", "AI API Key", "Configura la chiave API per l'analisi AI."));
+  }
+  if (!String(aiBaseUrl || "").trim()) {
+    issues.push(configIssue("ai_base_url", "AI Base URL", "Configura l'endpoint AI."));
+  }
+  if (!String(aiModel || "").trim()) {
+    issues.push(configIssue("ai_model", "AI Model", "Configura il modello AI."));
+  }
+  if (!String(pdfAppApiKey || "").trim()) {
+    issues.push(configIssue("pdf_app_api_key", "PDF-app API Key", "Configura la chiave PDF-app per OCR."));
+  }
+  if (!String(pdfAppOcrEndpoint || "").trim()) {
+    issues.push(configIssue("pdf_app_ocr_endpoint", "PDF-app OCR Endpoint", "Configura l'endpoint OCR PDF-app."));
+  }
+  if (!String(documentTemplateUrl || "").trim()) {
+    issues.push(configIssue("document_template_url", "Template Documento", "Configura il template Google Doc/DOCX per generare il PDF."));
+  }
+
+  const recipients = parseEmailRecipients(documentSendTo);
+  if (!recipients.length) {
+    issues.push(configIssue("document_send_to", "Send to", "Configura almeno un destinatario email."));
+  } else {
+    try {
+      validateEmailRecipients(recipients);
+    } catch (error) {
+      issues.push(configIssue("document_send_to", "Send to", error.message || String(error)));
+    }
+  }
+
+  if (!process.env.SMTP_HOST) {
+    issues.push(configIssue("smtp_host", "SMTP_HOST", "Configura l'host SMTP nelle variabili ambiente."));
+  }
+  if (!process.env.SMTP_FROM) {
+    issues.push(configIssue("smtp_from", "SMTP_FROM", "Configura il mittente SMTP nelle variabili ambiente."));
+  }
+  if (process.env.SMTP_USER && !process.env.SMTP_PASSWORD) {
+    issues.push(configIssue("smtp_password", "SMTP_PASSWORD", "SMTP_USER e configurato ma manca SMTP_PASSWORD."));
+  }
+
+  return issues;
+}
+
 function qualityResponsibility(field) {
   const text = `${field?.field || ""} ${field?.path || ""}`.toLowerCase();
   if (/prezzo|offerta|rilancio/.test(text)) {
@@ -994,6 +1051,16 @@ app.post("/api/v1/processing-events/:id/reprocess", requireProcessingUiToken, as
 
   if (event.source !== "zapier.email_activation") {
     res.status(400).json({ ok: false, error: "Reprocess disponibile solo per eventi Zapier." });
+    return;
+  }
+
+  const configurationIssues = await collectPipelineConfigurationIssues();
+  if (configurationIssues.length) {
+    res.status(400).json({
+      ok: false,
+      error: "Non sono state configurate queste cose",
+      missing_configuration: configurationIssues,
+    });
     return;
   }
 

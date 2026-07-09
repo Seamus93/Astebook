@@ -146,8 +146,13 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     );
     const reprocessPayload = await reprocessResponse.json();
 
-    assert.equal(reprocessResponse.status, 200);
-    assert.equal(reprocessPayload.result.codice_pratica, "RM_ROMA_TOL_202949480010");
+    assert.equal(reprocessResponse.status, 400);
+    assert.equal(reprocessPayload.error, "Non sono state configurate queste cose");
+    assert.ok(
+      reprocessPayload.missing_configuration.some((item) => item.key === "document_template_url")
+    );
+    assert.ok(reprocessPayload.missing_configuration.some((item) => item.key === "document_send_to"));
+    assert.ok(reprocessPayload.missing_configuration.some((item) => item.key === "smtp_host"));
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

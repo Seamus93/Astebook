@@ -126,3 +126,7 @@ Requirements:
 - `document_send_to` must contain one or more valid email addresses.
 
 The email includes the generated PDF and an Astebook-styled processing report with missing fields, extraction notes and likely responsibility hints. The delivery result is stored in `result.document_email` and logged in the processing event.
+
+## `POST /api/v1/processing-events/:id/reprocess`
+
+Before restarting extraction, the endpoint verifies that AI, OCR, document template and email delivery settings are complete. If configuration is missing, it returns `400` with `missing_configuration` and does not start the pipeline.

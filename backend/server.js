@@ -83,30 +83,50 @@ async function getAdminRecoveryCredentials() {
   };
 }
 
-function hasSmtpConfig() {
-  return Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
+async function getSmtpSettings() {
+  const host = await getEffectiveSetting("SMTP_HOST", "smtp_host");
+  const port = await getEffectiveSetting("SMTP_PORT", "smtp_port");
+  const secure = await getEffectiveSetting("SMTP_SECURE", "smtp_secure");
+  const user = await getEffectiveSetting("SMTP_USER", "smtp_user");
+  const password = await getEffectiveSetting("SMTP_PASSWORD", "smtp_password");
+  const from = await getEffectiveSetting("SMTP_FROM", "smtp_from");
+  return {
+    host: String(host || "").trim(),
+    port: Number(port || 587),
+    secure: String(secure || "").trim().toLowerCase() === "true",
+    user: String(user || "").trim(),
+    password: String(password || ""),
+    from: String(from || "").trim(),
+  };
 }
 
-function createSmtpTransporter() {
+async function hasSmtpConfig() {
+  const smtp = await getSmtpSettings();
+  return Boolean(smtp.host && smtp.from);
+}
+
+async function createSmtpTransporter() {
+  const smtp = await getSmtpSettings();
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: process.env.SMTP_SECURE === "true",
-    auth: process.env.SMTP_USER
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure,
+    auth: smtp.user
       ? {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASSWORD || "",
+          user: smtp.user,
+          pass: smtp.password || "",
         }
       : undefined,
   });
 }
 
 async function sendRecoveryEmail({ to, credentials }) {
-  if (!hasSmtpConfig()) return false;
-  const transporter = createSmtpTransporter();
+  if (!(await hasSmtpConfig())) return false;
+  const smtp = await getSmtpSettings();
+  const transporter = await createSmtpTransporter();
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM,
+    from: smtp.from,
     to,
     subject: "Credenziali Astebook",
     text: [
@@ -447,14 +467,15 @@ async function collectPipelineConfigurationIssues() {
     }
   }
 
-  if (!process.env.SMTP_HOST) {
-    issues.push(configIssue("smtp_host", "SMTP_HOST", "Configura l'host SMTP nelle variabili ambiente."));
+  const smtp = await getSmtpSettings();
+  if (!smtp.host) {
+    issues.push(configIssue("smtp_host", "SMTP Host", "Configura l'host SMTP."));
   }
-  if (!process.env.SMTP_FROM) {
-    issues.push(configIssue("smtp_from", "SMTP_FROM", "Configura il mittente SMTP nelle variabili ambiente."));
+  if (!smtp.from) {
+    issues.push(configIssue("smtp_from", "SMTP From", "Configura il mittente SMTP."));
   }
-  if (process.env.SMTP_USER && !process.env.SMTP_PASSWORD) {
-    issues.push(configIssue("smtp_password", "SMTP_PASSWORD", "SMTP_USER e configurato ma manca SMTP_PASSWORD."));
+  if (smtp.user && !smtp.password) {
+    issues.push(configIssue("smtp_password", "SMTP Password", "SMTP User e configurato ma manca SMTP Password."));
   }
 
   return issues;
@@ -622,8 +643,8 @@ function buildDocumentEmailText(event, report) {
 }
 
 async function sendDocumentEmailForEvent(event, recipients) {
-  if (!hasSmtpConfig()) {
-    throw new Error("SMTP non configurato: imposta SMTP_HOST e SMTP_FROM.");
+  if (!(await hasSmtpConfig())) {
+    throw new Error("SMTP non configurato: imposta SMTP Host e SMTP From.");
   }
   if (!Array.isArray(recipients) || recipients.length === 0) {
     throw new Error("Nessun destinatario configurato in Send to.");
@@ -634,10 +655,11 @@ async function sendDocumentEmailForEvent(event, recipients) {
   const report = buildDocumentQualityReport(event);
   const code = event.result?.codice_pratica || event.metadata?.zap_run_id || event.id;
   const fileName = `astebook-${code}.pdf`.replace(/[^\w.-]+/g, "_");
-  const transporter = createSmtpTransporter();
+  const smtp = await getSmtpSettings();
+  const transporter = await createSmtpTransporter();
 
   await transporter.sendMail({
-    from: process.env.SMTP_FROM,
+    from: smtp.from,
     to: recipients,
     subject: documentEmailSubject(event),
     text: buildDocumentEmailText(event, report),
@@ -681,9 +703,9 @@ async function autoSendMergedDocumentEmail(eventId) {
     );
   }
 
-  if (!hasSmtpConfig()) {
+  if (!(await hasSmtpConfig())) {
     return markResult(
-      { status: "skipped", recipients, reason: "SMTP non configurato: imposta SMTP_HOST e SMTP_FROM." },
+      { status: "skipped", recipients, reason: "SMTP non configurato: imposta SMTP Host e SMTP From." },
       {
         message: "Automatic document email skipped",
         data: { recipients, reason: "missing_smtp" },
@@ -758,6 +780,12 @@ app.get("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
         process.env.DOCUMENT_TEMPLATE_URL || settings.document_template_url || "",
       document_send_to:
         process.env.DOCUMENT_SEND_TO || settings.document_send_to || "",
+      smtp_host: secretValue("SMTP_HOST", "smtp_host"),
+      smtp_port: process.env.SMTP_PORT || settings.smtp_port || "587",
+      smtp_secure: process.env.SMTP_SECURE || settings.smtp_secure || "false",
+      smtp_user: secretValue("SMTP_USER", "smtp_user"),
+      smtp_password: secretValue("SMTP_PASSWORD", "smtp_password"),
+      smtp_from: process.env.SMTP_FROM || settings.smtp_from || "",
     },
   });
 });
@@ -780,6 +808,12 @@ app.post("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
   assignIfFilled("pdf_app_ocr_endpoint");
   assignIfFilled("pdf_app_job_endpoint");
   assignIfFilled("document_template_url");
+  assignIfFilled("smtp_host");
+  assignIfFilled("smtp_port");
+  assignIfFilled("smtp_secure");
+  assignIfFilled("smtp_user");
+  assignIfFilled("smtp_password");
+  assignIfFilled("smtp_from");
   if (Object.prototype.hasOwnProperty.call(body, "document_send_to")) {
     settings.document_send_to = String(body.document_send_to || "").trim();
   }
@@ -985,8 +1019,8 @@ app.post("/api/v1/processing-events/:id/send-document", requireProcessingUiToken
     return;
   }
 
-  if (!hasSmtpConfig()) {
-    res.status(400).json({ ok: false, error: "SMTP non configurato: imposta SMTP_HOST e SMTP_FROM." });
+  if (!(await hasSmtpConfig())) {
+    res.status(400).json({ ok: false, error: "SMTP non configurato: imposta SMTP Host e SMTP From." });
     return;
   }
 

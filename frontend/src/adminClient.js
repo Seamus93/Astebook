@@ -71,6 +71,12 @@ async function loadSettings() {
         pdf_app_job_endpoint: 'pdfAppJobEndpoint',
         document_template_url: 'documentTemplateUrl',
         document_send_to: 'documentSendTo',
+        smtp_host: 'smtpHost',
+        smtp_port: 'smtpPort',
+        smtp_secure: 'smtpSecure',
+        smtp_user: 'smtpUser',
+        smtp_password: 'smtpPassword',
+        smtp_from: 'smtpFrom',
       }[key];
       if (id) qs(id).value = val || '';
     });
@@ -864,6 +870,26 @@ function suggestModelBasedOnBaseUrl() {
   }
 }
 
+function initSidebarToggle() {
+  const shell = qs('appShell');
+  const button = qs('sidebarToggleButton');
+  if (!shell || !button) return;
+
+  const applyState = (collapsed) => {
+    shell.classList.toggle('sidebar-collapsed', collapsed);
+    button.setAttribute('aria-expanded', String(!collapsed));
+    button.title = collapsed ? 'Apri elenco lavorazioni' : 'Chiudi elenco lavorazioni';
+  };
+
+  applyState(localStorage.getItem('astebook_sidebar_collapsed') === '1');
+
+  button.addEventListener('click', () => {
+    const collapsed = !shell.classList.contains('sidebar-collapsed');
+    localStorage.setItem('astebook_sidebar_collapsed', collapsed ? '1' : '0');
+    applyState(collapsed);
+  });
+}
+
 async function saveSettings(e) {
   e.preventDefault();
   const form = qs('settingsForm');
@@ -896,6 +922,7 @@ export default function initAdminClient() {
     qs('settingsModal').hidden = true;
   });
   initRevealButtons();
+  initSidebarToggle();
   qs('settingsForm').addEventListener('submit', saveSettings);
   // react to base URL changes to suggest model
   const baseInput = qs('aiBaseUrl');

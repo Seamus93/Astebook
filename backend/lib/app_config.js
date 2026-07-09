@@ -20,6 +20,12 @@ const defaultConfig = {
     pdf_app_job_endpoint: "",
     document_template_url: "",
     document_send_to: "",
+    smtp_host: "",
+    smtp_port: "587",
+    smtp_secure: "false",
+    smtp_user: "",
+    smtp_password: "",
+    smtp_from: "",
   },
 };
 

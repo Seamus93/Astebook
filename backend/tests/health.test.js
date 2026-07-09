@@ -289,6 +289,12 @@ test("Admin login can read and update runtime settings", async () => {
         processing_ui_token: "runtime-ui-token",
         zapier_webhook_token: "runtime-webhook-token",
         document_send_to: "gare@example.com, backoffice@example.com",
+        smtp_host: "smtp.gmail.com",
+        smtp_port: "465",
+        smtp_secure: "true",
+        smtp_user: "smtp@example.com",
+        smtp_password: "smtp-secret",
+        smtp_from: "smtp@example.com",
       }),
     });
     const updatePayload = await updateResponse.json();
@@ -333,6 +339,12 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(updatedSettingsPayload.settings.document_template_url, templateUrl);
     assert.equal(updatedSettingsPayload.settings.pdf_app_ocr_endpoint, "https://api.pdf-app.net/ocr");
     assert.equal(updatedSettingsPayload.settings.document_send_to, "gare@example.com, backoffice@example.com");
+    assert.equal(updatedSettingsPayload.settings.smtp_host, "smtp.gmail.com");
+    assert.equal(updatedSettingsPayload.settings.smtp_port, "465");
+    assert.equal(updatedSettingsPayload.settings.smtp_secure, "true");
+    assert.equal(updatedSettingsPayload.settings.smtp_user, "smtp@example.com");
+    assert.equal(updatedSettingsPayload.settings.smtp_password, "smtp-secret");
+    assert.equal(updatedSettingsPayload.settings.smtp_from, "smtp@example.com");
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

@@ -111,6 +111,7 @@ Updates runtime settings for:
 - `zapier_webhook_token`
 - `admin_session_secret`
 - `document_send_to`: comma, semicolon or newline separated default recipients for document PDF emails.
+- `smtp_host`, `smtp_port`, `smtp_secure`, `smtp_user`, `smtp_password`, `smtp_from`: SMTP delivery settings used when matching environment variables are not set.
 - `admin_password`
 
 These endpoints require the `/admin` login cookie.
@@ -121,7 +122,7 @@ After a Zapier activation has been received, extracted and merged, the backend a
 
 Requirements:
 
-- SMTP environment must be configured with `SMTP_HOST` and `SMTP_FROM`.
+- SMTP must be configured through settings or environment variables with host and sender.
 - `DOCUMENT_TEMPLATE_URL` or the runtime document template setting must be configured.
 - `document_send_to` must contain one or more valid email addresses.
 

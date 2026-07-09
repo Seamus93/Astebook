@@ -42,12 +42,23 @@ select {
   display: grid;
   grid-template-columns: minmax(300px, 360px) 1fr;
   min-height: 100vh;
+  transition: grid-template-columns 180ms ease;
+}
+
+.shell.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
 }
 
 .sidebar {
   border-right: 1px solid var(--line);
   background: var(--panel);
   min-height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.shell.sidebar-collapsed .sidebar {
+  border-right: 0;
 }
 
 .brand,
@@ -63,6 +74,17 @@ select {
 .brand span {
   font-weight: 800;
   font-size: 20px;
+}
+
+.detail-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.detail-title h1 {
+  overflow-wrap: anywhere;
 }
 
 .toolbar {
@@ -705,6 +727,11 @@ select {
   display: none;
 }
 
+.console-admin-backdrop {
+  padding: 0;
+  background: var(--panel);
+}
+
 .toast-host {
   position: fixed;
   right: 18px;
@@ -776,6 +803,46 @@ select {
   border: 1px solid var(--line);
   border-radius: 8px;
   box-shadow: var(--shadow);
+}
+
+.modal-fullscreen {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100vw;
+  height: 100vh;
+  max-height: 100vh;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.console-admin-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-fullscreen .settings-form,
+.modal-fullscreen .settings-summary {
+  min-height: 0;
+  overflow: auto;
+}
+
+.modal-fullscreen .settings-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-content: start;
+  border-right: 1px solid var(--line);
+  border-bottom: 0;
+}
+
+.modal-fullscreen .settings-form .modal-actions {
+  grid-column: 1 / -1;
+}
+
+.modal-fullscreen .settings-summary {
+  border-left: 0;
+  background: var(--panel-soft);
 }
 
 .modal-narrow {
@@ -954,8 +1021,15 @@ select {
   .shell,
   .panes,
   .analysis-substeppers,
+  .console-admin-content,
   .summary-grid {
     grid-template-columns: 1fr;
+  }
+
+  .modal-fullscreen .settings-form {
+    grid-template-columns: 1fr;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
   }
 
   .sidebar {

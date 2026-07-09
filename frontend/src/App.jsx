@@ -1,8 +1,9 @@
 import { useEffect } from "react";
+import ConsoleAdmin from "./ConsoleAdmin.jsx";
 import "./styles.css";
 
 const adminMarkup = String.raw`
-  <main class="shell">
+  <main id="appShell" class="shell">
     <aside class="sidebar">
       <div class="brand">
         <span>Astebook</span>
@@ -38,9 +39,14 @@ const adminMarkup = String.raw`
 
     <section class="detail">
       <header class="detail-header">
-        <div>
+        <div class="detail-title">
+          <button id="sidebarToggleButton" class="icon-button" type="button" title="Apri/chiudi elenco">
+            <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+          </button>
+          <div>
           <p id="selectedSource" class="eyebrow">Nessun evento</p>
           <h1 id="selectedTitle">Seleziona una lavorazione</h1>
+          </div>
         </div>
         <div class="detail-actions">
           <button id="reprocessButton" class="secondary-button" type="button" disabled>
@@ -123,45 +129,6 @@ const adminMarkup = String.raw`
     </section>
   </div>
 
-  <div id="settingsModal" class="modal-backdrop" hidden>
-    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-      <header class="modal-header">
-        <div><p class="eyebrow">Console Admin</p><h2 id="settingsTitle">Impostazioni</h2></div>
-        <button id="closeSettingsButton" class="icon-button" type="button" title="Chiudi"><span class="material-symbols-outlined" aria-hidden="true">close</span></button>
-      </header>
-      <form id="settingsForm" class="settings-form">
-        ${[
-          ["processingUiToken", "processing_ui_token", "Token UI", "Token per le API della UI", "off"],
-          ["zapierWebhookToken", "zapier_webhook_token", "Token Webhook Zapier", "Token richiesto dagli hook Zapier", "off"],
-          ["adminSessionSecret", "admin_session_secret", "Session Secret", "Secret per firmare la sessione admin", "off"],
-          ["aiApiKey", "ai_api_key", "AI API Key", "Chiave API OpenRouter/OpenAI", "off"],
-          ["aiBaseUrl", "ai_base_url", "AI Base URL", "https://openrouter.ai/api/v1", "off"],
-          ["aiModel", "ai_model", "AI Model", "openai/gpt-4o-mini", "off"],
-          ["pdfAppApiKey", "pdf_app_api_key", "PDF-app API Key", "API key PDF-app.net", "off"],
-          ["pdfAppOcrEndpoint", "pdf_app_ocr_endpoint", "PDF-app OCR Endpoint", "Endpoint OCR 2.0 PDF-app.net", "off"],
-          ["pdfAppJobEndpoint", "pdf_app_job_endpoint", "PDF-app Job Endpoint", "Endpoint polling job async, opzionale", "off"],
-          ["documentTemplateUrl", "document_template_url", "Template Documento", "Link Google Doc template con placeholder {{campo}}", "off"],
-          ["documentSendTo", "document_send_to", "Send to", "email@dominio.it, altra@dominio.it", "off"],
-          ["adminPassword", "admin_password", "Nuova Password Admin", "Lascia vuoto per non cambiarla", "new-password"],
-        ]
-          .map(
-            ([id, name, label, placeholder, autocomplete]) => `
-        <label>
-          <span>${label}</span>
-          <div class="secret-field">
-            <input id="${id}" name="${name}" type="password" autocomplete="${autocomplete}" placeholder="${placeholder}" />
-            <button class="icon-button reveal-button" type="button" data-reveal="${id}" title="Mostra">
-              <span class="material-symbols-outlined" aria-hidden="true">visibility</span>
-            </button>
-          </div>
-        </label>`
-          )
-          .join("")}
-        <div class="modal-actions"><p id="settingsStatus" class="settings-status"></p><button type="submit" class="primary-button">Salva</button></div>
-      </form>
-      <section class="settings-summary"><h3>Valori salvati</h3><div id="settingsPane" class="settings-cards"></div></section>
-    </section>
-  </div>
 `;
 
 export default function App() {
@@ -169,5 +136,10 @@ export default function App() {
     import("./adminClient.js");
   }, []);
 
-  return <div dangerouslySetInnerHTML={{ __html: adminMarkup }} />;
+  return (
+    <>
+      <div dangerouslySetInnerHTML={{ __html: adminMarkup }} />
+      <ConsoleAdmin />
+    </>
+  );
 }

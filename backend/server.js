@@ -591,10 +591,10 @@ function buildDocumentEmailHtml(event, report) {
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td align="left" style="vertical-align:top;">
-                      <img src="cid:astebook-logo" width="177" alt="Astebook" style="display:block;width:177px;max-width:177px;height:auto;border:0;" />
+                      <img src="cid:astebook-logo@astebook.local" width="177" alt="Astebook" style="display:block;width:177px;max-width:177px;height:auto;border:0;" />
                     </td>
                     <td align="right" style="vertical-align:top;">
-                      <img src="cid:iresales-logo" width="177" alt="i-resales" style="display:block;width:177px;max-width:177px;height:auto;border:0;margin-left:auto;" />
+                      <img src="cid:iresales-logo@astebook.local" width="177" alt="i-resales" style="display:block;width:177px;max-width:177px;height:auto;border:0;margin-left:auto;" />
                     </td>
                   </tr>
                 </table>
@@ -656,16 +656,18 @@ function inlineLogoAttachments() {
       ? {
           filename: "astebook-logo.png",
           path: astebookLogoPath,
-          cid: "astebook-logo",
+          cid: "astebook-logo@astebook.local",
           contentType: "image/png",
+          contentDisposition: "inline",
         }
       : null,
     existsSync(iresalesLogoPath)
       ? {
           filename: "iresales-logo.png",
           path: iresalesLogoPath,
-          cid: "iresales-logo",
+          cid: "iresales-logo@astebook.local",
           contentType: "image/png",
+          contentDisposition: "inline",
         }
       : null,
   ].filter(Boolean);

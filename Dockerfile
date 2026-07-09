@@ -22,6 +22,7 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/backend ./backend
 COPY --from=build /app/frontend/dist ./frontend/dist
+COPY --from=build /app/frontend/media ./frontend/media
 COPY --from=build /app/scripts ./scripts
 
 EXPOSE 3000

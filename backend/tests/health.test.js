@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,6 +16,14 @@ const { app, mergeExtractedProposta } = await import("../server.js");
 
 test.after(async () => {
   await rm(runtimeDir, { recursive: true, force: true });
+});
+
+test("email logo media assets are available in the runtime image", async () => {
+  await access(join(process.cwd(), "frontend", "media", "astebook-logo.png"));
+  await access(join(process.cwd(), "frontend", "media", "iresales-logo.png"));
+
+  const dockerfile = await readFile(join(process.cwd(), "Dockerfile"), "utf8");
+  assert.match(dockerfile, /COPY --from=build \/app\/frontend\/media \.\/frontend\/media/);
 });
 
 test("GET /health returns the standard health payload", async () => {

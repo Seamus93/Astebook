@@ -49,13 +49,14 @@ const adminMarkup = String.raw`
           </div>
         </div>
         <div class="detail-actions">
-          <button id="reprocessButton" class="secondary-button" type="button" disabled>
+          <button id="reprocessButton" class="icon-button" type="button" title="Riprocessa" aria-label="Riprocessa" disabled>
             <span class="material-symbols-outlined" aria-hidden="true">sync</span>
-            Riprocessa
           </button>
-          <button id="documentButton" class="secondary-button" type="button" disabled>
+          <button id="documentButton" class="icon-button" type="button" title="Visualizza documento" aria-label="Visualizza documento" disabled>
             <span class="material-symbols-outlined" aria-hidden="true">description</span>
-            Visualizza documento
+          </button>
+          <button id="emailDocumentButton" class="icon-button" type="button" title="Invia email" aria-label="Invia email" disabled>
+            <span class="material-symbols-outlined" aria-hidden="true">outgoing_mail</span>
           </button>
           <span id="selectedStatus" class="status">-</span>
         </div>
@@ -66,7 +67,6 @@ const adminMarkup = String.raw`
         <div><span>Aggiornato</span><strong id="updatedAt">-</strong></div>
         <div><span>File</span><strong id="fileCount">-</strong></div>
       </section>
-      <section id="analysisSubsteppers" class="analysis-substeppers" hidden></section>
 
       <section class="panes">
         ${[

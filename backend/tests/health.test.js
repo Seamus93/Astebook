@@ -124,7 +124,10 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     const sendPayload = await sendResponse.json();
 
     assert.equal(sendResponse.status, 400);
-    assert.match(sendPayload.error, /SMTP non configurato/);
+    assert.equal(sendPayload.error, "Non sono state configurate queste cose");
+    assert.ok(sendPayload.missing_configuration.some((item) => item.key === "document_template_url"));
+    assert.ok(sendPayload.missing_configuration.some((item) => item.key === "document_send_to"));
+    assert.ok(sendPayload.missing_configuration.some((item) => item.key === "smtp_host"));
 
     const docxResponse = await fetch(
       `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/document?format=docx`,
@@ -345,6 +348,60 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(updatedSettingsPayload.settings.smtp_user, "smtp@example.com");
     assert.equal(updatedSettingsPayload.settings.smtp_password, "smtp-secret");
     assert.equal(updatedSettingsPayload.settings.smtp_from, "smtp@example.com");
+
+    const badSmtpUpdateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        pdf_app_api_key: "pdf-secret",
+        smtp_port: "587",
+        smtp_secure: "true",
+      }),
+    });
+    assert.equal(badSmtpUpdateResponse.status, 200);
+
+    const intakeResponse = await fetch(`http://127.0.0.1:${port}/api/v1/zapier/email-activation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-astebook-webhook-token": "test-webhook-token",
+      },
+      body: JSON.stringify({
+        subject: "SMTP_TEST procedura competitiva",
+        from: "cliente@example.com",
+        email_body_text: "Immobile in Via Roma 1. Prezzo base Euro 100.000. Asta 20/07/2026.",
+        zap_run_id: "smtp-config-test",
+      }),
+    });
+    const intakePayload = await intakeResponse.json();
+    assert.equal(intakeResponse.status, 202);
+
+    const badReprocessResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/reprocess`,
+      {
+        method: "POST",
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    const badReprocessPayload = await badReprocessResponse.json();
+    assert.equal(badReprocessResponse.status, 400);
+    assert.ok(badReprocessPayload.missing_configuration.some((item) => item.key === "smtp_secure"));
+
+    const restoreSmtpResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        cookie,
+      },
+      body: JSON.stringify({
+        smtp_port: "465",
+        smtp_secure: "true",
+      }),
+    });
+    assert.equal(restoreSmtpResponse.status, 200);
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

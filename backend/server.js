@@ -427,6 +427,29 @@ function configIssue(key, label, detail) {
   return { key, label, detail };
 }
 
+function smtpConfigurationIssues(smtp) {
+  const issues = [];
+  if (!smtp.host) {
+    issues.push(configIssue("smtp_host", "SMTP Host", "Configura l'host SMTP."));
+  }
+  if (!smtp.from) {
+    issues.push(configIssue("smtp_from", "SMTP From", "Configura il mittente SMTP."));
+  }
+  if (!Number.isInteger(smtp.port) || smtp.port <= 0) {
+    issues.push(configIssue("smtp_port", "SMTP Port", "Configura una porta SMTP valida, ad esempio 465 o 587."));
+  }
+  if (smtp.port === 587 && smtp.secure) {
+    issues.push(configIssue("smtp_secure", "SMTP Secure", "Per la porta 587 imposta SMTP Secure su false: la cifratura avviene tramite STARTTLS."));
+  }
+  if (smtp.port === 465 && !smtp.secure) {
+    issues.push(configIssue("smtp_secure", "SMTP Secure", "Per la porta 465 imposta SMTP Secure su true."));
+  }
+  if (smtp.user && !smtp.password) {
+    issues.push(configIssue("smtp_password", "SMTP Password", "SMTP User e configurato ma manca SMTP Password."));
+  }
+  return issues;
+}
+
 async function collectPipelineConfigurationIssues() {
   const issues = [];
   const aiApiKey = await getEffectiveSetting("AI_API_KEY", "ai_api_key");
@@ -467,17 +490,27 @@ async function collectPipelineConfigurationIssues() {
     }
   }
 
-  const smtp = await getSmtpSettings();
-  if (!smtp.host) {
-    issues.push(configIssue("smtp_host", "SMTP Host", "Configura l'host SMTP."));
-  }
-  if (!smtp.from) {
-    issues.push(configIssue("smtp_from", "SMTP From", "Configura il mittente SMTP."));
-  }
-  if (smtp.user && !smtp.password) {
-    issues.push(configIssue("smtp_password", "SMTP Password", "SMTP User e configurato ma manca SMTP Password."));
-  }
+  issues.push(...smtpConfigurationIssues(await getSmtpSettings()));
 
+  return issues;
+}
+
+async function collectDocumentEmailConfigurationIssues(recipients) {
+  const issues = [];
+  const documentTemplateUrl = await getEffectiveSetting("DOCUMENT_TEMPLATE_URL", "document_template_url");
+  if (!String(documentTemplateUrl || "").trim()) {
+    issues.push(configIssue("document_template_url", "Template Documento", "Configura il template Google Doc/DOCX per generare il PDF."));
+  }
+  if (!recipients.length) {
+    issues.push(configIssue("document_send_to", "Send to", "Configura almeno un destinatario email."));
+  } else {
+    try {
+      validateEmailRecipients(recipients);
+    } catch (error) {
+      issues.push(configIssue("document_send_to", "Send to", error.message || String(error)));
+    }
+  }
+  issues.push(...smtpConfigurationIssues(await getSmtpSettings()));
   return issues;
 }
 
@@ -1019,8 +1052,12 @@ app.post("/api/v1/processing-events/:id/send-document", requireProcessingUiToken
     return;
   }
 
-  if (!(await hasSmtpConfig())) {
-    res.status(400).json({ ok: false, error: "SMTP non configurato: imposta SMTP Host e SMTP From." });
+  if (!event.result?.merged) {
+    res.status(400).json({
+      ok: false,
+      error: "Dati merged non disponibili.",
+      detail: "Completa prima una lavorazione o usa Reprocessa per generare i dati merged.",
+    });
     return;
   }
 
@@ -1029,29 +1066,41 @@ app.post("/api/v1/processing-events/:id/send-document", requireProcessingUiToken
     await getEffectiveSetting("DOCUMENT_SEND_TO", "document_send_to")
   );
   const recipients = bodyRecipients.length ? bodyRecipients : configuredRecipients;
-  if (!recipients.length) {
-    res.status(400).json({ ok: false, error: "Nessun destinatario configurato in Send to." });
-    return;
-  }
-
-  try {
-    validateEmailRecipients(recipients);
-  } catch (error) {
-    res.status(400).json({ ok: false, error: error.message || String(error) });
+  const configurationIssues = await collectDocumentEmailConfigurationIssues(recipients);
+  if (configurationIssues.length) {
+    res.status(400).json({
+      ok: false,
+      error: "Non sono state configurate queste cose",
+      missing_configuration: configurationIssues,
+    });
     return;
   }
 
   try {
     const delivery = await sendDocumentEmailForEvent(event, recipients);
-
-    await updateProcessingEvent(event.id, {}, {
-      message: "Document email sent",
-      data: {
+    const result = {
+      ...(event.result || {}),
+      document_email: {
+        status: "sent",
         recipients: delivery.recipients,
         attachment: delivery.attachment,
-        report_issues: delivery.report.issues.length,
+        sent_at: new Date().toISOString(),
+        manual: true,
       },
-    });
+    };
+
+    await updateProcessingEvent(
+      event.id,
+      { result },
+      {
+        message: "Document email sent",
+        data: {
+          recipients: delivery.recipients,
+          attachment: delivery.attachment,
+          report_issues: delivery.report.issues.length,
+        },
+      }
+    );
 
     res.json({
       ok: true,
@@ -1060,14 +1109,28 @@ app.post("/api/v1/processing-events/:id/send-document", requireProcessingUiToken
       report: delivery.report,
     });
   } catch (error) {
-    await updateProcessingEvent(event.id, {}, {
-      level: "error",
-      message: "Document email failed",
-      data: {
+    const result = {
+      ...(event.result || {}),
+      document_email: {
+        status: "failed",
         recipients,
         error: error.message || String(error),
+        failed_at: new Date().toISOString(),
+        manual: true,
       },
-    });
+    };
+    await updateProcessingEvent(
+      event.id,
+      { result },
+      {
+        level: "error",
+        message: "Document email failed",
+        data: {
+          recipients,
+          error: error.message || String(error),
+        },
+      }
+    );
     res.status(500).json({
       ok: false,
       error: "Invio documento fallito.",

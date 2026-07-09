@@ -163,70 +163,8 @@ function ensureStyles() {
     }
     .temporary-processing-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       gap: 12px;
-    }
-    .substepper-group {
-      border: 1px solid var(--line, #d8dee8);
-      border-radius: 8px;
-      background: var(--panel-soft, #f9fafc);
-      overflow: hidden;
-    }
-    .substepper-header {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--line, #d8dee8);
-      font-weight: 900;
-      background: #fff;
-    }
-    .substepper-list { display: grid; }
-    .substepper-row {
-      display: grid;
-      grid-template-columns: 16px minmax(0, 1fr);
-      gap: 10px;
-      padding: 10px 12px;
-      border-bottom: 1px solid rgba(216, 222, 232, .75);
-    }
-    .substepper-row:last-child { border-bottom: 0; }
-    .substepper-dot {
-      width: 11px;
-      height: 11px;
-      margin-top: 4px;
-      border-radius: 999px;
-      border: 2px solid #bcc7d6;
-      background: #fff;
-    }
-    .substepper-row.running .substepper-dot {
-      border-color: #d8a441;
-      background: #fff4d6;
-      animation: astebookPulse 1s ease-in-out infinite;
-    }
-    .substepper-row.done .substepper-dot {
-      border-color: #1f8a5b;
-      background: #1f8a5b;
-    }
-    .substepper-row.error .substepper-dot {
-      border-color: #b42318;
-      background: #b42318;
-    }
-    .substepper-main strong,
-    .substepper-main span {
-      display: block;
-      overflow-wrap: anywhere;
-    }
-    .substepper-main span {
-      margin-top: 3px;
-      color: var(--muted, #657287);
-      font-size: 12px;
-    }
-    .substepper-row.running .substepper-main span { color: #9a6700; }
-    .substepper-row.done .substepper-main span { color: #1f8a5b; }
-    .substepper-row.error .substepper-main span { color: #b42318; }
-    @keyframes astebookPulse {
-      0%, 100% { transform: scale(1); opacity: 1; }
-      50% { transform: scale(1.35); opacity: .55; }
     }
     @media (max-width: 900px) {
       .temporary-processing-grid { grid-template-columns: 1fr; }
@@ -250,28 +188,29 @@ function ensureHost() {
   return host;
 }
 
-function renderGroup({ title, icon, docs, statusFor }) {
-  const rows = docs
+function renderCircularGroup({ title, icon, docs, statusFor }) {
+  const steps = docs
     .map((doc, index) => {
       const status = statusFor(doc, index);
+      const state = status.state === "error" ? "failed" : status.state === "running" ? "pending" : status.state;
+      const symbol = state === "done" ? "check" : state === "failed" ? "close" : "hourglass_top";
       return `
-        <div class="substepper-row ${status.state}">
-          <span class="substepper-dot"></span>
-          <div class="substepper-main">
-            <strong>${escapeHtml(doc.name)}</strong>
-            <span>${escapeHtml(status.title)}${status.detail ? ` · ${escapeHtml(status.detail)}` : ""}</span>
-          </div>
+        <div class="analysis-substep ${state}" title="${escapeHtml(doc.name)} - ${escapeHtml(status.title)}${status.detail ? ` - ${escapeHtml(status.detail)}` : ""}">
+          <span class="analysis-substep-circle">
+            <span class="material-symbols-outlined" aria-hidden="true">${symbol}</span>
+          </span>
+          <span class="analysis-substep-label">${escapeHtml(doc.name)}</span>
         </div>`;
     })
-    .join("");
+    .join('<span class="analysis-substep-connector"></span>');
 
   return `
-    <article class="substepper-group">
-      <div class="substepper-header">
+    <article class="analysis-substepper">
+      <header>
         <span class="material-symbols-outlined" aria-hidden="true">${icon}</span>
         <strong>${escapeHtml(title)}</strong>
-      </div>
-      <div class="substepper-list">${rows}</div>
+      </header>
+      <div class="analysis-substep-list">${steps}</div>
     </article>`;
 }
 
@@ -296,23 +235,17 @@ function renderProgress(event) {
       <span>Lavorazione in corso: OCR e analisi AI</span>
     </div>
     <div class="temporary-processing-grid">
-      ${renderGroup({
-        title: "OCR documenti",
+      ${renderCircularGroup({
+        title: "OCR",
         icon: "document_scanner",
         docs,
         statusFor: (doc, index) => ocrStatusFor(doc, steps, index === currentOcrIndex),
       })}
-      ${renderGroup({
-        title: "Analisi AI",
+      ${renderCircularGroup({
+        title: "AI Extraction",
         icon: "psychology",
         docs,
         statusFor: (doc, index) => aiStatusFor(doc, steps, aiStarted && index === currentAiIndex),
-      })}
-      ${renderGroup({
-        title: "Mailing",
-        icon: "outgoing_mail",
-        docs: [{ name: "PDF + Report", raw: {} }],
-        statusFor: () => mailingStatusFor(event),
       })}
     </div>`;
 }

@@ -431,12 +431,6 @@ function isImageFile(fileOrName) {
   );
 }
 
-function sameAnalysisFile(step, fileName) {
-  const candidate = normalizeFileText(fileNameFromStep(step));
-  const target = normalizeFileText(fileName);
-  return Boolean(candidate && target && (candidate === target || candidate.includes(target) || target.includes(candidate)));
-}
-
 function pipelineSteps(event) {
   return (event.steps || []).filter((step) => !isFileStep(step));
 }
@@ -457,108 +451,6 @@ function fileStepGroups(event) {
   });
 
   return Array.from(groups.entries()).map(([fileName, group]) => ({ fileName, ...group }));
-}
-
-function analysisFilesForEvent(event) {
-  const files = [];
-  const seen = new Set();
-  const add = (file, fallback) => {
-    if (isImageFile(file)) return;
-    const name = fileDisplayName(file, fallback);
-    const key = normalizeFileText(name);
-    if (!key || seen.has(key)) return;
-    seen.add(key);
-    files.push({ name, file });
-  };
-
-  (event.result?.attachments || []).forEach((file, index) => add(file, `File ${index + 1}`));
-  (event.request?.files || []).forEach((file, index) => add(file, `File ${index + 1}`));
-  (event.steps || []).filter(isFileStep).forEach((step) => add({ file_name: fileNameFromStep(step) }, "File"));
-
-  if (!files.length && event.result?.email?.has_body_text) {
-    files.push({ name: "Corpo email", file: { file_name: "Corpo email" } });
-  }
-
-  return files;
-}
-
-function statusForOcrFile(file, steps) {
-  const name = file.name;
-  const completed = [...steps].reverse().find((step) => /PDF-app OCR completed/i.test(step.message || "") && sameAnalysisFile(step, name));
-  if (completed) return { state: "done", label: "OCR completato" };
-  const failed = [...steps].reverse().find((step) => /PDF-app OCR failed/i.test(step.message || "") && sameAnalysisFile(step, name));
-  if (failed) return { state: "failed", label: failed.data?.error || "OCR fallito" };
-  const skipped = [...steps].reverse().find((step) => /PDF-app OCR skipped|PDF-app OCR skipped or empty/i.test(step.message || "") && sameAnalysisFile(step, name));
-  if (skipped || normalizeFileText(name) === "corpo email") return { state: "done", label: "OCR non necessario" };
-  if (steps.some((step) => /AI extraction started|extracted|AI extraction completed/i.test(step.message || ""))) {
-    return { state: "done", label: "Testo disponibile" };
-  }
-  return { state: "pending", label: "In attesa OCR" };
-}
-
-function statusForAiFile(file, steps) {
-  const name = file.name;
-  const completed = [...steps].reverse().find(
-    (step) =>
-      /extracted|AI extraction completed/i.test(step.message || "") &&
-      (sameAnalysisFile(step, name) || normalizeFileText(name) === "corpo email")
-  );
-  if (completed) return { state: "done", label: completed.message || "AI completata" };
-  const failed = [...steps].reverse().find((step) => /AI extraction failed|extraction failed/i.test(step.message || "") && sameAnalysisFile(step, name));
-  if (failed) return { state: "failed", label: failed.data?.error || "AI fallita" };
-  if (steps.some((step) => /AI extraction started/i.test(step.message || ""))) return { state: "pending", label: "In analisi" };
-  return { state: "pending", label: "In attesa AI" };
-}
-
-function renderCircularSubstepper({ title, icon, files, statusFor }) {
-  const steps = files
-    .map((file) => {
-      const status = statusFor(file);
-      return `
-        <div class="analysis-substep ${status.state}" title="${escapeHtml(file.name)} - ${escapeHtml(status.label)}">
-          <span class="analysis-substep-circle">
-            <span class="material-symbols-outlined" aria-hidden="true">${status.state === "done" ? "check" : status.state === "failed" ? "close" : "hourglass_top"}</span>
-          </span>
-          <span class="analysis-substep-label">${escapeHtml(file.name)}</span>
-        </div>`;
-    })
-    .join('<span class="analysis-substep-connector"></span>');
-
-  return `
-    <article class="analysis-substepper">
-      <header>
-        <span class="material-symbols-outlined" aria-hidden="true">${icon}</span>
-        <strong>${escapeHtml(title)}</strong>
-      </header>
-      <div class="analysis-substep-list">${steps}</div>
-    </article>`;
-}
-
-function renderAnalysisSubsteppers(event) {
-  const host = document.getElementById("analysisSubsteppers");
-  if (!host) return;
-  const files = analysisFilesForEvent(event);
-  if (!files.length) {
-    host.hidden = true;
-    host.innerHTML = "";
-    return;
-  }
-  const steps = event.steps || [];
-  host.hidden = false;
-  host.innerHTML = [
-    renderCircularSubstepper({
-      title: "OCR",
-      icon: "document_scanner",
-      files,
-      statusFor: (file) => statusForOcrFile(file, steps),
-    }),
-    renderCircularSubstepper({
-      title: "AI Extraction",
-      icon: "psychology",
-      files,
-      statusFor: (file) => statusForAiFile(file, steps),
-    }),
-  ].join("");
 }
 
 function renderStepItem(step) {
@@ -787,7 +679,6 @@ async function selectEvent(id) {
     requestPane.insertBefore(emailSection, requestPane.firstChild);
     }
     renderPipelineSteps(ev);
-    renderAnalysisSubsteppers(ev);
     renderFileSections(ev);
     renderStructured(document.getElementById('resultPane'), extractedResultView(ev), 'Nessun dato estratto.');
     renderNotes(ev);
@@ -796,9 +687,11 @@ async function selectEvent(id) {
 
     const reprocessButton = document.getElementById('reprocessButton');
     const documentButton = document.getElementById('documentButton');
+    const emailDocumentButton = document.getElementById('emailDocumentButton');
     const canReprocess = ev.source === 'zapier.email_activation';
     reprocessButton.disabled = !canReprocess;
     documentButton.disabled = false;
+    emailDocumentButton.disabled = !ev.result?.merged;
     reprocessButton.onclick = async () => {
       try {
         const res = await apiFetch(`/api/v1/processing-events/${id}/reprocess`, { method: 'POST' });
@@ -824,6 +717,42 @@ async function selectEvent(id) {
     };
     documentButton.onclick = () => {
       window.open(`/api/v1/processing-events/${id}/document?format=pdf`, '_blank', 'noopener');
+    };
+    emailDocumentButton.onclick = async () => {
+      try {
+        emailDocumentButton.disabled = true;
+        const res = await apiFetch(`/api/v1/processing-events/${id}/send-document`, { method: 'POST' });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const missing = Array.isArray(payload.missing_configuration)
+            ? payload.missing_configuration.map((item) => `${item.label}: ${item.detail}`)
+            : [];
+          showToast({
+            title: payload.error || "Invio email non riuscito",
+            message: missing.length
+              ? "Non sono state configurate queste cose:"
+              : payload.detail || `HTTP ${res.status}`,
+            items: missing,
+            tone: "error",
+          });
+          return;
+        }
+        showToast({
+          title: "Email inviata",
+          message: `Documento inviato a ${(payload.recipients || []).join(", ") || "destinatari configurati"}.`,
+          tone: "info",
+        });
+        await selectEvent(id);
+      } catch (error) {
+        console.error('send document failed', error);
+        showToast({
+          title: "Invio email non riuscito",
+          message: error.message || String(error),
+          tone: "error",
+        });
+      } finally {
+        emailDocumentButton.disabled = !state.selected?.result?.merged;
+      }
     };
   } catch (err) {
     console.error('selectEvent', err);

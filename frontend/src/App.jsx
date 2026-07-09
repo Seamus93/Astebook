@@ -60,6 +60,7 @@ const adminMarkup = String.raw`
         <div><span>Aggiornato</span><strong id="updatedAt">-</strong></div>
         <div><span>File</span><strong id="fileCount">-</strong></div>
       </section>
+      <section id="analysisSubsteppers" class="analysis-substeppers" hidden></section>
 
       <section class="panes">
         ${[
@@ -140,6 +141,7 @@ const adminMarkup = String.raw`
           ["pdfAppOcrEndpoint", "pdf_app_ocr_endpoint", "PDF-app OCR Endpoint", "Endpoint OCR 2.0 PDF-app.net", "off"],
           ["pdfAppJobEndpoint", "pdf_app_job_endpoint", "PDF-app Job Endpoint", "Endpoint polling job async, opzionale", "off"],
           ["documentTemplateUrl", "document_template_url", "Template Documento", "Link Google Doc template con placeholder {{campo}}", "off"],
+          ["documentSendTo", "document_send_to", "Send to", "email@dominio.it, altra@dominio.it", "off"],
           ["adminPassword", "admin_password", "Nuova Password Admin", "Lascia vuoto per non cambiarla", "new-password"],
         ]
           .map(

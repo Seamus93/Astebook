@@ -3,6 +3,13 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
   // helper safe getter
   const get = (o, p, d = null) =>
     p.split(".").reduce((a, k) => (a && a[k] !== undefined ? a[k] : undefined), o) ?? d;
+  const isBlankPlaceholder = (value) => {
+    if (value === null || value === undefined) return true;
+    if (typeof value !== "string") return false;
+    const clean = value.trim();
+    return !clean || clean === "-" || /^[…._\s”")/]+$/.test(clean);
+  };
+  const firstClean = (...values) => values.find((value) => !isBlankPlaceholder(value)) ?? null;
 
   // separa indirizzo e comune, gestendo formati senza virgole (es. "Foligno (PG) Via ...")
   const splitIndirizzoComune = (val) => {
@@ -164,7 +171,7 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
       rogito_entro_giorni: get(proposta, "rogito_entro_giorni", null),
     },
     redazione: {
-      luogo: get(proposta, "luogo_redazione", null) || "Milano",
+      luogo: firstClean(get(proposta, "luogo_redazione", null), "Milano"),
       data: get(proposta, "data_redazione", null),
       anno: get(proposta, "anno_redazione", null),
     },

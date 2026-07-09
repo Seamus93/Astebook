@@ -39,6 +39,7 @@ async function loadSettings() {
         pdf_app_ocr_endpoint: 'pdfAppOcrEndpoint',
         pdf_app_job_endpoint: 'pdfAppJobEndpoint',
         document_template_url: 'documentTemplateUrl',
+        document_send_to: 'documentSendTo',
       }[key];
       if (id) qs(id).value = val || '';
     });
@@ -250,6 +251,23 @@ function hasExtractedData(event) {
   return Boolean(event.result?.extracted?.annuncio || event.result?.extracted?.proposta);
 }
 
+function mailingStatus(event) {
+  const documentEmail = event.result?.document_email || {};
+  const message = documentEmail.status || "";
+  const steps = event.steps || [];
+  if (message === "sent" || steps.some((step) => /Automatic document email sent|Document email sent/i.test(step.message || ""))) {
+    return "done";
+  }
+  if (
+    ["failed", "skipped"].includes(message) ||
+    steps.some((step) => /Automatic document email failed|Document email failed/i.test(step.message || ""))
+  ) {
+    return "failed";
+  }
+  if (event.result?.merged) return "pending";
+  return "blocked";
+}
+
 function workflowStateLabel(state) {
   return {
     done: "Completato",
@@ -284,10 +302,19 @@ const workflowSteps = [
       event.status === "failed",
   },
   {
+    key: "mailing",
+    label: "Mailing",
+    icon: "outgoing_mail",
+    done: (event) => mailingStatus(event) === "done",
+    failed: (event) => mailingStatus(event) === "failed",
+  },
+  {
     key: "complete",
     label: "Completo",
     icon: "task_alt",
-    done: (event) => event.status === "completed" || Boolean(event.result?.ready_for_zapier),
+    done: (event) =>
+      (event.status === "completed" || Boolean(event.result?.ready_for_zapier)) &&
+      mailingStatus(event) === "done",
     failed: (event) => event.status === "failed",
   },
 ];
@@ -341,6 +368,38 @@ function isFileStep(step) {
   return Boolean(fileNameFromStep(step));
 }
 
+function fileDisplayName(file, fallback = "File") {
+  return file?.file_name || file?.originalname || file?.filename || file?.name || file?.field_name || file?.fieldname || fallback;
+}
+
+function normalizeFileText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isImageFile(fileOrName) {
+  const name =
+    typeof fileOrName === "string"
+      ? fileOrName
+      : fileDisplayName(fileOrName, "");
+  const mime =
+    typeof fileOrName === "string"
+      ? ""
+      : fileOrName?.mime_type || fileOrName?.mimetype || fileOrName?.file_mime_type || "";
+  const format = typeof fileOrName === "string" ? "" : fileOrName?.format || "";
+  return (
+    normalizeFileText(format) === "image" ||
+    normalizeFileText(format) === "png" ||
+    normalizeFileText(mime).startsWith("image/") ||
+    /\.(png|jpe?g|gif|webp|bmp|tiff?|heic)$/i.test(String(name || ""))
+  );
+}
+
+function sameAnalysisFile(step, fileName) {
+  const candidate = normalizeFileText(fileNameFromStep(step));
+  const target = normalizeFileText(fileName);
+  return Boolean(candidate && target && (candidate === target || candidate.includes(target) || target.includes(candidate)));
+}
+
 function pipelineSteps(event) {
   return (event.steps || []).filter((step) => !isFileStep(step));
 }
@@ -348,17 +407,121 @@ function pipelineSteps(event) {
 function fileStepGroups(event) {
   const groups = new Map();
   (event.result?.attachments || event.request?.files || []).forEach((file) => {
-    const fileName = file.file_name || file.originalname || file.name || file.field_name || "File";
+    if (isImageFile(file)) return;
+    const fileName = fileDisplayName(file);
     if (!groups.has(fileName)) groups.set(fileName, { file, steps: [] });
   });
 
   (event.steps || []).filter(isFileStep).forEach((step) => {
     const fileName = fileNameFromStep(step);
+    if (isImageFile(fileName)) return;
     if (!groups.has(fileName)) groups.set(fileName, { file: { file_name: fileName }, steps: [] });
     groups.get(fileName).steps.push(step);
   });
 
   return Array.from(groups.entries()).map(([fileName, group]) => ({ fileName, ...group }));
+}
+
+function analysisFilesForEvent(event) {
+  const files = [];
+  const seen = new Set();
+  const add = (file, fallback) => {
+    if (isImageFile(file)) return;
+    const name = fileDisplayName(file, fallback);
+    const key = normalizeFileText(name);
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    files.push({ name, file });
+  };
+
+  (event.result?.attachments || []).forEach((file, index) => add(file, `File ${index + 1}`));
+  (event.request?.files || []).forEach((file, index) => add(file, `File ${index + 1}`));
+  (event.steps || []).filter(isFileStep).forEach((step) => add({ file_name: fileNameFromStep(step) }, "File"));
+
+  if (!files.length && event.result?.email?.has_body_text) {
+    files.push({ name: "Corpo email", file: { file_name: "Corpo email" } });
+  }
+
+  return files;
+}
+
+function statusForOcrFile(file, steps) {
+  const name = file.name;
+  const completed = [...steps].reverse().find((step) => /PDF-app OCR completed/i.test(step.message || "") && sameAnalysisFile(step, name));
+  if (completed) return { state: "done", label: "OCR completato" };
+  const failed = [...steps].reverse().find((step) => /PDF-app OCR failed/i.test(step.message || "") && sameAnalysisFile(step, name));
+  if (failed) return { state: "failed", label: failed.data?.error || "OCR fallito" };
+  const skipped = [...steps].reverse().find((step) => /PDF-app OCR skipped|PDF-app OCR skipped or empty/i.test(step.message || "") && sameAnalysisFile(step, name));
+  if (skipped || normalizeFileText(name) === "corpo email") return { state: "done", label: "OCR non necessario" };
+  if (steps.some((step) => /AI extraction started|extracted|AI extraction completed/i.test(step.message || ""))) {
+    return { state: "done", label: "Testo disponibile" };
+  }
+  return { state: "pending", label: "In attesa OCR" };
+}
+
+function statusForAiFile(file, steps) {
+  const name = file.name;
+  const completed = [...steps].reverse().find(
+    (step) =>
+      /extracted|AI extraction completed/i.test(step.message || "") &&
+      (sameAnalysisFile(step, name) || normalizeFileText(name) === "corpo email")
+  );
+  if (completed) return { state: "done", label: completed.message || "AI completata" };
+  const failed = [...steps].reverse().find((step) => /AI extraction failed|extraction failed/i.test(step.message || "") && sameAnalysisFile(step, name));
+  if (failed) return { state: "failed", label: failed.data?.error || "AI fallita" };
+  if (steps.some((step) => /AI extraction started/i.test(step.message || ""))) return { state: "pending", label: "In analisi" };
+  return { state: "pending", label: "In attesa AI" };
+}
+
+function renderCircularSubstepper({ title, icon, files, statusFor }) {
+  const steps = files
+    .map((file) => {
+      const status = statusFor(file);
+      return `
+        <div class="analysis-substep ${status.state}" title="${escapeHtml(file.name)} - ${escapeHtml(status.label)}">
+          <span class="analysis-substep-circle">
+            <span class="material-symbols-outlined" aria-hidden="true">${status.state === "done" ? "check" : status.state === "failed" ? "close" : "hourglass_top"}</span>
+          </span>
+          <span class="analysis-substep-label">${escapeHtml(file.name)}</span>
+        </div>`;
+    })
+    .join('<span class="analysis-substep-connector"></span>');
+
+  return `
+    <article class="analysis-substepper">
+      <header>
+        <span class="material-symbols-outlined" aria-hidden="true">${icon}</span>
+        <strong>${escapeHtml(title)}</strong>
+      </header>
+      <div class="analysis-substep-list">${steps}</div>
+    </article>`;
+}
+
+function renderAnalysisSubsteppers(event) {
+  const host = document.getElementById("analysisSubsteppers");
+  if (!host) return;
+  const files = analysisFilesForEvent(event);
+  if (!files.length) {
+    host.hidden = true;
+    host.innerHTML = "";
+    return;
+  }
+  const steps = event.steps || [];
+  host.hidden = false;
+  host.innerHTML = [
+    renderCircularSubstepper({
+      title: "OCR",
+      icon: "document_scanner",
+      files,
+      statusFor: (file) => statusForOcrFile(file, steps),
+    }),
+    renderCircularSubstepper({
+      title: "AI Extraction",
+      icon: "psychology",
+      files,
+      statusFor: (file) => statusForAiFile(file, steps),
+    }),
+  ].join("");
 }
 
 function renderStepItem(step) {
@@ -587,6 +750,7 @@ async function selectEvent(id) {
     requestPane.insertBefore(emailSection, requestPane.firstChild);
     }
     renderPipelineSteps(ev);
+    renderAnalysisSubsteppers(ev);
     renderFileSections(ev);
     renderStructured(document.getElementById('resultPane'), extractedResultView(ev), 'Nessun dato estratto.');
     renderNotes(ev);

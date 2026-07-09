@@ -87,9 +87,8 @@ function hasSmtpConfig() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_FROM);
 }
 
-async function sendRecoveryEmail({ to, credentials }) {
-  if (!hasSmtpConfig()) return false;
-  const transporter = nodemailer.createTransport({
+function createSmtpTransporter() {
+  return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT || 587),
     secure: process.env.SMTP_SECURE === "true",
@@ -100,6 +99,11 @@ async function sendRecoveryEmail({ to, credentials }) {
         }
       : undefined,
   });
+}
+
+async function sendRecoveryEmail({ to, credentials }) {
+  if (!hasSmtpConfig()) return false;
+  const transporter = createSmtpTransporter();
 
   await transporter.sendMail({
     from: process.env.SMTP_FROM,
@@ -385,6 +389,288 @@ function redactSecret(value) {
   return `${str.slice(0, 4)}...${str.slice(-4)}`;
 }
 
+function parseEmailRecipients(value) {
+  return String(value || "")
+    .split(/[,\n;]/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function validateEmailRecipients(recipients) {
+  const invalid = recipients.filter((email) => !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email));
+  if (invalid.length) {
+    throw new Error(`Destinatari non validi: ${invalid.join(", ")}`);
+  }
+}
+
+function qualityResponsibility(field) {
+  const text = `${field?.field || ""} ${field?.path || ""}`.toLowerCase();
+  if (/prezzo|offerta|rilancio/.test(text)) {
+    return "Il campo economico non era ben leggibile o non e stato riconosciuto con sufficiente confidenza.";
+  }
+  if (/iban|bic|banc|beneficiario/.test(text)) {
+    return "Il campo bancario non e stato trovato: probabile assenza, scrittura errata o OCR non chiaro.";
+  }
+  if (/catasto|foglio|particella|mappale|subalterno/.test(text)) {
+    return "Il dato catastale non e stato trovato o potrebbe essere stato letto male dal documento sorgente.";
+  }
+  if (/indirizzo|comune|provincia/.test(text)) {
+    return "Il dato immobile non era completo o la formattazione dell'indirizzo non era univoca.";
+  }
+  if (/data|ora|vendita|deposito/.test(text)) {
+    return "Il termine temporale non era presente in modo chiaro o non e stato interpretato correttamente.";
+  }
+  return "Dato non trovato o non letto con sufficiente affidabilita dal documento sorgente.";
+}
+
+function buildDocumentQualityReport(event) {
+  const result = event?.result || {};
+  const missing = Array.isArray(result.missing_fields)
+    ? result.missing_fields
+    : Array.isArray(event?.error?.missing_fields)
+    ? event.error.missing_fields
+    : [];
+  const issues = missing.map((field) => ({
+    title: field.field || field.path || "Campo mancante",
+    detail: field.message || "Dato non trovato o mancante.",
+    source: field.expected_file || "Documento sorgente",
+    responsibility: qualityResponsibility(field),
+  }));
+
+  (Array.isArray(result.notes) ? result.notes : []).forEach((note) => {
+    issues.push({
+      title: "Nota elaborazione",
+      detail: String(note),
+      source: "Pipeline Astebook",
+      responsibility: /conflitto/i.test(String(note))
+        ? "Valori discordanti tra le fonti: serve verifica manuale."
+        : "Nota generata durante OCR, parsing o normalizzazione.",
+    });
+  });
+
+  (Array.isArray(event?.steps) ? event.steps : [])
+    .filter((step) => step.level === "error")
+    .forEach((step) => {
+      issues.push({
+        title: step.message || "Errore pipeline",
+        detail: step.data?.error || step.data?.reason || "Errore durante elaborazione.",
+        source: step.data?.file_name || step.data?.file_pdf || "Pipeline Astebook",
+        responsibility: /ocr/i.test(step.message || "")
+          ? "OCR non completato o testo non leggibile nel file sorgente."
+          : "Analisi automatica non completata: serve controllo manuale.",
+      });
+    });
+
+  return {
+    ok: issues.length === 0,
+    issues,
+  };
+}
+
+function documentEmailSubject(event) {
+  const code = event?.result?.codice_pratica || event?.metadata?.zap_run_id || event?.id;
+  return `Astebook - Documento procedura ${code}`;
+}
+
+function buildDocumentEmailHtml(event, report) {
+  const result = event?.result || {};
+  const merged = result.merged || {};
+  const code = result.codice_pratica || event?.metadata?.zap_run_id || event?.id || "-";
+  const address = [merged.immobile?.indirizzo, merged.immobile?.comune, merged.immobile?.provincia]
+    .filter((value) => value && String(value).trim())
+    .join(", ");
+  const issueRows = report.issues.length
+    ? report.issues
+        .map(
+          (issue) => `
+            <tr>
+              <td>${escapeHtml(issue.title)}</td>
+              <td>${escapeHtml(issue.detail)}</td>
+              <td>${escapeHtml(issue.source)}</td>
+              <td>${escapeHtml(issue.responsibility)}</td>
+            </tr>`
+        )
+        .join("")
+    : `<tr><td colspan="4">Nessuna criticita rilevata dalla pipeline automatica.</td></tr>`;
+
+  return `<!doctype html>
+<html lang="it">
+  <body style="margin:0;background:#f4f5f7;color:#1f2933;font-family:Arial,Helvetica,sans-serif;">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f5f7;padding:24px 0;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="720" cellpadding="0" cellspacing="0" style="width:720px;max-width:calc(100vw - 32px);background:#ffffff;border:1px solid #d9dee7;">
+            <tr>
+              <td style="padding:28px 36px 18px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                  <tr>
+                    <td style="font-family:Georgia,serif;font-size:34px;color:#202020;">Astebook</td>
+                    <td align="right" style="font-size:30px;font-weight:800;color:#111827;">i-resales</td>
+                  </tr>
+                  <tr>
+                    <td style="font-size:10px;color:#6b7280;">IL SISTEMA CHE Cambia il sistema</td>
+                    <td></td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+            <tr>
+              <td align="center" style="padding:10px 36px 24px;">
+                <div style="font-family:Georgia,serif;font-size:20px;font-weight:700;line-height:1.45;color:#000;">
+                  DISCIPLINARE DI GARA<br />
+                  PROCEDURA COMPETITIVA<br />
+                  MODALITA' ASTA TELEMATICA
+                </div>
+                <div style="margin-top:12px;font-size:24px;color:#0070c0;">www.astebook.it</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 36px 28px;">
+                <p style="margin:0 0 12px;font-size:15px;line-height:1.55;">In allegato il documento PDF generato per la procedura <strong>${escapeHtml(code)}</strong>.</p>
+                <p style="margin:0 0 20px;font-size:14px;color:#4b5563;">${escapeHtml(address || "Immobile non indicato")}</p>
+                <h2 style="margin:0 0 10px;font-size:16px;">Report elaborazione automatica</h2>
+                <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
+                  <thead>
+                    <tr style="background:#111827;color:#ffffff;text-align:left;">
+                      <th>Campo</th>
+                      <th>Esito</th>
+                      <th>Fonte attesa</th>
+                      <th>Responsabilita probabile</th>
+                    </tr>
+                  </thead>
+                  <tbody>${issueRows}</tbody>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
+function buildDocumentEmailText(event, report) {
+  const result = event?.result || {};
+  const code = result.codice_pratica || event?.metadata?.zap_run_id || event?.id || "-";
+  const lines = [`Documento PDF Astebook per procedura ${code}.`, "", "Report elaborazione automatica:"];
+  if (!report.issues.length) {
+    lines.push("- Nessuna criticita rilevata dalla pipeline automatica.");
+  } else {
+    report.issues.forEach((issue) => {
+      lines.push(`- ${issue.title}: ${issue.detail} Fonte: ${issue.source}. Responsabilita probabile: ${issue.responsibility}`);
+    });
+  }
+  return lines.join("\n");
+}
+
+async function sendDocumentEmailForEvent(event, recipients) {
+  if (!hasSmtpConfig()) {
+    throw new Error("SMTP non configurato: imposta SMTP_HOST e SMTP_FROM.");
+  }
+  if (!Array.isArray(recipients) || recipients.length === 0) {
+    throw new Error("Nessun destinatario configurato in Send to.");
+  }
+  validateEmailRecipients(recipients);
+
+  const pdf = await buildDocumentPdf(event);
+  const report = buildDocumentQualityReport(event);
+  const code = event.result?.codice_pratica || event.metadata?.zap_run_id || event.id;
+  const fileName = `astebook-${code}.pdf`.replace(/[^\w.-]+/g, "_");
+  const transporter = createSmtpTransporter();
+
+  await transporter.sendMail({
+    from: process.env.SMTP_FROM,
+    to: recipients,
+    subject: documentEmailSubject(event),
+    text: buildDocumentEmailText(event, report),
+    html: buildDocumentEmailHtml(event, report),
+    attachments: [
+      {
+        filename: fileName,
+        content: pdf,
+        contentType: "application/pdf",
+      },
+    ],
+  });
+
+  return {
+    status: "sent",
+    recipients,
+    attachment: fileName,
+    report,
+  };
+}
+
+async function autoSendMergedDocumentEmail(eventId) {
+  const storedEvent = await getProcessingEvent(eventId);
+  if (!storedEvent?.result?.merged) return null;
+
+  const result = storedEvent.result;
+  const recipients = parseEmailRecipients(await getEffectiveSetting("DOCUMENT_SEND_TO", "document_send_to"));
+  const markResult = async (documentEmail, step) => {
+    result.document_email = documentEmail;
+    await updateProcessingEvent(eventId, { result }, step);
+    return documentEmail;
+  };
+
+  if (!recipients.length) {
+    return markResult(
+      { status: "skipped", reason: "Nessun destinatario configurato in Send to." },
+      {
+        message: "Automatic document email skipped",
+        data: { reason: "missing_recipients" },
+      }
+    );
+  }
+
+  if (!hasSmtpConfig()) {
+    return markResult(
+      { status: "skipped", recipients, reason: "SMTP non configurato: imposta SMTP_HOST e SMTP_FROM." },
+      {
+        message: "Automatic document email skipped",
+        data: { recipients, reason: "missing_smtp" },
+      }
+    );
+  }
+
+  try {
+    const delivery = await sendDocumentEmailForEvent(storedEvent, recipients);
+    return markResult(
+      {
+        status: "sent",
+        recipients: delivery.recipients,
+        attachment: delivery.attachment,
+        report_issues: delivery.report.issues.length,
+      },
+      {
+        message: "Automatic document email sent",
+        data: {
+          recipients: delivery.recipients,
+          attachment: delivery.attachment,
+          report_issues: delivery.report.issues.length,
+        },
+      }
+    );
+  } catch (error) {
+    return markResult(
+      {
+        status: "failed",
+        recipients,
+        error: error.message || String(error),
+      },
+      {
+        level: "error",
+        message: "Automatic document email failed",
+        data: {
+          recipients,
+          error: error.message || String(error),
+        },
+      }
+    );
+  }
+}
+
 app.get("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
   const settings = await getRuntimeSettings();
   const reveal = req.query.reveal === "1" || req.query.reveal === "true";
@@ -413,6 +699,8 @@ app.get("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
         process.env.PDF_APP_JOB_ENDPOINT || settings.pdf_app_job_endpoint || "",
       document_template_url:
         process.env.DOCUMENT_TEMPLATE_URL || settings.document_template_url || "",
+      document_send_to:
+        process.env.DOCUMENT_SEND_TO || settings.document_send_to || "",
     },
   });
 });
@@ -435,6 +723,9 @@ app.post("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
   assignIfFilled("pdf_app_ocr_endpoint");
   assignIfFilled("pdf_app_job_endpoint");
   assignIfFilled("document_template_url");
+  if (Object.prototype.hasOwnProperty.call(body, "document_send_to")) {
+    settings.document_send_to = String(body.document_send_to || "").trim();
+  }
 
   await updateRuntimeSettings({
     settings,
@@ -625,6 +916,70 @@ app.get("/api/v1/processing-events/:id/document", requireProcessingUiToken, asyn
     res.status(500).json({
       ok: false,
       error: "Generazione PDF fallita.",
+      detail: error.message || String(error),
+    });
+  }
+});
+
+app.post("/api/v1/processing-events/:id/send-document", requireProcessingUiToken, async (req, res) => {
+  const event = await getProcessingEvent(req.params.id);
+  if (!event) {
+    res.status(404).json({ ok: false, error: "Processing event not found" });
+    return;
+  }
+
+  if (!hasSmtpConfig()) {
+    res.status(400).json({ ok: false, error: "SMTP non configurato: imposta SMTP_HOST e SMTP_FROM." });
+    return;
+  }
+
+  const bodyRecipients = parseEmailRecipients(req.body?.send_to || req.body?.to);
+  const configuredRecipients = parseEmailRecipients(
+    await getEffectiveSetting("DOCUMENT_SEND_TO", "document_send_to")
+  );
+  const recipients = bodyRecipients.length ? bodyRecipients : configuredRecipients;
+  if (!recipients.length) {
+    res.status(400).json({ ok: false, error: "Nessun destinatario configurato in Send to." });
+    return;
+  }
+
+  try {
+    validateEmailRecipients(recipients);
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message || String(error) });
+    return;
+  }
+
+  try {
+    const delivery = await sendDocumentEmailForEvent(event, recipients);
+
+    await updateProcessingEvent(event.id, {}, {
+      message: "Document email sent",
+      data: {
+        recipients: delivery.recipients,
+        attachment: delivery.attachment,
+        report_issues: delivery.report.issues.length,
+      },
+    });
+
+    res.json({
+      ok: true,
+      recipients: delivery.recipients,
+      attachment: delivery.attachment,
+      report: delivery.report,
+    });
+  } catch (error) {
+    await updateProcessingEvent(event.id, {}, {
+      level: "error",
+      message: "Document email failed",
+      data: {
+        recipients,
+        error: error.message || String(error),
+      },
+    });
+    res.status(500).json({
+      ok: false,
+      error: "Invio documento fallito.",
       detail: error.message || String(error),
     });
   }
@@ -1108,7 +1463,14 @@ function isDocxAttachment(attachment) {
   return mime.includes("wordprocessingml.document") || fileName.endsWith(".docx");
 }
 
+function isPngAttachment(attachment) {
+  const mime = String(attachment.mime_type || "").toLowerCase();
+  const fileName = String(attachment.file_name || "").toLowerCase();
+  return mime === "image/png" || fileName.endsWith(".png");
+}
+
 function isImageAttachment(attachment) {
+  if (isPngAttachment(attachment)) return false;
   const mime = String(attachment.mime_type || "").toLowerCase();
   const fileName = String(attachment.file_name || "").toLowerCase();
   return (
@@ -1184,10 +1546,14 @@ function normalizeAttachmentDescriptor(raw) {
     size: raw?.size || null,
     url: typeof url === "string" && /^https?:\/\//i.test(url) ? url : null,
     kind: attachmentKind(fileName),
-    supported_by_extraction: isPdfAttachment({
-      file_name: fileName,
-      mime_type: mimeType,
-    }) || isDocxAttachment({ file_name: fileName, mime_type: mimeType }) || isImageAttachment({ file_name: fileName, mime_type: mimeType }),
+    supported_by_extraction:
+      !isPngAttachment({ file_name: fileName, mime_type: mimeType }) &&
+      (isPdfAttachment({
+        file_name: fileName,
+        mime_type: mimeType,
+      }) ||
+        isDocxAttachment({ file_name: fileName, mime_type: mimeType }) ||
+        isImageAttachment({ file_name: fileName, mime_type: mimeType })),
     buffer: raw?.buffer || null,
   };
 }
@@ -1260,6 +1626,7 @@ function collectZapierAttachments(body, files) {
 function inferAttachmentFormat(attachment, buffer) {
   if (isPdfAttachment(attachment)) return "pdf";
   if (isDocxAttachment(attachment)) return "docx";
+  if (isPngAttachment(attachment)) return "png";
   if (buffer?.subarray(0, 4).toString("utf8") === "%PDF") return "pdf";
   if (buffer?.subarray(0, 2).toString("utf8") === "PK") return "docx";
   if (isImageAttachment(attachment)) return "image";
@@ -1498,7 +1865,15 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
       {
         message: "No supported AI extraction input found",
         data: {
-          accepted_formats: ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/*"],
+          accepted_formats: [
+            "application/pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "image/jpeg",
+            "image/tiff",
+            "image/bmp",
+            "image/heic",
+            "image/webp",
+          ],
           received_files: attachments.map((attachment) => ({
             file_name: attachment.file_name,
             mime_type: attachment.mime_type,
@@ -1538,6 +1913,11 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
     if (existingIndex >= 0) result.attachments[existingIndex] = safeDescriptor;
 
     if (resolvedAttachment.kind === "ignored") {
+      continue;
+    }
+
+    if (resolvedAttachment.format === "png") {
+      addUniqueNote(result, `${resolvedAttachment.file_name}: PNG escluso da OCR e analisi AI.`);
       continue;
     }
 
@@ -1656,7 +2036,10 @@ async function runAiExtractionPipeline({ body = {}, files = [], eventId, source 
     }
   );
 
-  return result;
+  await autoSendMergedDocumentEmail(event.id);
+  const finalEvent = await getProcessingEvent(event.id);
+
+  return finalEvent?.result || result;
 }
 
 async function extractAnnuncioAiFirst({ text, fileName, eventId, result, fallbackMessage }) {

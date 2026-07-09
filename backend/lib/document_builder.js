@@ -16,7 +16,10 @@ function valueAt(obj, path) {
 function firstValue(obj, paths, fallback = " ") {
   for (const path of paths) {
     const value = valueAt(obj, path);
-    if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+    if (value !== undefined && value !== null) {
+      const clean = String(value).trim();
+      if (clean && clean !== "-" && !/^[…._\s”")/]+$/.test(clean)) return value;
+    }
   }
   return fallback;
 }
@@ -61,6 +64,7 @@ function catastoIdentification(proposta) {
 export function buildDocumentFields(event) {
   const result = event?.result || {};
   const extracted = result.extracted || {};
+  const merged = result.merged || result.zapier_response?.merged || {};
   const proposta = extracted.proposta || result.zapier_response?.proposta || {};
   const annuncio = extracted.annuncio || result.zapier_response?.annuncio || {};
   const codicePratica =
@@ -70,13 +74,16 @@ export function buildDocumentFields(event) {
     " ";
 
   return {
-    comune: firstValue({ proposta, annuncio }, ["annuncio.comune", "proposta.comune"]),
-    provincia: firstValue({ proposta, annuncio }, ["annuncio.provincia", "proposta.provincia"]),
-    indirizzo: firstValue(
-      { proposta, annuncio },
-      ["proposta.indirizzo_immobile", "annuncio.indirizzo", "annuncio.indirizzo_raw"]
+    comune: firstValue({ merged, proposta, annuncio }, ["merged.immobile.comune", "annuncio.comune", "proposta.comune"]),
+    provincia: firstValue(
+      { merged, proposta, annuncio },
+      ["merged.immobile.provincia", "annuncio.provincia", "proposta.provincia"]
     ),
-    cap: firstValue({ proposta, annuncio }, ["annuncio.cap", "proposta.cap"]),
+    indirizzo: firstValue(
+      { merged, proposta, annuncio },
+      ["merged.immobile.indirizzo", "proposta.indirizzo_immobile", "annuncio.indirizzo", "annuncio.indirizzo_raw"]
+    ),
+    cap: firstValue({ merged, proposta, annuncio }, ["merged.immobile.cap", "annuncio.cap", "proposta.cap"]),
     descrizione_immobile: firstValue(
       { proposta, annuncio },
       ["proposta.descrizione_immobile", "annuncio.descrizione", "annuncio.categoria_macro"]
@@ -102,7 +109,7 @@ export function buildDocumentFields(event) {
     ora_gara_fine: firstValue({ annuncio }, ["annuncio.ora_gara_fine"], "12:00"),
     termine_richieste_visite_data: firstValue({ annuncio }, ["annuncio.termine_richieste_visite_data"]),
     termine_richieste_visite_ora: firstValue({ annuncio }, ["annuncio.termine_richieste_visite_ora"]),
-    luogo_redazione: firstValue({ proposta }, ["proposta.luogo_redazione"], "Milano"),
+    luogo_redazione: firstValue({ merged, proposta }, ["merged.redazione.luogo", "proposta.luogo_redazione"], "Milano"),
     data_redazione: currentItalianDate(),
     anno_redazione: new Date().getFullYear(),
   };

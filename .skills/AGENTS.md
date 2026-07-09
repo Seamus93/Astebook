@@ -221,6 +221,42 @@ vietati commit diretti su main
 merge tramite Pull Request
 CI obbligatoria
 
+## Mandatory Project Knowledge Base
+
+Before starting any implementation, refactor, debugging, deployment or documentation task, the agent MUST build or update the project knowledge base.
+
+The project knowledge base MUST index:
+
+1. `AGENTS.md`
+2. `.skills/AGENTS.md`
+3. `docs/**/*.md`
+4. `docs/adr/**/*.md`
+5. `README.md`
+6. `Dockerfile`
+7. `docker-compose.yml`
+8. `package.json`
+9. `.github/workflows/**/*.yml`
+10. project configuration files such as `sonar-project.properties`
+
+If a `.rag/` or project knowledge index does not exist, the agent MUST create it.
+
+If the index already exists, the agent MUST update it incrementally before working.
+
+The agent MUST retrieve only the context relevant to the current task instead of re-reading the entire repository documentation.
+
+The retrieved knowledge base context MUST be treated as the primary operational context for the task.
+
+## Knowledge Retrieval Workflow
+
+For every task:
+
+1. Identify the task domain.
+2. Query the project knowledge base.
+3. Retrieve the relevant sections.
+4. Apply the task using only the retrieved context plus the directly affected files.
+5. Update documentation if the implementation changes architecture, deployment, security, API behavior, database schema, or CI/CD.
+6. Re-index changed documentation.
+
 Standard Repository Structure
 /apps
 /frontend

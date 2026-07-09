@@ -35,6 +35,18 @@ function fileNameFrom(raw, fallback = "Documento") {
   );
 }
 
+function isImageFile(raw) {
+  const name = typeof raw === "string" ? raw : fileNameFrom(raw, "");
+  const mime = typeof raw === "string" ? "" : raw?.mime_type || raw?.mimetype || raw?.file_mime_type || "";
+  const format = typeof raw === "string" ? "" : raw?.format || "";
+  return (
+    normalize(format) === "image" ||
+    normalize(format) === "png" ||
+    normalize(mime).startsWith("image/") ||
+    /\.(png|jpe?g|gif|webp|bmp|tiff?|heic)$/i.test(String(name || ""))
+  );
+}
+
 function stepFileName(step) {
   return fileNameFrom(step?.data, "");
 }
@@ -49,6 +61,7 @@ function documentsForEvent(event) {
   const docs = [];
   const seen = new Set();
   const add = (raw, fallback) => {
+    if (isImageFile(raw)) return;
     const name = fileNameFrom(raw, fallback);
     const key = normalize(name);
     if (!key || seen.has(key)) return;
@@ -102,12 +115,30 @@ function aiStatusFor(doc, steps, isCurrent) {
   return isCurrent ? { state: "running", title: "Analyzing...", detail: "AI in analisi" } : { state: "pending", title: "Pending", detail: "In attesa AI" };
 }
 
-function hasPipelineFinished(event) {
+function mailingStatusFor(event) {
+  const status = event?.result?.document_email?.status || "";
   const steps = event?.steps || [];
-  return (
-    ["completed", "failed"].includes(event?.status) ||
-    steps.some((step) => /AI extraction completed/i.test(step.message || ""))
-  );
+  if (status === "sent" || steps.some((step) => /Automatic document email sent|Document email sent/i.test(step.message || ""))) {
+    return { state: "done", title: "Email inviata", detail: "PDF e report spediti" };
+  }
+  if (["failed", "skipped"].includes(status)) {
+    return {
+      state: "error",
+      title: status === "skipped" ? "Invio non eseguito" : "Invio fallito",
+      detail: event?.result?.document_email?.reason || event?.result?.document_email?.error || "Controlla impostazioni email",
+    };
+  }
+  if (steps.some((step) => /Automatic document email failed|Document email failed/i.test(step.message || ""))) {
+    const failed = latestStep(steps, (step) => /Automatic document email failed|Document email failed/i.test(step.message || ""));
+    return { state: "error", title: "Invio fallito", detail: failed?.data?.error || "Controlla log mailing" };
+  }
+  if (event?.result?.merged) return { state: "running", title: "Invio in corso", detail: "PDF e report email" };
+  return { state: "pending", title: "Pending", detail: "In attesa merged" };
+}
+
+function hasPipelineFinished(event) {
+  if (event?.status === "failed") return true;
+  return ["done", "error"].includes(mailingStatusFor(event).state);
 }
 
 function ensureStyles() {
@@ -132,7 +163,7 @@ function ensureStyles() {
     }
     .temporary-processing-grid {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
+      grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 12px;
     }
     .substepper-group {
@@ -276,6 +307,12 @@ function renderProgress(event) {
         icon: "psychology",
         docs,
         statusFor: (doc, index) => aiStatusFor(doc, steps, aiStarted && index === currentAiIndex),
+      })}
+      ${renderGroup({
+        title: "Mailing",
+        icon: "outgoing_mail",
+        docs: [{ name: "PDF + Report", raw: {} }],
+        statusFor: () => mailingStatusFor(event),
       })}
     </div>`;
 }

@@ -110,6 +110,19 @@ Updates runtime settings for:
 - `processing_ui_token`
 - `zapier_webhook_token`
 - `admin_session_secret`
+- `document_send_to`: comma, semicolon or newline separated default recipients for document PDF emails.
 - `admin_password`
 
 These endpoints require the `/admin` login cookie.
+
+## Automatic PDF email delivery
+
+After a Zapier activation has been received, extracted and merged, the backend automatically generates the PDF document and sends it by email to `document_send_to`.
+
+Requirements:
+
+- SMTP environment must be configured with `SMTP_HOST` and `SMTP_FROM`.
+- `DOCUMENT_TEMPLATE_URL` or the runtime document template setting must be configured.
+- `document_send_to` must contain one or more valid email addresses.
+
+The email includes the generated PDF and an Astebook-styled processing report with missing fields, extraction notes and likely responsibility hints. The delivery result is stored in `result.document_email` and logged in the processing event.

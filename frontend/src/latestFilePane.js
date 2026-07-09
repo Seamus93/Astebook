@@ -21,6 +21,25 @@ function fileNameFrom(value, fallback = "File") {
   );
 }
 
+function normalized(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isImageFile(fileOrName) {
+  const name = typeof fileOrName === "string" ? fileOrName : fileNameFrom(fileOrName, "");
+  const mime =
+    typeof fileOrName === "string"
+      ? ""
+      : fileOrName?.mime_type || fileOrName?.mimetype || fileOrName?.file_mime_type || "";
+  const format = typeof fileOrName === "string" ? "" : fileOrName?.format || "";
+  return (
+    normalized(format) === "image" ||
+    normalized(format) === "png" ||
+    normalized(mime).startsWith("image/") ||
+    /\.(png|jpe?g|gif|webp|bmp|tiff?|heic)$/i.test(String(name || ""))
+  );
+}
+
 function stepFileName(step) {
   return fileNameFrom(step?.data, "");
 }
@@ -52,6 +71,7 @@ function latestFileSteps(event) {
 function filesForLatestExtraction(event) {
   const groups = new Map();
   const addFile = (file, index) => {
+    if (isImageFile(file)) return;
     const fileName = fileNameFrom(file, `File ${index + 1}`);
     if (!groups.has(fileName)) groups.set(fileName, { fileName, file, steps: [] });
   };
@@ -60,6 +80,7 @@ function filesForLatestExtraction(event) {
 
   latestFileSteps(event).forEach((step) => {
     const fileName = stepFileName(step);
+    if (isImageFile(fileName)) return;
     if (!groups.has(fileName)) groups.set(fileName, { fileName, file: { file_name: fileName }, steps: [] });
     groups.get(fileName).steps.push(step);
   });

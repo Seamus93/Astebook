@@ -19,6 +19,7 @@ const defaultConfig = {
     pdf_app_ocr_endpoint: "",
     pdf_app_job_endpoint: "",
     document_template_url: "",
+    document_send_to: "",
   },
 };
 

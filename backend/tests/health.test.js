@@ -73,6 +73,8 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.equal(intakePayload.result.extracted.annuncio.file_pdf, "Corpo email");
     assert.equal(intakePayload.result.attachments.length, 2);
     assert.equal(intakePayload.result.codice_pratica, "RM_ROMA_TOL_202949480010");
+    assert.equal(intakePayload.result.document_email.status, "skipped");
+    assert.match(intakePayload.result.document_email.reason, /Nessun destinatario/);
 
     const listResponse = await fetch(`http://127.0.0.1:${port}/api/v1/processing-events`, {
       headers: { "x-astebook-token": "test-ui-token" },
@@ -110,6 +112,19 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.equal(documentResponse.status, 500);
     assert.equal(documentPayload.error, "Generazione PDF fallita.");
     assert.match(documentPayload.detail, /DOCUMENT_TEMPLATE_URL non configurato/);
+
+    const sendResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/send-document`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-astebook-token": "test-ui-token" },
+        body: JSON.stringify({}),
+      }
+    );
+    const sendPayload = await sendResponse.json();
+
+    assert.equal(sendResponse.status, 400);
+    assert.match(sendPayload.error, /SMTP non configurato/);
 
     const docxResponse = await fetch(
       `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/document?format=docx`,
@@ -268,6 +283,7 @@ test("Admin login can read and update runtime settings", async () => {
       body: JSON.stringify({
         processing_ui_token: "runtime-ui-token",
         zapier_webhook_token: "runtime-webhook-token",
+        document_send_to: "gare@example.com, backoffice@example.com",
       }),
     });
     const updatePayload = await updateResponse.json();
@@ -311,6 +327,7 @@ test("Admin login can read and update runtime settings", async () => {
 
     assert.equal(updatedSettingsPayload.settings.document_template_url, templateUrl);
     assert.equal(updatedSettingsPayload.settings.pdf_app_ocr_endpoint, "https://api.pdf-app.net/ocr");
+    assert.equal(updatedSettingsPayload.settings.document_send_to, "gare@example.com, backoffice@example.com");
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

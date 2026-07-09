@@ -43,6 +43,9 @@ app.use(express.json({ limit: "20mb" }));
 app.use(express.urlencoded({ extended: false }));
 
 const adminCookieName = "astebook_admin";
+const mediaDir = join(process.cwd(), "frontend", "media");
+const astebookLogoPath = join(mediaDir, "astebook-logo.png");
+const iresalesLogoPath = join(mediaDir, "iresales-logo.png");
 
 function parseCookies(cookieHeader) {
   return String(cookieHeader || "")
@@ -536,41 +539,13 @@ function qualityResponsibility(field) {
 
 function buildDocumentQualityReport(event) {
   const result = event?.result || {};
-  const missing = Array.isArray(result.missing_fields)
-    ? result.missing_fields
-    : Array.isArray(event?.error?.missing_fields)
-    ? event.error.missing_fields
-    : [];
+  const missing = Array.isArray(result.missing_fields) ? result.missing_fields : [];
   const issues = missing.map((field) => ({
     title: field.field || field.path || "Campo mancante",
     detail: field.message || "Dato non trovato o mancante.",
     source: field.expected_file || "Documento sorgente",
     responsibility: qualityResponsibility(field),
   }));
-
-  (Array.isArray(result.notes) ? result.notes : []).forEach((note) => {
-    issues.push({
-      title: "Nota elaborazione",
-      detail: String(note),
-      source: "Pipeline Astebook",
-      responsibility: /conflitto/i.test(String(note))
-        ? "Valori discordanti tra le fonti: serve verifica manuale."
-        : "Nota generata durante OCR, parsing o normalizzazione.",
-    });
-  });
-
-  (Array.isArray(event?.steps) ? event.steps : [])
-    .filter((step) => step.level === "error")
-    .forEach((step) => {
-      issues.push({
-        title: step.message || "Errore pipeline",
-        detail: step.data?.error || step.data?.reason || "Errore durante elaborazione.",
-        source: step.data?.file_name || step.data?.file_pdf || "Pipeline Astebook",
-        responsibility: /ocr/i.test(step.message || "")
-          ? "OCR non completato o testo non leggibile nel file sorgente."
-          : "Analisi automatica non completata: serve controllo manuale.",
-      });
-    });
 
   return {
     ok: issues.length === 0,
@@ -615,12 +590,12 @@ function buildDocumentEmailHtml(event, report) {
               <td style="padding:28px 36px 18px;">
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
-                    <td style="font-family:Georgia,serif;font-size:34px;color:#202020;">Astebook</td>
-                    <td align="right" style="font-size:30px;font-weight:800;color:#111827;">i-resales</td>
-                  </tr>
-                  <tr>
-                    <td style="font-size:10px;color:#6b7280;">IL SISTEMA CHE Cambia il sistema</td>
-                    <td></td>
+                    <td align="left" style="vertical-align:top;">
+                      <img src="cid:astebook-logo" width="177" alt="Astebook" style="display:block;width:177px;max-width:177px;height:auto;border:0;" />
+                    </td>
+                    <td align="right" style="vertical-align:top;">
+                      <img src="cid:iresales-logo" width="177" alt="i-resales" style="display:block;width:177px;max-width:177px;height:auto;border:0;margin-left:auto;" />
+                    </td>
                   </tr>
                 </table>
               </td>
@@ -675,6 +650,27 @@ function buildDocumentEmailText(event, report) {
   return lines.join("\n");
 }
 
+function inlineLogoAttachments() {
+  return [
+    existsSync(astebookLogoPath)
+      ? {
+          filename: "astebook-logo.png",
+          path: astebookLogoPath,
+          cid: "astebook-logo",
+          contentType: "image/png",
+        }
+      : null,
+    existsSync(iresalesLogoPath)
+      ? {
+          filename: "iresales-logo.png",
+          path: iresalesLogoPath,
+          cid: "iresales-logo",
+          contentType: "image/png",
+        }
+      : null,
+  ].filter(Boolean);
+}
+
 async function sendDocumentEmailForEvent(event, recipients) {
   if (!(await hasSmtpConfig())) {
     throw new Error("SMTP non configurato: imposta SMTP Host e SMTP From.");
@@ -703,6 +699,7 @@ async function sendDocumentEmailForEvent(event, recipients) {
         content: pdf,
         contentType: "application/pdf",
       },
+      ...inlineLogoAttachments(),
     ],
   });
 

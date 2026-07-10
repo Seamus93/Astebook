@@ -36,7 +36,7 @@ const settingsSections = [
     ],
   },
   {
-    title: "AI e OCR",
+    title: "API AI e OCR",
     icon: "psychology",
     open: false,
     fields: [
@@ -62,6 +62,20 @@ const settingsSections = [
 ];
 
 export default function ConsoleAdmin() {
+  const renderField = ([id, name, label, placeholder, autocomplete, inputType]) => (
+    <div className="settings-field" key={id}>
+      <label htmlFor={id}>{label}</label>
+      <div className={inputType === "password" ? "secret-field" : "plain-field"}>
+        <input id={id} name={name} type={inputType} autoComplete={autocomplete} placeholder={placeholder} />
+        {inputType === "password" ? (
+          <button className="icon-button reveal-button" type="button" data-reveal={id} title="Mostra">
+            <span className="material-symbols-outlined" aria-hidden="true">visibility</span>
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+
   return (
     <main id="settingsPage" className="settings-page" hidden>
       <header className="settings-page-header">
@@ -88,19 +102,7 @@ export default function ConsoleAdmin() {
                   <span>{section.title}</span>
                 </summary>
                 <div className="settings-section-grid">
-                  {section.fields.map(([id, name, label, placeholder, autocomplete, inputType]) => (
-                    <label key={id}>
-                      <span>{label}</span>
-                      <div className={inputType === "password" ? "secret-field" : "plain-field"}>
-                        <input id={id} name={name} type={inputType} autoComplete={autocomplete} placeholder={placeholder} />
-                        {inputType === "password" ? (
-                          <button className="icon-button reveal-button" type="button" data-reveal={id} title="Mostra">
-                            <span className="material-symbols-outlined" aria-hidden="true">visibility</span>
-                          </button>
-                        ) : null}
-                      </div>
-                    </label>
-                  ))}
+                  {section.fields.map(renderField)}
                 </div>
               </details>
             ))}

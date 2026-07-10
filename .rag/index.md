@@ -18,6 +18,10 @@ Purpose: lightweight project knowledge base for quick retrieval with `rg`.
 - `.rag/frontend-admin.md`: admin UI modules, settings modal, event detail rendering, current refactor targets.
 - `.rag/backend-api.md`: Express endpoints, Zapier intake, processing log, AI/OCR/document/email flow, dedupe notes.
 - `.rag/ops-deploy.md`: Docker, GitHub Actions, Infisical, security, runtime settings and deploy constraints.
+- `.rag/standards-index.md`: reusable standard entrypoint for `.skills` content.
+- `.rag/standards-project.md`: reusable project delivery, architecture, docs and knowledge workflow standards.
+- `.rag/standards-cicd-security.md`: reusable CI/CD, Infisical, Sonar and security standards.
+- `.rag/standards-vps.md`: reusable VPS infrastructure standard.
 
 ## Required Source Coverage
 
@@ -25,6 +29,12 @@ Indexed source classes:
 
 - `AGENTS.md`
 - `.skills/AGENTS.md`
+- `.skills/VPS_INFRASTRUCTURE.md`
+- `.skills/PROJECT_STANDARD.md`
+- `.skills/CI_CD_SECURITY.md`
+- `.skills/DATABASE_API_STANDARD.md`
+- `.skills/FRONTEND_STANDARD.md`
+- `.skills/MEDIA_STANDARD.md`
 - `docs/**/*.md`
 - `docs/adr/**/*.md`
 - `README.md`
@@ -42,6 +52,7 @@ Indexed source classes:
 - Zapier intake: `rg -n "email-activation|zapier|email_id|duplicate|webhook" backend .rag`
 - Runtime config: `rg -n "app-config|runtime settings|getEffectiveSetting|admin settings" backend docs .rag`
 - Deploy: `rg -n "VPS_APP_DIR|docker compose|register-project|Infisical|health" docs .github .rag`
+- Reusable standards: `rg -n "Tier|VPS|Infisical|Sonar|register-project|Knowledge Base" .skills .rag/standards-*`
 
 ## Current Notes
 

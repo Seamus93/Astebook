@@ -112,17 +112,19 @@ Lo script infrastrutturale deve:
 
 ## Variabili GitHub collegate
 
-Questo repository usa:
+Ogni progetto applicativo compatibile con lo standard VPS deve usare o documentare:
 
 - `VPS_APP_DIR`
 - `PROJECT_URL`
 - `HEALTH_URL`
 
-Valori attesi per `mcp-server`:
+Valori attesi:
 
-- `VPS_APP_DIR=/opt/projects/mcp-server`
-- `PROJECT_URL=https://mcp-server.it`
-- `HEALTH_URL=https://mcp-server.it/health`
+- `VPS_APP_DIR=/opt/projects/<project-name>`
+- `PROJECT_URL=<public-project-url>`
+- `HEALTH_URL=<public-project-url>/health`
+
+I valori concreti del singolo progetto vanno documentati nel root `AGENTS.md` del progetto o in `docs/DEPLOYMENT.md`, non nello standard riusabile.
 
 ## Regola finale
 

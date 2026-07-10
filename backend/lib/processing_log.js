@@ -240,6 +240,27 @@ export async function listProcessingEvents({ limit = 100 } = {}) {
     }));
 }
 
+export async function findProcessingEventByExternalEmailId({ source, emailId }) {
+  const normalizedEmailId = String(emailId || "").trim();
+  if (!normalizedEmailId) return null;
+
+  const events = await readEvents();
+  return (
+    events.find((event) => {
+      if (source && event.source !== source) return false;
+      const metadata = event.metadata || {};
+      const body = event.request?.body || {};
+      const candidates = [
+        metadata.email_id,
+        body.email_id,
+        body.message_id,
+        body.gmail_id,
+      ];
+      return candidates.some((candidate) => String(candidate || "").trim() === normalizedEmailId);
+    }) || null
+  );
+}
+
 export async function getProcessingEvent(id) {
   const events = await readEvents();
   return events.find((event) => event.id === id) || null;

@@ -21,6 +21,7 @@ import { parsePdfBuffer } from "./lib/pdf.js";
 import { ocrFileUrlWithPdfApp } from "./lib/pdf_app.js";
 import {
   createProcessingEvent,
+  findProcessingEventByExternalEmailId,
   getProcessingEvent,
   listProcessingEvents,
   updateProcessingEvent,
@@ -913,6 +914,23 @@ app.post("/api/v1/zapier/email-activation", requireZapierWebhookToken, upload, a
   let event = null;
   try {
     const body = Array.isArray(req.body) ? req.body[0] || {} : req.body || {};
+    const externalEmailId = body.email_id || body.message_id || body.gmail_id || null;
+    const duplicateEvent = await findProcessingEventByExternalEmailId({
+      source: "zapier.email_activation",
+      emailId: externalEmailId,
+    });
+    if (duplicateEvent) {
+      res.status(202).json({
+        ok: true,
+        duplicate: true,
+        event_id: duplicateEvent.id,
+        status: duplicateEvent.status,
+        admin_url: `/admin/#/events/${duplicateEvent.id}`,
+        result: duplicateEvent.result,
+      });
+      return;
+    }
+
     event = await createProcessingEvent({
       source: "zapier.email_activation",
       status: "received",

@@ -171,6 +171,59 @@ test("Zapier intake creates a processing event visible from the UI API", async (
   }
 });
 
+test("Zapier intake is idempotent for the same external email id", async () => {
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+
+  try {
+    const { port } = server.address();
+    const payload = {
+      subject: "IDEMPOTENCY_TEST procedura competitiva",
+      from: "cliente@example.com",
+      email_body_text: "Immobile in Via Milano 2. Prezzo base Euro 120.000. Asta 21/07/2026.",
+      email_id: "gmail-message-duplicate-test",
+    };
+
+    const firstResponse = await fetch(`http://127.0.0.1:${port}/api/v1/zapier/email-activation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-astebook-webhook-token": "test-webhook-token",
+      },
+      body: JSON.stringify(payload),
+    });
+    const firstPayload = await firstResponse.json();
+    assert.equal(firstResponse.status, 202);
+    assert.equal(firstPayload.duplicate, undefined);
+
+    const duplicateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/zapier/email-activation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-astebook-webhook-token": "test-webhook-token",
+      },
+      body: JSON.stringify(payload),
+    });
+    const duplicatePayload = await duplicateResponse.json();
+    assert.equal(duplicateResponse.status, 202);
+    assert.equal(duplicatePayload.duplicate, true);
+    assert.equal(duplicatePayload.event_id, firstPayload.event_id);
+
+    const listResponse = await fetch(`http://127.0.0.1:${port}/api/v1/processing-events`, {
+      headers: { "x-astebook-token": "test-ui-token" },
+    });
+    const listPayload = await listResponse.json();
+    const matchingEvents = listPayload.events.filter(
+      (event) => event.metadata?.email_id === "gmail-message-duplicate-test"
+    );
+    assert.equal(matchingEvents.length, 1);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test("Admin UI requires login before serving the processing interface", async () => {
   const server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));

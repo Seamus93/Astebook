@@ -9,12 +9,22 @@ export default function initAdminClient() {
   const details = createDetailController();
   const events = createEventListController({ selectEvent: details.selectEvent });
 
-  document.getElementById("settingsButton").addEventListener("click", () => {
-    qs("settingsModal").hidden = false;
-  });
-  document.getElementById("closeSettingsButton").addEventListener("click", () => {
-    qs("settingsModal").hidden = true;
-  });
+  function renderRoute() {
+    const onSettings = window.location.pathname.replace(/\/+$/, "") === "/admin/settings";
+    const shell = qs("appShell");
+    const settingsPage = qs("settingsPage");
+    if (shell) shell.hidden = onSettings;
+    if (settingsPage) settingsPage.hidden = !onSettings;
+  }
+
+  function navigate(path) {
+    window.history.pushState({}, "", path);
+    renderRoute();
+  }
+
+  document.getElementById("settingsButton").addEventListener("click", () => navigate("/admin/settings"));
+  document.getElementById("closeSettingsButton").addEventListener("click", () => navigate("/admin/"));
+  window.addEventListener("popstate", renderRoute);
 
   settings.initRevealButtons();
   initSidebarToggle();
@@ -25,6 +35,7 @@ export default function initAdminClient() {
 
   settings.loadSettings();
   events.loadEvents();
+  renderRoute();
 }
 
 if (document.readyState === "loading") {

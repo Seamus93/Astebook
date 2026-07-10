@@ -359,6 +359,13 @@ test("Admin login can read and update runtime settings", async () => {
         smtp_user: "smtp@example.com",
         smtp_password: "smtp-secret",
         smtp_from: "smtp@example.com",
+        email_watcher_enabled: "true",
+        email_watcher_imap_host: "imap.gmail.com",
+        email_watcher_imap_port: "993",
+        email_watcher_imap_secure: "true",
+        email_watcher_from_allowlist: "lc@astebook.com, mv@astebook.com",
+        email_watcher_required_filename: "proposta",
+        email_watcher_poll_seconds: "120",
       }),
     });
     const updatePayload = await updateResponse.json();
@@ -409,6 +416,13 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(updatedSettingsPayload.settings.smtp_user, "smtp@example.com");
     assert.equal(updatedSettingsPayload.settings.smtp_password, "smtp-secret");
     assert.equal(updatedSettingsPayload.settings.smtp_from, "smtp@example.com");
+    assert.equal(updatedSettingsPayload.settings.email_watcher_enabled, "true");
+    assert.equal(updatedSettingsPayload.settings.email_watcher_imap_host, "imap.gmail.com");
+    assert.equal(updatedSettingsPayload.settings.email_watcher_imap_port, "993");
+    assert.equal(updatedSettingsPayload.settings.email_watcher_imap_secure, "true");
+    assert.equal(updatedSettingsPayload.settings.email_watcher_from_allowlist, "lc@astebook.com, mv@astebook.com");
+    assert.equal(updatedSettingsPayload.settings.email_watcher_required_filename, "proposta");
+    assert.equal(updatedSettingsPayload.settings.email_watcher_poll_seconds, "120");
 
     const badSmtpUpdateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
       method: "POST",

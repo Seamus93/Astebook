@@ -19,6 +19,7 @@ import { parseDocxBuffer } from "./lib/docx.js";
 import { buildDocumentDocx, buildDocumentPdf } from "./lib/document_builder.js";
 import { parsePdfBuffer } from "./lib/pdf.js";
 import { ocrFileUrlWithPdfApp } from "./lib/pdf_app.js";
+import { createEmailWatcher } from "./lib/email_watcher.js";
 import {
   createProcessingEvent,
   findProcessingEventByExternalEmailId,
@@ -819,6 +820,20 @@ app.get("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
       smtp_user: secretValue("SMTP_USER", "smtp_user"),
       smtp_password: secretValue("SMTP_PASSWORD", "smtp_password"),
       smtp_from: process.env.SMTP_FROM || settings.smtp_from || "",
+      email_watcher_enabled:
+        process.env.EMAIL_WATCHER_ENABLED || settings.email_watcher_enabled || "false",
+      email_watcher_imap_host:
+        process.env.EMAIL_WATCHER_IMAP_HOST || settings.email_watcher_imap_host || "",
+      email_watcher_imap_port:
+        process.env.EMAIL_WATCHER_IMAP_PORT || settings.email_watcher_imap_port || "993",
+      email_watcher_imap_secure:
+        process.env.EMAIL_WATCHER_IMAP_SECURE || settings.email_watcher_imap_secure || "true",
+      email_watcher_from_allowlist:
+        process.env.EMAIL_WATCHER_FROM_ALLOWLIST || settings.email_watcher_from_allowlist || "",
+      email_watcher_required_filename:
+        process.env.EMAIL_WATCHER_REQUIRED_FILENAME || settings.email_watcher_required_filename || "proposta",
+      email_watcher_poll_seconds:
+        process.env.EMAIL_WATCHER_POLL_SECONDS || settings.email_watcher_poll_seconds || "120",
     },
   });
 });
@@ -847,6 +862,19 @@ app.post("/api/v1/admin/settings", requireAdminSession, async (req, res) => {
   assignIfFilled("smtp_user");
   assignIfFilled("smtp_password");
   assignIfFilled("smtp_from");
+  [
+    "email_watcher_enabled",
+    "email_watcher_imap_host",
+    "email_watcher_imap_port",
+    "email_watcher_imap_secure",
+    "email_watcher_from_allowlist",
+    "email_watcher_required_filename",
+    "email_watcher_poll_seconds",
+  ].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(body, key)) {
+      settings[key] = String(body[key] || "").trim();
+    }
+  });
   if (Object.prototype.hasOwnProperty.call(body, "document_send_to")) {
     settings.document_send_to = String(body.document_send_to || "").trim();
   }
@@ -978,6 +1006,54 @@ app.post("/api/v1/zapier/email-activation", requireZapierWebhookToken, upload, a
     res.status(500).json({ ok: false, error: error.message || String(error) });
   }
 });
+
+async function processEmailWatcherActivation({ body, files, metadata }) {
+  const emailId = body.email_id || body.message_id || body.gmail_id || metadata?.email_id || null;
+  const duplicateEvent = await findProcessingEventByExternalEmailId({
+    source: "imap.email_activation",
+    emailId,
+  });
+  if (duplicateEvent) return duplicateEvent;
+
+  const event = await createProcessingEvent({
+    source: "imap.email_activation",
+    status: "received",
+    body,
+    files,
+    metadata: {
+      subject: metadata?.subject || body.subject || null,
+      from: metadata?.from || body.from || null,
+      zap_run_id: null,
+      email_id: emailId,
+    },
+  });
+
+  try {
+    await runAiExtractionPipeline({
+      body,
+      files,
+      eventId: event.id,
+      source: "imap.email_activation",
+    });
+  } catch (error) {
+    await updateProcessingEvent(
+      event.id,
+      {
+        status: "failed",
+        error: {
+          message: error.message || String(error),
+          stack: error.stack || null,
+        },
+      },
+      {
+        level: "error",
+        message: "Email watcher processing failed",
+      }
+    );
+  }
+
+  return getProcessingEvent(event.id);
+}
 
 app.get("/api/v1/processing-events", requireProcessingUiToken, async (req, res) => {
   const limit = Number(req.query.limit || 100);
@@ -1163,8 +1239,8 @@ app.post("/api/v1/processing-events/:id/reprocess", requireProcessingUiToken, as
     return;
   }
 
-  if (event.source !== "zapier.email_activation") {
-    res.status(400).json({ ok: false, error: "Reprocess disponibile solo per eventi Zapier." });
+  if (!["zapier.email_activation", "imap.email_activation"].includes(event.source)) {
+    res.status(400).json({ ok: false, error: "Reprocess disponibile solo per eventi email." });
     return;
   }
 
@@ -2545,7 +2621,14 @@ app.post("/callAI", upload, async (req, res) => {
 
 
 export function startServer(port = process.env.PORT || 3000) {
-  return app.listen(port, () => console.log(`Server up on http://localhost:${port}`));
+  const server = app.listen(port, () => console.log(`Server up on http://localhost:${port}`));
+  const watcher = createEmailWatcher({
+    getSettings: getRuntimeSettings,
+    onAcceptedMail: processEmailWatcherActivation,
+  });
+  watcher.start();
+  server.on("close", () => watcher.stop());
+  return server;
 }
 
 export { app };

@@ -71,3 +71,4 @@ Critical and high findings block deploy.
 - Shared infrastructure tools must not be installed by this repository.
 - Set `PROCESSING_UI_TOKEN` from the admin UI or env before exposing processing APIs outside a trusted network.
 - Set `ZAPIER_WEBHOOK_TOKEN` from the admin UI or env before exposing `/api/v1/zapier/email-activation`.
+- If the VPS email watcher is enabled, store the mailbox app password as `smtp_password` runtime setting or `EMAIL_WATCHER_IMAP_PASSWORD` environment secret. Prefer a provider app password over the account's primary password.

@@ -112,6 +112,11 @@ Updates runtime settings for:
 - `admin_session_secret`
 - `document_send_to`: comma, semicolon or newline separated default recipients for document PDF emails.
 - `smtp_host`, `smtp_port`, `smtp_secure`, `smtp_user`, `smtp_password`, `smtp_from`: SMTP delivery settings used when matching environment variables are not set.
+- `email_watcher_enabled`: `true` enables the VPS email watcher.
+- `email_watcher_imap_host`, `email_watcher_imap_port`, `email_watcher_imap_secure`: IMAP connection settings. If the host is empty, Astebook derives it from `smtp_host` where possible, for example `smtp.gmail.com` -> `imap.gmail.com`.
+- `email_watcher_from_allowlist`: comma, semicolon or newline separated sender allowlist.
+- `email_watcher_required_filename`: required substring in at least one attachment filename, for example `proposta`.
+- `email_watcher_poll_seconds`: polling interval, minimum runtime value is 30 seconds.
 - `admin_password`
 
 These endpoints require the `/admin` login cookie.
@@ -127,6 +132,12 @@ Requirements:
 - `document_send_to` must contain one or more valid email addresses.
 
 The email includes the generated PDF and an Astebook-styled processing report with missing fields, extraction notes and likely responsibility hints. The delivery result is stored in `result.document_email` and logged in the processing event.
+
+## VPS email watcher
+
+When `email_watcher_enabled=true`, Astebook connects to the configured IMAP mailbox and polls unread messages. It reuses `smtp_user` and `smtp_password` as IMAP credentials unless `EMAIL_WATCHER_IMAP_USER` and `EMAIL_WATCHER_IMAP_PASSWORD` are provided as environment variables.
+
+The watcher processes only messages whose sender is in `email_watcher_from_allowlist` and whose attachments include a filename containing `email_watcher_required_filename`. Accepted emails are written as `imap.email_activation` processing events and run through the same AI/OCR/document pipeline used by Zapier intake. Processed message IDs are persisted in `runtime/email-watcher-state.json`.
 
 ## `POST /api/v1/processing-events/:id/reprocess`
 

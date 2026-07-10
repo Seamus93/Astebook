@@ -1,0 +1,89 @@
+# Backend/API Knowledge
+
+Updated: 2026-07-10
+
+## Core Files
+
+- `backend/server.js`: Express app, auth, admin routes, Zapier intake, extraction orchestration, document generation/email delivery.
+- `backend/lib/app_config.js`: runtime config in `runtime/app-config.json`, first admin, effective setting lookup.
+- `backend/lib/processing_log.js`: JSONL processing event store in `runtime/processing-events.jsonl`.
+- `backend/lib/ai.js`: OpenAI/OpenRouter integration.
+- `backend/lib/pdf.js`: PDF parsing.
+- `backend/lib/docx.js`: DOCX parsing.
+- `backend/lib/pdf_app.js`: PDF-app OCR integration.
+- `backend/lib/document_builder.js`: DOCX/PDF output generation.
+- `backend/lib/merge_json.js`: announcement/proposal merge and normalization.
+- `backend/lib/email_cleaner.js`: email body cleaning before AI.
+
+## Important Endpoints
+
+- `GET /health`: returns `{ status: "ok", service: "astebook-api", version }`.
+- `GET /setup`, `POST /setup`: first runtime admin creation when env admin is absent.
+- `GET /login`, `POST /login`, `/logout`: server-side admin session.
+- `GET /admin/*`: protected React admin UI.
+- `GET /api/v1/admin/settings`: admin settings; `?reveal=1` returns stored values.
+- `POST /api/v1/admin/settings`: persists runtime settings; env vars override runtime settings.
+- `POST /api/v1/zapier/email-activation`: raw activation email intake.
+- `GET /api/v1/processing-events`: processing event list for UI.
+- `GET /api/v1/processing-events/:id`: full event detail.
+- `POST /api/v1/processing-events/:id/reprocess`: reruns pipeline after configuration checks.
+- `GET /api/v1/processing-events/:id/document`: generates document.
+- `POST /api/v1/processing-events/:id/send-document`: manual document email delivery.
+- `POST /callAI`: legacy/direct AI extraction path.
+
+## Zapier Intake Notes
+
+- Current source: `zapier.email_activation`.
+- Security header: `x-astebook-webhook-token`, value from `ZAPIER_WEBHOOK_TOKEN` or runtime `zapier_webhook_token`.
+- Metadata currently tracks subject, sender, `zap_run_id`, `email_id`.
+- Dedupe should use stable external email IDs such as `email_id`, `message_id`, `gmail_id`; Zapier naming may vary.
+- Existing Zapier payloads may use camelCase or compact names (`zapRunId`, `emailid`, `zaprunid`, `emailbodytext`), so alias handling should be explicit if needed.
+- Attachments may arrive as multipart files, URLs, nested JSON, JSON strings or flattened fields such as `attachment_1_attachment`.
+
+## Processing Flow
+
+1. Create processing event in JSONL log.
+2. Resolve email text and clean it.
+3. Extract practice code and announcement data from email body.
+4. Collect attachment descriptors and supported file content.
+5. Parse/OCR/extract announcement, proposal and commission documents.
+6. Merge announcement/proposal fields.
+7. Update event result, missing fields, notes and status.
+8. Auto-send generated document email when merged data and SMTP/document settings are complete.
+
+## Runtime Settings
+
+Key settings include:
+
+- `processing_ui_token`
+- `zapier_webhook_token`
+- `admin_session_secret`
+- `ai_api_key`
+- `ai_base_url`
+- `ai_model`
+- `pdf_app_api_key`
+- `pdf_app_ocr_endpoint`
+- `pdf_app_job_endpoint`
+- `document_template_url`
+- `document_send_to`
+- `smtp_host`, `smtp_port`, `smtp_secure`, `smtp_user`, `smtp_password`, `smtp_from`
+
+## VPS-Only Email Intake
+
+Astebook can run email intake directly on the VPS with `backend/lib/email_watcher.js`.
+
+Current behavior:
+
+- IMAP watcher starts with the server and stays idle unless `email_watcher_enabled=true`.
+- IMAP credentials reuse SMTP user/password unless `EMAIL_WATCHER_IMAP_USER` and `EMAIL_WATCHER_IMAP_PASSWORD` are set.
+- IMAP host can be configured or derived from SMTP host, for example `smtp.gmail.com` -> `imap.gmail.com`.
+- Filters: sender allowlist plus required attachment filename substring, default `proposta`.
+- Accepted emails become `imap.email_activation` processing events and use the same AI/OCR/document pipeline as Zapier.
+- Deduplication state is persisted in `runtime/email-watcher-state.json`.
+- Accepted emails are marked `Seen`; skipped emails are remembered locally but not marked read.
+
+## Verification
+
+- Lint: `npm run lint`.
+- Tests: `npm test`.
+- Full frontend build: `npm run build`.

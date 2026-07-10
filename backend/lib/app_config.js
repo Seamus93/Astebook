@@ -26,6 +26,13 @@ const defaultConfig = {
     smtp_user: "",
     smtp_password: "",
     smtp_from: "",
+    email_watcher_enabled: "false",
+    email_watcher_imap_host: "",
+    email_watcher_imap_port: "993",
+    email_watcher_imap_secure: "true",
+    email_watcher_from_allowlist: "",
+    email_watcher_required_filename: "proposta",
+    email_watcher_poll_seconds: "120",
   },
 };
 

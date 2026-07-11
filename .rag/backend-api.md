@@ -4,9 +4,23 @@ Updated: 2026-07-10
 
 ## Core Files
 
-- `backend/server.js`: Express app, auth, admin routes, Zapier intake, extraction orchestration, document generation/email delivery.
+- `backend/server.js`: Express app composition, Zapier/IMAP intake, extraction orchestration and legacy `/callAI`.
 - `backend/lib/app_config.js`: runtime config in `runtime/app-config.json`, first admin, effective setting lookup.
+- `backend/routes/admin_auth.js`: admin setup/login/recovery/logout routes plus session cookie verification middleware.
+- `backend/routes/admin_settings.js`: admin settings read/update API, runtime config persistence and session refresh after admin secret changes.
+- `backend/routes/call_ai.js`: legacy `/callAI` route wired to the current extraction pipeline.
+- `backend/routes/email_intake.js`: Zapier email activation route and IMAP watcher activation handler.
+- `backend/routes/processing_events.js`: processing event list/detail/document/send/reprocess API routes.
+- `backend/lib/attachments.js`: Zapier/IMAP attachment descriptor normalization, URL extraction, download and format inference.
+- `backend/lib/extraction_enrichment.js`: output formatting, OpenIBAN lookup and optional Google geocoding helpers.
+- `backend/lib/extraction_pipeline.js`: AI extraction orchestration over email body, attachments, OCR, merge, processing log updates and auto-send handoff.
+- `backend/lib/extraction_result.js`: extraction result helpers, proposal merge, missing-field checks, note handling and email/body normalization.
+- `backend/lib/document_email.js`: generated document email composition, quality report, inline logos and automatic send result logging.
+- `backend/lib/format_utils.js`: date and money formatting helpers used by merge/output shaping.
+- `backend/lib/html.js`: HTML escaping helper.
 - `backend/lib/processing_log.js`: JSONL processing event store in `runtime/processing-events.jsonl`.
+- `backend/lib/settings_validation.js`: settings redaction, email recipient parsing/validation and configuration issue collection.
+- `backend/lib/smtp.js`: SMTP settings, transport creation and recovery email sending.
 - `backend/lib/ai.js`: OpenAI/OpenRouter integration.
 - `backend/lib/pdf.js`: PDF parsing.
 - `backend/lib/docx.js`: DOCX parsing.

@@ -91,10 +91,66 @@
   min-height: 0;
 }
 
+.settings-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .settings-field label {
   min-width: 0;
   font-weight: 800;
   overflow-wrap: anywhere;
+}
+
+.settings-info {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  cursor: help;
+}
+
+.settings-info .material-symbols-outlined {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.settings-info::after {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  width: min(320px, 72vw);
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111827;
+  color: white;
+  box-shadow: var(--shadow);
+  content: attr(data-tooltip);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(-50%, 4px);
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.settings-info:hover,
+.settings-info:focus-visible {
+  color: var(--accent);
+}
+
+.settings-info:hover::after,
+.settings-info:focus-visible::after {
+  opacity: 1;
+  transform: translate(-50%, 0);
 }
 
 .settings-summary-page {

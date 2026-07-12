@@ -21,7 +21,15 @@ const settingsSections = [
       ["emailWatcherImapHost", "email_watcher_imap_host", "IMAP Host", "imap.gmail.com", "off", "text"],
       ["emailWatcherImapPort", "email_watcher_imap_port", "IMAP Port", "993", "off", "text"],
       ["emailWatcherImapSecure", "email_watcher_imap_secure", "IMAP Secure", "true", "off", "text"],
-      ["emailWatcherFromAllowlist", "email_watcher_from_allowlist", "Mittenti autorizzati", "email@dominio.it, altra@dominio.it", "off", "text"],
+      [
+        "emailWatcherFromAllowlist",
+        "email_watcher_from_allowlist",
+        "Mittenti autorizzati",
+        "email@dominio.it, altra@dominio.it",
+        "off",
+        "text",
+        "Quando arriverà una mail da un utente presente in questa lista la pipeline si attiverà.",
+      ],
       ["emailWatcherRequiredFilename", "email_watcher_required_filename", "File richiesto", "proposta", "off", "text"],
       ["emailWatcherPollSeconds", "email_watcher_poll_seconds", "Polling watcher sec", "120", "off", "text"],
     ],
@@ -62,9 +70,16 @@ const settingsSections = [
 ];
 
 export default function ConsoleAdmin() {
-  const renderField = ([id, name, label, placeholder, autocomplete, inputType]) => (
+  const renderField = ([id, name, label, placeholder, autocomplete, inputType, helpText]) => (
     <div className="settings-field" key={id}>
-      <label htmlFor={id}>{label}</label>
+      <div className="settings-label-row">
+        <label htmlFor={id}>{label}</label>
+        {helpText ? (
+          <span className="settings-info" tabIndex="0" role="img" aria-label={helpText} title={helpText} data-tooltip={helpText}>
+            <span className="material-symbols-outlined" aria-hidden="true">info</span>
+          </span>
+        ) : null}
+      </div>
       <div className={inputType === "password" ? "secret-field" : "plain-field"}>
         <input id={id} name={name} type={inputType} autoComplete={autocomplete} placeholder={placeholder} />
         {inputType === "password" ? (

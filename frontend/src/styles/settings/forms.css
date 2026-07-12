@@ -1,0 +1,65 @@
+.settings-form label,
+.filters-form label {
+  display: grid;
+  gap: 7px;
+  font-weight: 800;
+}
+
+.filters-form input,
+.filters-form select {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+}
+
+.filters-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.secret-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  gap: 8px;
+}
+
+.plain-field,
+.secret-field input,
+.plain-field input {
+  min-width: 0;
+}
+
+.plain-field {
+  display: block;
+}
+
+.secret-field input,
+.plain-field input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.secret-field input::placeholder {
+  color: #8a95a5;
+}
+
+.modal-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.settings-status {
+  color: var(--muted);
+  min-height: 20px;
+  margin: 0;
+}

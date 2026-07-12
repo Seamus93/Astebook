@@ -99,6 +99,33 @@ The `/admin` browser UI normally uses the login cookie instead of this header.
 
 Returns the complete event with request payload, file metadata, processing steps, result and error.
 
+## `POST /api/v1/processing-events/:id/feedback`
+
+Stores a human correction for an extracted field in `runtime/extraction-feedback.jsonl`.
+
+Body:
+
+```json
+{
+  "field_path": "extracted.proposta.indirizzo_immobile",
+  "corrected_value": "Via Roma 10, Roma",
+  "source_file": "Proposta.pdf",
+  "reason": "Dato letto male dall'OCR",
+  "apply": true
+}
+```
+
+By default the correction is also applied to the event `result` at `field_path` and a processing step is logged. Set `apply` to `false` to only save the training example.
+
+## `GET /api/v1/extraction-feedback`
+
+Returns saved extraction feedback examples for evaluation and future prompt improvement.
+
+Query parameters:
+
+- `event_id`: optional event filter.
+- `limit`: optional max results, default `200`.
+
 ## `GET /api/v1/admin/settings`
 
 Returns redacted runtime settings for the logged-in admin.

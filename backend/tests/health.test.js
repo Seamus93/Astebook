@@ -148,6 +148,38 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.equal(docxResponse.status, 400);
     assert.equal(docxPayload.error, "DOCUMENT_TEMPLATE_URL non configurato.");
 
+    const feedbackResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/feedback`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-astebook-token": "test-ui-token" },
+        body: JSON.stringify({
+          field_path: "extracted.annuncio.indirizzo",
+          corrected_value: "Via Roma 10, Roma",
+          source_file: "Corpo email",
+          reason: "Indirizzo civico corretto manualmente.",
+        }),
+      }
+    );
+    const feedbackPayload = await feedbackResponse.json();
+
+    assert.equal(feedbackResponse.status, 201);
+    assert.equal(feedbackPayload.feedback.field_path, "extracted.annuncio.indirizzo");
+    assert.equal(feedbackPayload.feedback.corrected_value, "Via Roma 10, Roma");
+    assert.equal(feedbackPayload.event.result.extracted.annuncio.indirizzo, "Via Roma 10, Roma");
+
+    const feedbackListResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/extraction-feedback?event_id=${intakePayload.event_id}`,
+      {
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    const feedbackListPayload = await feedbackListResponse.json();
+
+    assert.equal(feedbackListResponse.status, 200);
+    assert.equal(feedbackListPayload.feedback.length, 1);
+    assert.equal(feedbackListPayload.feedback[0].event_id, intakePayload.event_id);
+
     const reprocessResponse = await fetch(
       `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/reprocess`,
       {

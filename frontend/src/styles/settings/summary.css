@@ -1,0 +1,33 @@
+.settings-summary h3 {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.settings-cards {
+  display: grid;
+  gap: 10px;
+}
+
+.setting-card {
+  display: grid;
+  grid-template-columns: minmax(160px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 12px;
+  background: var(--panel-soft);
+}
+
+.setting-card-wide {
+  align-items: start;
+}
+
+.setting-card strong,
+.setting-card span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.setting-card span {
+  color: var(--muted);
+}

@@ -1,0 +1,36 @@
+.feedback-form {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.feedback-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.feedback-form input,
+.feedback-form textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #c9d1dd;
+  border-radius: 6px;
+  padding: 9px 10px;
+  font: inherit;
+  font-weight: 500;
+}
+
+.feedback-form textarea {
+  resize: vertical;
+}
+
+.feedback-check {
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.feedback-check input {
+  width: auto;
+}

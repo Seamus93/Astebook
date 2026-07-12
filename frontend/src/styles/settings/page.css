@@ -1,0 +1,112 @@
+.settings-page {
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+.settings-page[hidden] {
+  display: none;
+}
+
+.settings-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.settings-page-header h1 {
+  margin: 2px 0 0;
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.settings-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.settings-page-content {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+  gap: 20px;
+  padding: 20px;
+}
+
+.settings-form-page {
+  padding: 0;
+  border-bottom: 0;
+}
+
+.settings-sections {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  overflow: visible;
+}
+
+.settings-section:not([open]) {
+  min-height: 0;
+}
+
+.settings-section > summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.settings-section[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.settings-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 16px;
+  min-height: 0;
+  opacity: 1;
+  visibility: visible;
+}
+
+.settings-section[open] .settings-section-grid {
+  display: grid;
+}
+
+.settings-field {
+  display: grid;
+  gap: 7px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.settings-field label {
+  min-width: 0;
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.settings-summary-page {
+  align-self: start;
+  position: sticky;
+  top: 20px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.settings-summary-page h2 {
+  margin: 2px 0 12px;
+  font-size: 18px;
+}

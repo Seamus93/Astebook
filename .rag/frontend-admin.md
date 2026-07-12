@@ -21,7 +21,17 @@ Updated: 2026-07-10
 - `frontend/src/admin/workflowView.js`: workflow status rendering.
 - `frontend/src/progressStepper.js`: progress/substep support.
 - `frontend/src/latestFilePane.js`: latest file panel helpers.
-- `frontend/src/styles.css`: all admin UI styles.
+- `frontend/src/styles.css`: CSS entrypoint imported by `App.jsx`; contains only `@import` statements for partials.
+- `frontend/src/styles/base.css`: tokens, reset, shell/sidebar/search/buttons.
+- `frontend/src/styles/base/*.css`: base submodules for tokens, reset, shell, header and buttons.
+- `frontend/src/styles/events.css`: event list, event badges and detail heading basics.
+- `frontend/src/styles/workflow.css`: workflow status and analysis substepper.
+- `frontend/src/styles/panels.css`: dashboard panes, structured data sections, file sections and steps.
+- `frontend/src/styles/panels/*.css`: panel submodules for layout, data view, sections and steps.
+- `frontend/src/styles/overlays.css`: modal, notification and toast styles.
+- `frontend/src/styles/settings.css`: settings page, settings forms, feedback form and recipient chips.
+- `frontend/src/styles/settings/*.css`: settings submodules for page, forms, summary, feedback and recipients.
+- `frontend/src/styles/responsive.css`: responsive layout rules.
 
 ## Current Admin Client Responsibilities
 

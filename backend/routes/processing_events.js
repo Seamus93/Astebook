@@ -1,11 +1,34 @@
 import { buildDocumentDocx, buildDocumentPdf } from "../lib/document_builder.js";
 import { parseEmailRecipients } from "../lib/settings_validation.js";
 
+function valueAtPath(obj, path) {
+  return String(path || "")
+    .split(".")
+    .filter(Boolean)
+    .reduce((current, key) => current?.[key], obj);
+}
+
+function setValueAtPath(obj, path, value) {
+  const parts = String(path || "").split(".").filter(Boolean);
+  if (!parts.length) throw new Error("field_path obbligatorio.");
+  if (parts.some((part) => ["__proto__", "prototype", "constructor"].includes(part))) {
+    throw new Error("field_path non valido.");
+  }
+  let current = obj;
+  parts.slice(0, -1).forEach((part) => {
+    if (!current[part] || typeof current[part] !== "object" || Array.isArray(current[part])) current[part] = {};
+    current = current[part];
+  });
+  current[parts[parts.length - 1]] = value;
+}
+
 export function registerProcessingEventRoutes(app, {
+  appendExtractionFeedback,
   collectDocumentEmailConfigurationIssues,
   collectPipelineConfigurationIssues,
   getEffectiveSetting,
   getProcessingEvent,
+  listExtractionFeedback,
   listProcessingEvents,
   requireProcessingUiToken,
   runAiExtractionPipeline,
@@ -25,6 +48,48 @@ export function registerProcessingEventRoutes(app, {
       return;
     }
     res.json({ ok: true, event });
+  });
+
+  app.get("/api/v1/extraction-feedback", requireProcessingUiToken, async (req, res) => {
+    const feedback = await listExtractionFeedback({
+      limit: Number(req.query.limit || 200),
+      eventId: req.query.event_id || undefined,
+    });
+    res.json({ ok: true, feedback });
+  });
+
+  app.post("/api/v1/processing-events/:id/feedback", requireProcessingUiToken, async (req, res) => {
+    const event = await getProcessingEvent(req.params.id);
+    if (!event) {
+      res.status(404).json({ ok: false, error: "Processing event not found" });
+      return;
+    }
+
+    try {
+      const feedback = await appendExtractionFeedback({ event, feedback: req.body || {} });
+      let updatedEvent = event;
+      if (req.body?.apply !== false) {
+        const result = structuredClone(event.result || {});
+        const oldValue = valueAtPath(result, feedback.field_path);
+        setValueAtPath(result, feedback.field_path, feedback.corrected_value);
+        updatedEvent = await updateProcessingEvent(
+          event.id,
+          { result },
+          {
+            message: "Human extraction feedback saved",
+            data: {
+              field_path: feedback.field_path,
+              old_value: oldValue === undefined ? null : oldValue,
+              corrected_value: feedback.corrected_value,
+              feedback_id: feedback.id,
+            },
+          }
+        );
+      }
+      res.status(201).json({ ok: true, feedback, event: updatedEvent });
+    } catch (error) {
+      res.status(400).json({ ok: false, error: error.message || String(error) });
+    }
   });
 
   app.get("/api/v1/processing-events/:id/document", requireProcessingUiToken, async (req, res) => {

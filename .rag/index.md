@@ -48,6 +48,7 @@ Indexed source classes:
 ## High-Value Retrieval Queries
 
 - Admin settings UI: `rg -n "settings|documentSendTo|recipient|ConsoleAdmin|settingsPane" frontend/src .rag`
+- Admin CSS: `rg -n "settings-section|workflow-status|panel-toggle|toast|recipient" frontend/src/styles frontend/src/styles.css .rag`
 - Event detail UI: `rg -n "selectEvent|renderPipelineSteps|fileStepGroups|workflow" frontend/src .rag`
 - Zapier intake: `rg -n "email-activation|zapier|email_id|duplicate|webhook" backend .rag`
 - Runtime config: `rg -n "app-config|runtime settings|getEffectiveSetting|admin settings" backend docs .rag`
@@ -57,5 +58,6 @@ Indexed source classes:
 ## Current Notes
 
 - `frontend/src/adminClient.js` has been reduced to a thin initializer; admin UI behavior now lives in `frontend/src/admin/*`.
+- `frontend/src/styles.css` is the CSS entrypoint; detailed styles live in `frontend/src/styles/*.css`.
 - `backend/server.js` is the orchestration hub. Prefer adding helper modules in `backend/lib` when new behavior is standalone.
 - Zapier is currently the email intake bridge, but the intended direction is VPS-only email intake with internal IMAP/Gmail watcher and runtime dedupe.

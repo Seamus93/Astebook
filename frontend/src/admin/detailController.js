@@ -36,6 +36,90 @@ function extractedResultView(event) {
   return result;
 }
 
+function renderFeedbackForm(event, selectEvent) {
+  const resultPane = document.getElementById("resultPane");
+  if (!resultPane || !event?.result) return;
+
+  const section = document.createElement("details");
+  section.className = "data-section feedback-section";
+  section.open = false;
+
+  const summary = document.createElement("summary");
+  summary.textContent = "Correggi estrazione AI";
+  section.appendChild(summary);
+
+  const form = document.createElement("form");
+  form.className = "feedback-form";
+  form.innerHTML = `
+    <label>
+      Campo
+      <input name="field_path" placeholder="extracted.proposta.indirizzo_immobile" required />
+    </label>
+    <label>
+      Valore corretto
+      <textarea name="corrected_value" rows="3" required></textarea>
+    </label>
+    <label>
+      Fonte / file
+      <input name="source_file" placeholder="Proposta.pdf" />
+    </label>
+    <label>
+      Motivo
+      <textarea name="reason" rows="2" placeholder="Dato letto male, OCR incompleto, regola nuova..."></textarea>
+    </label>
+    <label class="feedback-check">
+      <input name="apply" type="checkbox" checked />
+      Applica correzione a questo evento
+    </label>
+    <button class="secondary-button" type="submit">Salva feedback</button>
+  `;
+
+  form.onsubmit = async (submitEvent) => {
+    submitEvent.preventDefault();
+    const data = new FormData(form);
+    const payload = {
+      field_path: String(data.get("field_path") || "").trim(),
+      corrected_value: String(data.get("corrected_value") || "").trim(),
+      source_file: String(data.get("source_file") || "").trim(),
+      reason: String(data.get("reason") || "").trim(),
+      apply: data.get("apply") === "on",
+    };
+    try {
+      const res = await apiFetch(`/api/v1/processing-events/${event.id}/feedback`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const responsePayload = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        showToast({
+          title: "Feedback non salvato",
+          message: responsePayload.error || `HTTP ${res.status}`,
+          tone: "error",
+        });
+        return;
+      }
+      showToast({
+        title: "Feedback salvato",
+        message: payload.apply ? "La correzione e stata applicata all'evento." : "Esempio salvato nel dataset feedback.",
+        tone: "info",
+      });
+      form.reset();
+      form.elements.apply.checked = true;
+      await selectEvent(event.id);
+    } catch (error) {
+      showToast({
+        title: "Feedback non salvato",
+        message: error.message || String(error),
+        tone: "error",
+      });
+    }
+  };
+
+  section.appendChild(form);
+  resultPane.prepend(section);
+}
+
 function renderEmailBodies(requestPane, emailData) {
   if (emailData.original_body) {
     const originalDetails = document.createElement("details");
@@ -126,6 +210,7 @@ export function createDetailController() {
       renderPipelineSteps(ev);
       renderFileSections(ev);
       renderStructured(document.getElementById("resultPane"), extractedResultView(ev), "Nessun dato estratto.");
+      renderFeedbackForm(ev, selectEvent);
       renderNotes(ev);
       renderMissingFields(ev);
       renderStructured(document.getElementById("errorPane"), pipelineErrors(ev), "Nessun errore pipeline.");

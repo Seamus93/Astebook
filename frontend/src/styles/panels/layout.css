@@ -1,0 +1,47 @@
+.panes {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(360px, 0.8fr);
+  gap: 16px;
+  padding: 20px;
+}
+
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.panel-wide {
+  grid-row: span 2;
+}
+
+.panel h2,
+.panel-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  margin: 0;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+
+.panel-toggle {
+  width: 100%;
+  border: 0;
+  background: var(--panel);
+  color: var(--text);
+  cursor: pointer;
+  font-weight: 800;
+  text-align: left;
+}
+
+.panel-toggle:hover {
+  background: var(--panel-soft);
+}
+
+.panel-toggle .panel-chevron {
+  margin-left: auto;
+}

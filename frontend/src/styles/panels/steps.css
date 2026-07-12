@@ -1,0 +1,54 @@
+.kv-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 220px) minmax(0, 1fr);
+  gap: 12px;
+  background: var(--panel);
+  padding: 10px 12px;
+}
+
+.kv-key {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.kv-value {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel-soft);
+  color: var(--muted);
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.step {
+  border-left: 3px solid var(--line-strong);
+  padding: 0 0 16px 12px;
+  margin-bottom: 12px;
+}
+
+.step.error {
+  border-left-color: var(--bad);
+}
+
+.step strong {
+  display: block;
+}
+
+.step span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.step-data {
+  margin-top: 10px;
+}

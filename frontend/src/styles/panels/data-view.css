@@ -1,0 +1,30 @@
+.collapsible-panel.collapsed .panel-body {
+  display: none;
+}
+
+.collapsible-panel.collapsed .panel-toggle {
+  border-bottom: 0;
+}
+
+.data-view,
+.steps {
+  padding: 14px 16px;
+  max-height: 520px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-size: 13px;
+  background: var(--panel-soft);
+  border-radius: 8px;
+}
+
+.json-code {
+  display: block;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.json-key {
+  color: #7c4dff;
+}

@@ -1,0 +1,26 @@
+.shell {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) 1fr;
+  min-height: 100vh;
+  transition: grid-template-columns 180ms ease;
+}
+
+.shell[hidden] {
+  display: none;
+}
+
+.shell.sidebar-collapsed {
+  grid-template-columns: 0 1fr;
+}
+
+.sidebar {
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  min-height: 100vh;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.shell.sidebar-collapsed .sidebar {
+  border-right: 0;
+}

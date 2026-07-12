@@ -29,7 +29,7 @@ const settingsSections = [
   {
     title: "Documenti e Invio",
     icon: "description",
-    open: false,
+    open: true,
     fields: [
       ["documentTemplateUrl", "document_template_url", "Template Documento", "Link Google Doc template con placeholder {{campo}}", "off", "text"],
       ["documentSendTo", "document_send_to", "Send to", "email@dominio.it, altra@dominio.it", "off", "text"],
@@ -38,7 +38,7 @@ const settingsSections = [
   {
     title: "API AI e OCR",
     icon: "psychology",
-    open: false,
+    open: true,
     fields: [
       ["aiApiKey", "ai_api_key", "AI API Key", "Chiave API OpenRouter/OpenAI", "off", "password"],
       ["aiBaseUrl", "ai_base_url", "AI Base URL", "https://openrouter.ai/api/v1", "off", "text"],
@@ -51,7 +51,7 @@ const settingsSections = [
   {
     title: "Sicurezza e Utenti",
     icon: "admin_panel_settings",
-    open: false,
+    open: true,
     fields: [
       ["processingUiToken", "processing_ui_token", "Token UI", "Token per le API della UI", "off", "password"],
       ["zapierWebhookToken", "zapier_webhook_token", "Token Webhook Zapier", "Token richiesto dagli hook Zapier", "off", "password"],

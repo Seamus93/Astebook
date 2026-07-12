@@ -13,6 +13,7 @@ Updated: 2026-07-10
 - `backend/routes/processing_events.js`: processing event list/detail/document/send/reprocess API routes.
 - `backend/lib/attachments.js`: Zapier/IMAP attachment descriptor normalization, URL extraction, download and format inference.
 - `backend/lib/extraction_enrichment.js`: output formatting, OpenIBAN lookup and optional Google geocoding helpers.
+- `backend/lib/extraction_feedback.js`: JSONL storage for human corrections used as extraction feedback/training examples.
 - `backend/lib/extraction_pipeline.js`: AI extraction orchestration over email body, attachments, OCR, merge, processing log updates and auto-send handoff.
 - `backend/lib/extraction_result.js`: extraction result helpers, proposal merge, missing-field checks, note handling and email/body normalization.
 - `backend/lib/document_email.js`: generated document email composition, quality report, inline logos and automatic send result logging.
@@ -40,6 +41,8 @@ Updated: 2026-07-10
 - `POST /api/v1/zapier/email-activation`: raw activation email intake.
 - `GET /api/v1/processing-events`: processing event list for UI.
 - `GET /api/v1/processing-events/:id`: full event detail.
+- `POST /api/v1/processing-events/:id/feedback`: saves human correction feedback and optionally applies it to the event result.
+- `GET /api/v1/extraction-feedback`: lists saved feedback examples, optionally filtered by `event_id`.
 - `POST /api/v1/processing-events/:id/reprocess`: reruns pipeline after configuration checks.
 - `GET /api/v1/processing-events/:id/document`: generates document.
 - `POST /api/v1/processing-events/:id/send-document`: manual document email delivery.
@@ -64,6 +67,13 @@ Updated: 2026-07-10
 6. Merge announcement/proposal fields.
 7. Update event result, missing fields, notes and status.
 8. Auto-send generated document email when merged data and SMTP/document settings are complete.
+
+## Extraction Feedback Loop
+
+- Human corrections are saved in `runtime/extraction-feedback.jsonl`.
+- Each feedback entry records event id, field path, AI value, corrected value, source file, source excerpt, model and prompt version.
+- The admin event detail UI includes a correction form that can apply the corrected value to the current event immediately.
+- Current implementation stores supervised examples; automated prompt/evaluation generation is not implemented yet.
 
 ## Runtime Settings
 

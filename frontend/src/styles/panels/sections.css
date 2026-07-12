@@ -1,0 +1,71 @@
+.json-string {
+  color: #0b7a33;
+}
+
+.json-number {
+  color: #1f6feb;
+}
+
+.json-literal {
+  color: #b84300;
+  font-weight: 700;
+}
+
+.empty-state {
+  color: var(--muted);
+  margin: 0;
+}
+
+.data-section {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  margin-bottom: 10px;
+  overflow: hidden;
+}
+
+.data-section > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  padding: 11px 12px;
+  font-weight: 800;
+}
+
+.data-section > summary small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+}
+
+.file-section[open] > summary {
+  border-bottom: 1px solid var(--line);
+}
+
+.file-descriptor {
+  padding: 10px 12px;
+}
+
+.file-descriptor .kv-row {
+  padding: 7px 0;
+  background: transparent;
+}
+
+.file-steps {
+  padding: 0 12px 12px;
+}
+
+.file-steps .step {
+  margin-top: 10px;
+  margin-bottom: 0;
+}
+
+.kv-list {
+  display: grid;
+  gap: 1px;
+  background: var(--line);
+}
+

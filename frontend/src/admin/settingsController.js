@@ -1,5 +1,6 @@
 import { apiFetch } from "./apiClient.js";
 import { qs } from "./dom.js";
+import { showToast } from "./toast.js";
 
 const settingsInputIds = {
   processing_ui_token: "processingUiToken",
@@ -94,6 +95,19 @@ function initSettingsSectionView() {
   }
 }
 
+function watcherScanSummary(result) {
+  if (result.busy) return "Watcher gia in esecuzione, riprova tra poco.";
+  if (result.enabled === false) return "Watcher disabilitato: imposta Watcher Email su true e salva.";
+  if (result.disabled_reason) return `Watcher non avviato: ${result.disabled_reason}.`;
+  return [
+    `Lette ${result.scanned || 0}`,
+    `processate ${result.accepted || 0}`,
+    `duplicate ${result.duplicates || 0}`,
+    `mittente escluso ${result.skipped_sender || 0}`,
+    `file escluso ${result.skipped_filename || 0}`,
+  ].join(" · ");
+}
+
 export function createSettingsController() {
   async function loadSettings() {
     try {
@@ -148,9 +162,38 @@ export function createSettingsController() {
     });
   }
 
+  function initWatcherScanButton() {
+    const button = qs("manualWatcherScanButton");
+    const status = qs("manualWatcherScanStatus");
+    if (!button || !status) return;
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      status.textContent = "Scansione watcher in corso...";
+      try {
+        const resp = await apiFetch("/api/v1/admin/email-watcher/scan", { method: "POST" });
+        const payload = await resp.json().catch(() => ({}));
+        const message = watcherScanSummary(payload);
+        status.textContent = message;
+        showToast({
+          title: resp.ok ? "Scansione completata" : "Scansione non completata",
+          message: payload.error || message,
+          tone: resp.ok ? "info" : "error",
+        });
+      } catch (error) {
+        const message = error.message || String(error);
+        status.textContent = `Scansione fallita: ${message}`;
+        showToast({ title: "Scansione fallita", message, tone: "error" });
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
   return {
     initSettingsSectionView,
     initRevealButtons,
+    initWatcherScanButton,
     loadSettings,
     saveSettings,
     suggestModelBasedOnBaseUrl,

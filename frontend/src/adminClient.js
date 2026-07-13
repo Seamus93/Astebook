@@ -30,6 +30,7 @@ export default function initAdminClient() {
 
   settings.initRevealButtons();
   settings.initSettingsSectionView();
+  settings.initWatcherScanButton();
   learning.initLearningControls();
   initSidebarToggle();
   qs("settingsForm").addEventListener("submit", settings.saveSettings);

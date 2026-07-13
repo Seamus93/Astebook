@@ -18,6 +18,7 @@ const settingsSections = [
     title: "Watcher Email",
     tag: "Email in ingresso",
     icon: "mark_email_unread",
+    panel: "watcher",
     fields: [
       ["emailWatcherEnabled", "email_watcher_enabled", "Watcher Email", "true o false", "off", "text", "Abilita o disabilita il controllo automatico delle nuove email in arrivo."],
       ["emailWatcherImapHost", "email_watcher_imap_host", "IMAP Host", "imap.gmail.com", "off", "text", "Server IMAP della casella che Astebook deve ascoltare per trovare nuove email."],
@@ -169,6 +170,23 @@ export default function ConsoleAdmin() {
                   <div className="settings-section-grid">
                     {section.fields.map(renderField)}
                   </div>
+                  {section.panel === "watcher" ? (
+                    <div className="settings-section-panel">
+                      <div className="settings-panel-header">
+                        <div>
+                          <p className="eyebrow">Azione manuale</p>
+                          <h3>Scansione watcher</h3>
+                        </div>
+                        <button id="manualWatcherScanButton" className="secondary-button" type="button">
+                          <span className="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                          Scansiona ora
+                        </button>
+                      </div>
+                      <p id="manualWatcherScanStatus" className="settings-help-text">
+                        Avvia subito un controllo IMAP usando i filtri configurati sopra.
+                      </p>
+                    </div>
+                  ) : null}
                   {section.panel === "learning" ? (
                     <div className="settings-section-panel">
                       <div className="settings-panel-header">

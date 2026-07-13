@@ -115,10 +115,21 @@ function resolveSettings(rawSettings) {
 }
 
 async function pollMailbox(settings, onAcceptedMail) {
-  if (!settings.enabled) return;
+  const stats = {
+    enabled: settings.enabled,
+    scanned: 0,
+    accepted: 0,
+    duplicates: 0,
+    skipped_sender: 0,
+    skipped_filename: 0,
+  };
+  if (!settings.enabled) return stats;
   if (!settings.host || !settings.user || !settings.password) {
     console.warn("[email_watcher] disabled: IMAP host/user/password missing");
-    return;
+    return {
+      ...stats,
+      disabled_reason: "IMAP host/user/password missing",
+    };
   }
 
   const state = await readState();
@@ -139,9 +150,13 @@ async function pollMailbox(settings, onAcceptedMail) {
     const lock = await client.getMailboxLock(settings.mailbox);
     try {
       for await (const message of client.fetch({ seen: false }, { uid: true, source: true })) {
+        stats.scanned += 1;
         const parsed = await simpleParser(message.source);
         const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
-        if (processed.has(messageKey)) continue;
+        if (processed.has(messageKey)) {
+          stats.duplicates += 1;
+          continue;
+        }
 
         const senders = senderAddresses(parsed);
         const senderAllowed =
@@ -150,6 +165,8 @@ async function pollMailbox(settings, onAcceptedMail) {
         const filenameAllowed = hasRequiredAttachment(parsed, settings.requiredFilename);
 
         if (!senderAllowed || !filenameAllowed) {
+          if (!senderAllowed) stats.skipped_sender += 1;
+          if (!filenameAllowed) stats.skipped_filename += 1;
           processed.add(messageKey);
           continue;
         }
@@ -165,6 +182,7 @@ async function pollMailbox(settings, onAcceptedMail) {
         });
 
         processed.add(messageKey);
+        stats.accepted += 1;
         await client.messageFlagsAdd(message.uid, ["\\Seen"], { uid: true });
       }
     } finally {
@@ -174,25 +192,34 @@ async function pollMailbox(settings, onAcceptedMail) {
     await client.logout().catch(() => {});
     await writeState({ processed: Array.from(processed) });
   }
+  return stats;
 }
 
 export function createEmailWatcher({ getSettings, onAcceptedMail }) {
   let timer = null;
   let running = false;
 
-  async function tick() {
-    if (running) return;
+  async function runOnce({ reschedule = false } = {}) {
+    if (running) {
+      return { ok: false, busy: true };
+    }
     running = true;
     try {
       const settings = resolveSettings(await getSettings());
-      await pollMailbox(settings, onAcceptedMail);
-      schedule(settings.pollSeconds);
+      const stats = await pollMailbox(settings, onAcceptedMail);
+      if (reschedule) schedule(settings.pollSeconds);
+      return { ok: true, ...stats };
     } catch (error) {
       console.error("[email_watcher] poll failed", error);
-      schedule(120);
+      if (reschedule) schedule(120);
+      return { ok: false, error: error.message || String(error) };
     } finally {
       running = false;
     }
+  }
+
+  async function tick() {
+    await runOnce({ reschedule: true });
   }
 
   function schedule(seconds) {
@@ -204,6 +231,9 @@ export function createEmailWatcher({ getSettings, onAcceptedMail }) {
   return {
     start() {
       tick();
+    },
+    scanNow() {
+      return runOnce({ reschedule: false });
     },
     stop() {
       if (timer) clearTimeout(timer);

@@ -189,6 +189,12 @@ When `email_watcher_enabled=true`, Astebook connects to the configured IMAP mail
 
 The watcher processes only messages whose sender is in `email_watcher_from_allowlist` and whose attachments include a filename containing `email_watcher_required_filename`. Accepted emails are written as `imap.email_activation` processing events and run through the same AI/OCR/document pipeline used by Zapier intake. Processed message IDs are persisted in `runtime/email-watcher-state.json`.
 
+## `POST /api/v1/admin/email-watcher/scan`
+
+Runs one immediate IMAP watcher scan using the current watcher settings and filters. Requires the `/admin` login cookie.
+
+The response includes scan counters: `scanned`, `accepted`, `duplicates`, `skipped_sender` and `skipped_filename`.
+
 ## `POST /api/v1/processing-events/:id/reprocess`
 
 Before restarting extraction, the endpoint verifies that AI, OCR, document template and email delivery settings are complete. If configuration is missing, it returns `400` with `missing_configuration` and does not start the pipeline.

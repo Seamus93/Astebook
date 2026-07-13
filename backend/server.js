@@ -206,6 +206,7 @@ const emailIntakeHandlers = createEmailIntakeHandlers({
   updateProcessingEvent,
 });
 const { processEmailWatcherActivation } = emailIntakeHandlers;
+let emailWatcher = null;
 
 registerEmailIntakeRoutes(app, {
   handleZapierEmailActivation: emailIntakeHandlers.handleZapierEmailActivation,
@@ -236,15 +237,27 @@ registerCallAiRoute(app, {
   upload,
 });
 
+app.post("/api/v1/admin/email-watcher/scan", requireAdminSession, async (_req, res) => {
+  if (!emailWatcher) {
+    res.status(503).json({ ok: false, error: "Email watcher non avviato." });
+    return;
+  }
+  const result = await emailWatcher.scanNow();
+  const status = result.ok === false && result.busy ? 409 : result.ok === false ? 500 : 200;
+  res.status(status).json(result);
+});
 
 export function startServer(port = process.env.PORT || 3000) {
   const server = app.listen(port, () => console.log(`Server up on http://localhost:${port}`));
-  const watcher = createEmailWatcher({
+  emailWatcher = createEmailWatcher({
     getSettings: getRuntimeSettings,
     onAcceptedMail: processEmailWatcherActivation,
   });
-  watcher.start();
-  server.on("close", () => watcher.stop());
+  emailWatcher.start();
+  server.on("close", () => {
+    emailWatcher?.stop();
+    emailWatcher = null;
+  });
   return server;
 }
 

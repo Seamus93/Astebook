@@ -67,6 +67,7 @@ Current modules:
 - Settings API is loaded with `GET /api/v1/admin/settings?reveal=1`.
 - `Send to` (`document_send_to`) is shown as recipient chips in the saved-values panel.
 - The Memoria AI section includes memory settings plus an Autoapprendimento AI panel with correction totals, scopes, top fields and recent feedback.
+- The Watcher Email section includes a manual "Scansiona ora" action calling `POST /api/v1/admin/email-watcher/scan`.
 - Clicking a recipient chip X posts `{ document_send_to: nextValue }` to `/api/v1/admin/settings`, reloads settings, and updates the input.
 - Non-secret settings fields should be rendered as text fields, not password fields.
 - Secret fields still use reveal buttons.

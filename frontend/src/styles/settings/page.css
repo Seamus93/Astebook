@@ -262,3 +262,9 @@
   font-size: 18px;
   line-height: 1.2;
 }
+
+.settings-help-text {
+  color: var(--muted);
+  margin: 0;
+  overflow-wrap: anywhere;
+}

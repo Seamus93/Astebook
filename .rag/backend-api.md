@@ -43,6 +43,7 @@ Updated: 2026-07-10
 - `GET /api/v1/processing-events/:id`: full event detail.
 - `POST /api/v1/processing-events/:id/feedback`: saves human correction feedback and optionally applies it to the event result.
 - `GET /api/v1/extraction-feedback`: lists saved feedback examples, optionally filtered by `event_id`.
+- `POST /api/v1/admin/email-watcher/scan`: runs one immediate IMAP watcher scan from the admin settings page.
 - `POST /api/v1/processing-events/:id/reprocess`: reruns pipeline after configuration checks.
 - `GET /api/v1/processing-events/:id/document`: generates document.
 - `POST /api/v1/processing-events/:id/send-document`: manual document email delivery.

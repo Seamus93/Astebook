@@ -99,13 +99,53 @@ function watcherScanSummary(result) {
   if (result.busy) return "Watcher gia in esecuzione, riprova tra poco.";
   if (result.enabled === false) return "Watcher disabilitato: imposta Watcher Email su true e salva.";
   if (result.disabled_reason) return `Watcher non avviato: ${result.disabled_reason}.`;
-  return [
+  const summary = [
     `Lette ${result.scanned || 0}`,
     `processate ${result.accepted || 0}`,
     `duplicate ${result.duplicates || 0}`,
     `mittente escluso ${result.skipped_sender || 0}`,
     `file escluso ${result.skipped_filename || 0}`,
   ].join(" · ");
+  const diagnostics = (result.diagnostics || []).slice(-3).map((item) => {
+    const from = (item.from || []).join(", ") || "-";
+    const files = (item.filenames || []).join(", ") || "nessun allegato";
+    return `${item.reason}: ${item.subject || "senza oggetto"} | from ${from} | file ${files}`;
+  });
+  return diagnostics.length ? `${summary}\n${diagnostics.join("\n")}` : summary;
+}
+
+async function fetchProcessingEvents(limit = 50) {
+  const resp = await apiFetch(`/api/v1/processing-events?limit=${limit}`);
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || payload.ok === false) {
+    throw new Error(payload.error || `HTTP ${resp.status}`);
+  }
+  return payload.events || [];
+}
+
+async function fetchProcessingEvent(id) {
+  const resp = await apiFetch(`/api/v1/processing-events/${id}`);
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || payload.ok === false) {
+    throw new Error(payload.error || `HTTP ${resp.status}`);
+  }
+  return payload.event;
+}
+
+async function findLatestDetailedEvent(predicate) {
+  const events = await fetchProcessingEvents(50);
+  for (const event of events) {
+    const detail = await fetchProcessingEvent(event.id);
+    if (predicate(detail)) return detail;
+  }
+  return null;
+}
+
+function errorMessageFromPayload(payload, fallback) {
+  const missing = Array.isArray(payload.missing_configuration)
+    ? payload.missing_configuration.map((item) => `${item.label}: ${item.detail}`).join(" · ")
+    : "";
+  return missing || payload.detail || payload.error || fallback;
 }
 
 export function createSettingsController() {
@@ -190,9 +230,97 @@ export function createSettingsController() {
     });
   }
 
+  function initManualSendLatestDocumentButton() {
+    const button = qs("manualSendLatestDocumentButton");
+    const status = qs("manualSendLatestDocumentStatus");
+    if (!button || !status) return;
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      status.textContent = "Cerco l'ultimo documento processato...";
+      try {
+        const event = await findLatestDetailedEvent((candidate) => Boolean(candidate?.result?.merged));
+        if (!event) {
+          status.textContent = "Nessun evento con dati merged disponibili.";
+          showToast({ title: "Documento non trovato", message: status.textContent, tone: "error" });
+          return;
+        }
+
+        status.textContent = `Invio documento evento ${event.id}...`;
+        const resp = await apiFetch(`/api/v1/processing-events/${event.id}/send-document`, {
+          method: "POST",
+        });
+        const payload = await resp.json().catch(() => ({}));
+        if (!resp.ok || payload.ok === false) {
+          const message = errorMessageFromPayload(payload, `HTTP ${resp.status}`);
+          status.textContent = `Invio non riuscito: ${message}`;
+          showToast({ title: "Invio non riuscito", message, tone: "error" });
+          return;
+        }
+
+        const recipients = (payload.recipients || []).join(", ") || "destinatari configurati";
+        status.textContent = `Documento inviato a ${recipients}.`;
+        showToast({ title: "Documento inviato", message: status.textContent, tone: "info" });
+      } catch (error) {
+        const message = error.message || String(error);
+        status.textContent = `Invio fallito: ${message}`;
+        showToast({ title: "Invio fallito", message, tone: "error" });
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
+  function initManualAnalyzeLatestEmailButton() {
+    const button = qs("manualAnalyzeLatestEmailButton");
+    const status = qs("manualAnalyzeLatestEmailStatus");
+    if (!button || !status) return;
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      status.textContent = "Cerco l'ultima email ricevuta...";
+      try {
+        const events = await fetchProcessingEvents(50);
+        const event = events.find((candidate) =>
+          ["zapier.email_activation", "imap.email_activation"].includes(candidate.source)
+        );
+        if (!event) {
+          status.textContent = "Nessuna email ricevuta trovata.";
+          showToast({ title: "Email non trovata", message: status.textContent, tone: "error" });
+          return;
+        }
+
+        status.textContent = `OCR e Analisi AI in corso per evento ${event.id}...`;
+        const resp = await apiFetch(`/api/v1/processing-events/${event.id}/reprocess`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ skip_auto_send: true }),
+        });
+        const payload = await resp.json().catch(() => ({}));
+        if (!resp.ok || payload.ok === false) {
+          const message = errorMessageFromPayload(payload, `HTTP ${resp.status}`);
+          status.textContent = `Analisi non riuscita: ${message}`;
+          showToast({ title: "Analisi non riuscita", message, tone: "error" });
+          return;
+        }
+
+        status.textContent = `OCR e Analisi AI completate per evento ${event.id}.`;
+        showToast({ title: "Analisi completata", message: status.textContent, tone: "info" });
+      } catch (error) {
+        const message = error.message || String(error);
+        status.textContent = `Analisi fallita: ${message}`;
+        showToast({ title: "Analisi fallita", message, tone: "error" });
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
   return {
     initSettingsSectionView,
     initRevealButtons,
+    initManualAnalyzeLatestEmailButton,
+    initManualSendLatestDocumentButton,
     initWatcherScanButton,
     loadSettings,
     saveSettings,

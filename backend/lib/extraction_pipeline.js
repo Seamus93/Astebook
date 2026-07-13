@@ -279,7 +279,13 @@ export function createAiExtractionPipeline({
     return merged;
   }
 
-  return async function runAiExtractionPipeline({ body = {}, files = [], eventId, source = "zapier.email_activation" }) {
+  return async function runAiExtractionPipeline({
+    body = {},
+    files = [],
+    eventId,
+    source = "zapier.email_activation",
+    skipAutoSend = false,
+  }) {
     const event = { id: eventId };
     const emailText = resolveEmailText(body);
     const initialCodicePratica = directCodicePraticaFromPayload(body) || "";
@@ -567,7 +573,20 @@ export function createAiExtractionPipeline({
       }
     );
 
-    await autoSendMergedDocumentEmail(event.id);
+    if (skipAutoSend) {
+      result.document_email = {
+        status: "skipped",
+        reason: "Invio documento non richiesto dalla rielaborazione OCR/AI manuale.",
+        manual: true,
+      };
+      await updateProcessingEvent(
+        event.id,
+        { result },
+        { message: "Automatic document email skipped by manual OCR/AI reprocess" }
+      );
+    } else {
+      await autoSendMergedDocumentEmail(event.id);
+    }
     const finalEvent = await getProcessingEvent(event.id);
 
     return finalEvent?.result || result;

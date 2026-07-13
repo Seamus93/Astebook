@@ -66,6 +66,17 @@ function hasRequiredAttachment(parsed, requiredFilename) {
   );
 }
 
+function attachmentFilenames(parsed) {
+  return (parsed.attachments || [])
+    .map((attachment) => String(attachment.filename || "").trim())
+    .filter(Boolean);
+}
+
+function addDiagnostic(stats, diagnostic) {
+  stats.diagnostics.push(diagnostic);
+  stats.diagnostics = stats.diagnostics.slice(-20);
+}
+
 function filesFromMail(parsed) {
   return (parsed.attachments || []).map((attachment, index) => ({
     fieldname: `email_attachment_${index + 1}`,
@@ -122,6 +133,7 @@ async function pollMailbox(settings, onAcceptedMail) {
     duplicates: 0,
     skipped_sender: 0,
     skipped_filename: 0,
+    diagnostics: [],
   };
   if (!settings.enabled) return stats;
   if (!settings.host || !settings.user || !settings.password) {
@@ -155,6 +167,12 @@ async function pollMailbox(settings, onAcceptedMail) {
         const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
         if (processed.has(messageKey)) {
           stats.duplicates += 1;
+          addDiagnostic(stats, {
+            reason: "duplicate",
+            subject: parsed.subject || null,
+            from: senderAddresses(parsed),
+            filenames: attachmentFilenames(parsed),
+          });
           continue;
         }
 
@@ -167,6 +185,18 @@ async function pollMailbox(settings, onAcceptedMail) {
         if (!senderAllowed || !filenameAllowed) {
           if (!senderAllowed) stats.skipped_sender += 1;
           if (!filenameAllowed) stats.skipped_filename += 1;
+          addDiagnostic(stats, {
+            reason: !senderAllowed && !filenameAllowed
+              ? "sender_and_filename"
+              : !senderAllowed
+              ? "sender"
+              : "filename",
+            subject: parsed.subject || null,
+            from: senders,
+            allowed_from: settings.fromAllowlist,
+            required_filename: settings.requiredFilename,
+            filenames: attachmentFilenames(parsed),
+          });
           processed.add(messageKey);
           continue;
         }

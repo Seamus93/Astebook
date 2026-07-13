@@ -193,8 +193,16 @@ The watcher processes only messages whose sender is in `email_watcher_from_allow
 
 Runs one immediate IMAP watcher scan using the current watcher settings and filters. Requires the `/admin` login cookie.
 
-The response includes scan counters: `scanned`, `accepted`, `duplicates`, `skipped_sender` and `skipped_filename`.
+The response includes scan counters: `scanned`, `accepted`, `duplicates`, `skipped_sender` and `skipped_filename`. It also returns recent `diagnostics` for skipped unread messages, including subject, sender and attachment filenames.
 
 ## `POST /api/v1/processing-events/:id/reprocess`
 
 Before restarting extraction, the endpoint verifies that AI, OCR, document template and email delivery settings are complete. If configuration is missing, it returns `400` with `missing_configuration` and does not start the pipeline.
+
+Body can include:
+
+```json
+{ "skip_auto_send": true }
+```
+
+When `skip_auto_send` is true, Astebook reruns OCR/AI/merge but does not send the generated document email.

@@ -30,6 +30,8 @@ export default function initAdminClient() {
 
   settings.initRevealButtons();
   settings.initSettingsSectionView();
+  settings.initManualAnalyzeLatestEmailButton();
+  settings.initManualSendLatestDocumentButton();
   settings.initWatcherScanButton();
   learning.initLearningControls();
   initSidebarToggle();

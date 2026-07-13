@@ -309,6 +309,7 @@ export function registerProcessingEventRoutes(app, {
       files: [],
       eventId: event.id,
       source: event.source || "zapier.email_activation",
+      skipAutoSend: req.body?.skip_auto_send === true,
     });
     const updatedEvent = await getProcessingEvent(event.id);
 

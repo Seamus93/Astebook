@@ -267,4 +267,5 @@
   color: var(--muted);
   margin: 0;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
 }

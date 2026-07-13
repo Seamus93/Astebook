@@ -42,6 +42,7 @@ const settingsSections = [
     title: "Documenti e Invio",
     tag: "Output pipeline",
     icon: "description",
+    panel: "documents",
     fields: [
       ["documentTemplateUrl", "document_template_url", "Template Documento", "Link Google Doc template con placeholder {{campo}}", "off", "text", "Link del template documento usato per generare l'output con i dati estratti."],
       ["documentSendTo", "document_send_to", "Send to", "email@dominio.it, altra@dominio.it", "off", "text", "Lista destinatari che riceveranno i documenti o le notifiche finali della pipeline."],
@@ -52,6 +53,7 @@ const settingsSections = [
     title: "API AI e OCR",
     tag: "Estrazione dati",
     icon: "psychology",
+    panel: "analysis",
     fields: [
       ["aiApiKey", "ai_api_key", "AI API Key", "Chiave API OpenRouter/OpenAI", "off", "password", "Chiave API usata dagli agenti AI per estrarre e normalizzare i dati."],
       ["aiBaseUrl", "ai_base_url", "AI Base URL", "https://openrouter.ai/api/v1", "off", "text", "Endpoint compatibile OpenAI/OpenRouter a cui Astebook invia le richieste AI."],
@@ -170,6 +172,40 @@ export default function ConsoleAdmin() {
                   <div className="settings-section-grid">
                     {section.fields.map(renderField)}
                   </div>
+                  {section.panel === "documents" ? (
+                    <div className="settings-section-panel">
+                      <div className="settings-panel-header">
+                        <div>
+                          <p className="eyebrow">Azione manuale</p>
+                          <h3>Invio ultimo documento</h3>
+                        </div>
+                        <button id="manualSendLatestDocumentButton" className="secondary-button" type="button">
+                          <span className="material-symbols-outlined" aria-hidden="true">outgoing_mail</span>
+                          Invia ultimo documento
+                        </button>
+                      </div>
+                      <p id="manualSendLatestDocumentStatus" className="settings-help-text">
+                        Invia via email l'ultimo evento con documento generabile e dati merged disponibili.
+                      </p>
+                    </div>
+                  ) : null}
+                  {section.panel === "analysis" ? (
+                    <div className="settings-section-panel">
+                      <div className="settings-panel-header">
+                        <div>
+                          <p className="eyebrow">Azione manuale</p>
+                          <h3>OCR e Analisi AI ultima mail</h3>
+                        </div>
+                        <button id="manualAnalyzeLatestEmailButton" className="secondary-button" type="button">
+                          <span className="material-symbols-outlined" aria-hidden="true">document_scanner</span>
+                          Analizza ultima mail
+                        </button>
+                      </div>
+                      <p id="manualAnalyzeLatestEmailStatus" className="settings-help-text">
+                        Rielabora l'ultima email ricevuta con OCR e AI senza inviare automaticamente il documento.
+                      </p>
+                    </div>
+                  ) : null}
                   {section.panel === "watcher" ? (
                     <div className="settings-section-panel">
                       <div className="settings-panel-header">

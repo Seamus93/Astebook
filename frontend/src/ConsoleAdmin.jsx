@@ -54,13 +54,44 @@ const settingsSections = [
     tag: "Estrazione dati",
     icon: "psychology",
     panel: "analysis",
-    fields: [
-      ["aiApiKey", "ai_api_key", "AI API Key", "Chiave API OpenRouter/OpenAI", "off", "password", "Chiave API usata dagli agenti AI per estrarre e normalizzare i dati."],
-      ["aiBaseUrl", "ai_base_url", "AI Base URL", "https://openrouter.ai/api/v1", "off", "text", "Endpoint compatibile OpenAI/OpenRouter a cui Astebook invia le richieste AI."],
-      ["aiModel", "ai_model", "AI Model", "openai/gpt-4o-mini", "off", "text", "Modello AI usato per l'estrazione dei dati dai testi e dai documenti."],
-      ["pdfAppApiKey", "pdf_app_api_key", "PDF-app API Key", "API key PDF-app.net", "off", "password", "Chiave API usata per inviare PDF e immagini al servizio OCR."],
-      ["pdfAppOcrEndpoint", "pdf_app_ocr_endpoint", "PDF-app OCR Endpoint", "Endpoint OCR 2.0 PDF-app.net", "off", "text", "Endpoint usato per avviare l'OCR sui documenti ricevuti."],
-      ["pdfAppJobEndpoint", "pdf_app_job_endpoint", "PDF-app Job Endpoint", "Endpoint polling job async, opzionale", "off", "text", "Endpoint opzionale usato per controllare lo stato dei job OCR asincroni."],
+    groups: [
+      {
+        title: "AI",
+        fields: [
+          ["aiApiKey", "ai_api_key", "AI API Key", "Chiave API OpenRouter/OpenAI", "off", "password", "Chiave API usata dagli agenti AI per estrarre e normalizzare i dati."],
+          ["aiBaseUrl", "ai_base_url", "AI Base URL", "https://openrouter.ai/api/v1", "off", "text", "Endpoint compatibile OpenAI/OpenRouter a cui Astebook invia le richieste AI."],
+          ["aiModel", "ai_model", "AI Model", "openai/gpt-4o-mini", "off", "text", "Modello AI usato per l'estrazione dei dati dai testi e dai documenti."],
+        ],
+      },
+      {
+        title: "Geocoding",
+        fields: [
+          [
+            "geocoderProvider",
+            "geocoder_provider",
+            "Provider geocoding",
+            "nominatim, google o none",
+            "off",
+            "select",
+            "Provider usato per arricchire indirizzo, comune, provincia e CAP. Google richiede GOOGLE_MAPS_API_KEY, none disattiva l'arricchimento.",
+            [
+              ["nominatim", "Nominatim"],
+              ["google", "Google"],
+              ["none", "Disattivato"],
+            ],
+          ],
+          ["nominatimBaseUrl", "nominatim_base_url", "Nominatim URL", "https://nominatim.openstreetmap.org", "off", "text", "Endpoint Nominatim usato dal geocoder. Il servizio pubblico va usato con cache e richieste moderate."],
+          ["nominatimUserAgent", "nominatim_user_agent", "Nominatim User-Agent", "Astebook/0.1 (https://astebook.it)", "off", "text", "User-Agent identificativo inviato a Nominatim, utile per rispettare la policy del servizio pubblico."],
+        ],
+      },
+      {
+        title: "OCR",
+        fields: [
+          ["pdfAppApiKey", "pdf_app_api_key", "PDF-app API Key", "API key PDF-app.net", "off", "password", "Chiave API usata per inviare PDF e immagini al servizio OCR."],
+          ["pdfAppOcrEndpoint", "pdf_app_ocr_endpoint", "PDF-app OCR Endpoint", "Endpoint OCR 2.0 PDF-app.net", "off", "text", "Endpoint usato per avviare l'OCR sui documenti ricevuti."],
+          ["pdfAppJobEndpoint", "pdf_app_job_endpoint", "PDF-app Job Endpoint", "Endpoint polling job async, opzionale", "off", "text", "Endpoint opzionale usato per controllare lo stato dei job OCR asincroni."],
+        ],
+      },
     ],
   },
   {
@@ -89,7 +120,7 @@ const settingsSections = [
 ];
 
 export default function ConsoleAdmin() {
-  const renderField = ([id, name, label, placeholder, autocomplete, inputType, helpText]) => (
+  const renderField = ([id, name, label, placeholder, autocomplete, inputType, helpText, options]) => (
     <div className="settings-field" key={id}>
       <div className="settings-label-row">
         <label htmlFor={id}>{label}</label>
@@ -100,7 +131,16 @@ export default function ConsoleAdmin() {
         ) : null}
       </div>
       <div className={inputType === "password" ? "secret-field" : "plain-field"}>
-        <input id={id} name={name} type={inputType} autoComplete={autocomplete} placeholder={placeholder} />
+        {inputType === "select" ? (
+          <select id={id} name={name} autoComplete={autocomplete} defaultValue="">
+            <option value="" disabled>{placeholder}</option>
+            {(options || []).map(([value, text]) => (
+              <option value={value} key={value}>{text}</option>
+            ))}
+          </select>
+        ) : (
+          <input id={id} name={name} type={inputType} autoComplete={autocomplete} placeholder={placeholder} />
+        )}
         {inputType === "password" ? (
           <button className="icon-button reveal-button" type="button" data-reveal={id} title="Mostra">
             <span className="material-symbols-outlined" aria-hidden="true">visibility</span>
@@ -109,6 +149,28 @@ export default function ConsoleAdmin() {
       </div>
     </div>
   );
+  const renderSettingsFields = (section) => {
+    if (section.groups) {
+      return (
+        <div className="settings-subsections">
+          {section.groups.map((group) => (
+            <section className="settings-subsection" key={group.title}>
+              <h3>{group.title}</h3>
+              <div className="settings-section-grid">
+                {group.fields.map(renderField)}
+              </div>
+            </section>
+          ))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="settings-section-grid">
+        {section.fields.map(renderField)}
+      </div>
+    );
+  };
 
   return (
     <main id="settingsPage" className="settings-page" hidden>
@@ -169,9 +231,7 @@ export default function ConsoleAdmin() {
                     </div>
                     <span className="material-symbols-outlined" aria-hidden="true">{section.icon}</span>
                   </header>
-                  <div className="settings-section-grid">
-                    {section.fields.map(renderField)}
-                  </div>
+                  {renderSettingsFields(section)}
                   {section.panel === "documents" ? (
                     <div className="settings-section-panel">
                       <div className="settings-panel-header">

@@ -12,7 +12,7 @@ Updated: 2026-07-10
 - `backend/routes/email_intake.js`: Zapier email activation route and IMAP watcher activation handler.
 - `backend/routes/processing_events.js`: processing event list/detail/document/send/reprocess API routes.
 - `backend/lib/attachments.js`: Zapier/IMAP attachment descriptor normalization, URL extraction, download and format inference.
-- `backend/lib/extraction_enrichment.js`: output formatting, OpenIBAN lookup and optional Google geocoding helpers.
+- `backend/lib/extraction_enrichment.js`: output formatting, OpenIBAN lookup and optional geocoding helpers. Nominatim is the default geocoder, Google remains available when selected and configured.
 - `backend/lib/extraction_feedback.js`: JSONL storage for human corrections used as extraction feedback/training examples.
 - `backend/lib/extraction_pipeline.js`: AI extraction orchestration over email body, attachments, OCR, merge, processing log updates and auto-send handoff.
 - `backend/lib/extraction_result.js`: extraction result helpers, proposal merge, missing-field checks, note handling and email/body normalization.
@@ -22,7 +22,7 @@ Updated: 2026-07-10
 - `backend/lib/processing_log.js`: JSONL processing event store in `runtime/processing-events.jsonl`.
 - `backend/lib/settings_validation.js`: settings redaction, email recipient parsing/validation and configuration issue collection.
 - `backend/lib/smtp.js`: SMTP settings, transport creation and recovery email sending.
-- `backend/lib/ai.js`: OpenAI/OpenRouter integration.
+- `backend/lib/ai.js`: OpenAI/OpenRouter integration plus deterministic extraction fallbacks such as annuncio `Localizzazione` address/comune.
 - `backend/lib/pdf.js`: PDF parsing.
 - `backend/lib/docx.js`: DOCX parsing.
 - `backend/lib/pdf_app.js`: PDF-app OCR integration.
@@ -92,12 +92,24 @@ Key settings include:
 - `ai_model`
 - `ai_memory_enabled`
 - `ai_memory_examples_limit`
+- `geocoder_provider`
+- `nominatim_base_url`
+- `nominatim_user_agent`
 - `pdf_app_api_key`
 - `pdf_app_ocr_endpoint`
 - `pdf_app_job_endpoint`
 - `document_template_url`
 - `document_send_to`
 - `smtp_host`, `smtp_port`, `smtp_secure`, `smtp_user`, `smtp_password`, `smtp_from`
+
+## Geocoding
+
+- Default provider: `nominatim`.
+- Disable with `geocoder_provider=none`.
+- Google geocoding is still supported with `geocoder_provider=google` and `GOOGLE_MAPS_API_KEY`.
+- Nominatim calls use `nominatim_base_url`, `nominatim_user_agent`, `countrycodes=it`, `addressdetails=1` and Italian language hints.
+- Geocode responses are cached in `runtime/geocode-cache.json`.
+- The Nominatim public-service path is throttled to one request per second.
 
 ## VPS-Only Email Intake
 

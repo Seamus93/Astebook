@@ -33,6 +33,12 @@ export function registerAdminSettingsRoutes(app, {
           process.env.AI_MEMORY_ENABLED || settings.ai_memory_enabled || "true",
         ai_memory_examples_limit:
           process.env.AI_MEMORY_EXAMPLES_LIMIT || settings.ai_memory_examples_limit || "8",
+        geocoder_provider:
+          process.env.GEOCODER_PROVIDER || settings.geocoder_provider || "nominatim",
+        nominatim_base_url:
+          process.env.NOMINATIM_BASE_URL || settings.nominatim_base_url || "https://nominatim.openstreetmap.org",
+        nominatim_user_agent:
+          process.env.NOMINATIM_USER_AGENT || settings.nominatim_user_agent || "Astebook/0.1 (https://astebook.it)",
         pdf_app_api_key: secretValue("PDF_APP_API_KEY", "pdf_app_api_key"),
         pdf_app_ocr_endpoint:
           process.env.PDF_APP_OCR_ENDPOINT || settings.pdf_app_ocr_endpoint || "",
@@ -82,6 +88,9 @@ export function registerAdminSettingsRoutes(app, {
     assignIfFilled("ai_model");
     assignIfFilled("ai_memory_enabled");
     assignIfFilled("ai_memory_examples_limit");
+    assignIfFilled("geocoder_provider");
+    assignIfFilled("nominatim_base_url");
+    assignIfFilled("nominatim_user_agent");
     assignIfFilled("pdf_app_api_key");
     assignIfFilled("pdf_app_ocr_endpoint");
     assignIfFilled("pdf_app_job_endpoint");

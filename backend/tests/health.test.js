@@ -12,6 +12,7 @@ process.env.ADMIN_SESSION_SECRET = "test-session-secret";
 process.env.PROCESSING_UI_TOKEN = "test-ui-token";
 process.env.ZAPIER_WEBHOOK_TOKEN = "test-webhook-token";
 process.env.ASTEBOOK_AI_MOCK = "1";
+process.env.GEOCODER_PROVIDER = "none";
 const { app, mergeExtractedProposta } = await import("../server.js");
 const { buildExtractionFeedbackContext } = await import("../lib/extraction_feedback.js");
 
@@ -261,6 +262,45 @@ test("Zapier intake extracts TE_NOTA practice code from email subject", async ()
 
     assert.equal(response.status, 202);
     assert.equal(payload.result.codice_pratica, "TE_NOTA_10533833");
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
+test("Zapier intake infers comune from annuncio localization line", async () => {
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+
+  try {
+    const { port } = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/zapier/email-activation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-astebook-webhook-token": "test-webhook-token",
+      },
+      body: JSON.stringify({
+        subject: "TE_NOTA_10533833 procedura competitiva",
+        from: "cliente@example.com",
+        email_id: "localizzazione-comune-test",
+        email_body_text: [
+          "LOTTO UNICO",
+          "Localizzazione:",
+          "Nel Comune di   ( ), Via Aiaccia, 3, Collesalvetti",
+          "Descrizione",
+          "Trattasi di capannone immobile artigianale/laboratorio.",
+        ].join("\n"),
+        proposta_ocr: "Proposta irrevocabile per immobile in Via Aiaccia, 3, Collesalvetti.",
+      }),
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 202);
+    assert.equal(payload.result.extracted.annuncio.indirizzo, "Via Aiaccia, 3, Collesalvetti");
+    assert.equal(payload.result.merged.immobile.indirizzo, "Via Aiaccia, 3");
+    assert.equal(payload.result.merged.immobile.comune, "Collesalvetti");
   } finally {
     await new Promise((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));

@@ -531,6 +531,7 @@ export async function aiExtractPropostaVision({ imageUrl, imageData, fileName })
 export async function aiExtractAnnuncio({ text, fileName }) {
   const content = clampText(text || "");
   const extras = preExtractAnnuncioGara(content);
+  const indirizzoGuess = preExtractAnnuncioLocalizzazione(content);
   const provvigioneGuess = preExtractAnnuncioProvvigionePercentuale(content);
   const descrFB = preExtractAnnuncioDescrizione(content);
   const feedbackContext = await buildAiMemoryContext("annuncio");
@@ -548,6 +549,7 @@ export async function aiExtractAnnuncio({ text, fileName }) {
 
   // Fallback ai deterministici se mancanti
   for (const k of Object.keys(extras)) if (json[k] == null) json[k] = extras[k];
+  if (json.indirizzo == null && indirizzoGuess) json.indirizzo = indirizzoGuess;
   json.provvigione_percentuale = normalizePercent(json.provvigione_percentuale);
   if (json.provvigione_percentuale == null) json.provvigione_percentuale = provvigioneGuess;
   if (json.provvigione_percentuale == null) json.provvigione_percentuale = 3;
@@ -674,6 +676,40 @@ function preExtractAnnuncioGara(text) {
   if (m2) { termine_richieste_visite_data = toISODateFromIt(m2[1]); termine_richieste_visite_ora = `${s2(m2[2])}:${s2(m2[3])}`; }
 
   return { ora_gara_inizio, ora_gara_fine, termine_richieste_visite_data, termine_richieste_visite_ora };
+}
+
+function cleanLocationSegment(value) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .replace(/\s+,/g, ",")
+    .replace(/,\s+/g, ", ")
+    .trim();
+}
+
+function preExtractAnnuncioLocalizzazione(text) {
+  if (!text) return null;
+  const T = String(text).replace(/\r/g, "");
+  const match = T.match(
+    /(?:localizzazione\s*:?\s*)?(?:nel\s+comune\s+di\s+)?([^,\n]*?)\s*,?\s*((?:via|viale|corso|piazza|piazzale|strada|largo|vicolo|vico|contrada)\b[^\n]+)/i
+  );
+  if (!match) return null;
+
+  const comuneBefore = cleanLocationSegment(match[1])
+    .replace(/^\(\s*\)$/, "")
+    .replace(/^\([^)]+\)$/, "")
+    .trim();
+  let addressLine = cleanLocationSegment(match[2])
+    .replace(/\s+(descrizione|lotto\s+unico)\b[\s\S]*$/i, "")
+    .trim();
+  if (!addressLine) return null;
+
+  const commaParts = addressLine.split(",").map((part) => cleanLocationSegment(part)).filter(Boolean);
+  const hasTrailingComune = commaParts.length >= 3 && !/^\d+[a-z]?$/i.test(commaParts[commaParts.length - 1]);
+  if (hasTrailingComune) return commaParts.join(", ");
+  if (comuneBefore && !addressLine.toLowerCase().includes(comuneBefore.toLowerCase())) {
+    return `${addressLine}, ${comuneBefore}`;
+  }
+  return addressLine;
 }
 
 function preExtractAnnuncioProvvigionePercentuale(text) {

@@ -158,6 +158,8 @@ Updates runtime settings for:
 - `ai_api_key`, `ai_base_url`, `ai_model`: AI provider settings.
 - `ai_memory_enabled`: `true` lets extraction prompts use validated human corrections.
 - `ai_memory_examples_limit`: max recent correction examples injected per extraction scope.
+- `geocoder_provider`: address enrichment provider. Supported values are `nominatim`, `google` and `none`.
+- `nominatim_base_url`, `nominatim_user_agent`: Nominatim endpoint and identifying User-Agent used when `geocoder_provider=nominatim`.
 - `pdf_app_api_key`, `pdf_app_ocr_endpoint`, `pdf_app_job_endpoint`: OCR provider settings.
 - `document_template_url`: Google Docs/DOCX template URL used for document generation.
 - `document_send_to`: comma, semicolon or newline separated default recipients for document PDF emails.
@@ -170,6 +172,17 @@ Updates runtime settings for:
 - `admin_password`
 
 These endpoints require the `/admin` login cookie.
+
+## Address geocoding
+
+Address enrichment defaults to Nominatim. The geocoder is used after extraction to complete address context such as comune, provincia, CAP and formatted address when the source text is incomplete.
+
+Operational notes:
+
+- Nominatim results are cached in `runtime/geocode-cache.json`.
+- The public Nominatim service is throttled to at most one request per second by the backend.
+- Set `geocoder_provider=none` to disable network geocoding.
+- Set `geocoder_provider=google` to use Google geocoding when `GOOGLE_MAPS_API_KEY` is configured.
 
 ## Automatic PDF email delivery
 

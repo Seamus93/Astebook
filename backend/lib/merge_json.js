@@ -38,7 +38,7 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
         provincia = provParen[1].trim().toUpperCase();
         work = work.replace(provParen[0], " ");
       } else {
-        const provTail = work.match(/([A-Z]{2})\s*$/i);
+        const provTail = work.match(/(?:^|[\s,])([A-Z]{2})\s*$/i);
         if (provTail) {
           const remaining = work.replace(provTail[0], " ").trim();
           if (remaining.length >= 2) {

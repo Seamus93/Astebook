@@ -28,7 +28,8 @@
 
 .plain-field,
 .secret-field input,
-.plain-field input {
+.plain-field input,
+.plain-field select {
   min-width: 0;
 }
 
@@ -37,7 +38,8 @@
 }
 
 .secret-field input,
-.plain-field input {
+.plain-field input,
+.plain-field select {
   width: 100%;
   min-width: 0;
   border: 1px solid var(--line);
@@ -45,6 +47,10 @@
   padding: 10px 12px;
   background: var(--panel);
   color: var(--text);
+}
+
+.plain-field select {
+  min-height: 41px;
 }
 
 .secret-field input::placeholder {

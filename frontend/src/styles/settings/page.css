@@ -171,6 +171,31 @@
   visibility: visible;
 }
 
+.settings-subsections {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.settings-subsection {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  padding: 14px;
+}
+
+.settings-subsection h3 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.2;
+}
+
+.settings-subsection .settings-section-grid {
+  padding: 0;
+}
+
 .settings-field {
   display: grid;
   gap: 7px;

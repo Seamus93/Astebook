@@ -238,6 +238,36 @@ test("Zapier intake creates a processing event visible from the UI API", async (
   }
 });
 
+test("Zapier intake extracts TE_NOTA practice code from email subject", async () => {
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+
+  try {
+    const { port } = server.address();
+    const response = await fetch(`http://127.0.0.1:${port}/api/v1/zapier/email-activation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-astebook-webhook-token": "test-webhook-token",
+      },
+      body: JSON.stringify({
+        subject: "Fwd: TE_NOTA_10533833 procedura competitiva AMCO ANNO 2026",
+        from: "cliente@example.com",
+        email_id: "<VI2P193MB3030B5C22905C3707F2A0BF4FD2D2@VI2P193MB3030.EURP193.PROD.OUTLOOK.COM>",
+        email_body_text: "Procedura competitiva con proposta allegata.",
+      }),
+    });
+    const payload = await response.json();
+
+    assert.equal(response.status, 202);
+    assert.equal(payload.result.codice_pratica, "TE_NOTA_10533833");
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test("Zapier intake is idempotent for the same external email id", async () => {
   const server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));

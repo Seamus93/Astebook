@@ -49,9 +49,27 @@ function normalizeDirectCodicePratica(value) {
   return normalized || null;
 }
 
+function codicePraticaFromText(value) {
+  const text = String(value || "");
+  const candidates = [
+    /\bTE_NOTA_\d{4,}\b/i,
+    /\b[A-Z]{2,}(?:_[A-Z0-9]+){1,8}_\d{4,}\b/i,
+  ];
+  for (const pattern of candidates) {
+    const match = text.match(pattern);
+    if (match?.[0]) return normalizeDirectCodicePratica(match[0]);
+  }
+  return null;
+}
+
 export function directCodicePraticaFromPayload(body) {
-  return normalizeDirectCodicePratica(
+  const explicit = normalizeDirectCodicePratica(
     firstBodyValue(body, ["codice_pratica", "codicePratica", "practice_code", "practiceCode", "sigla"])
+  );
+  if (explicit) return explicit;
+
+  return codicePraticaFromText(
+    firstBodyValue(body, ["subject", "email_subject", "oggetto", "title"])
   );
 }
 

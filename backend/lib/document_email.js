@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { documentDisplayTitle, documentFileName, documentProcedureCode } from "./document_naming.js";
 import { escapeHtml } from "./html.js";
 import { parseEmailRecipients, validateEmailRecipients } from "./settings_validation.js";
 
@@ -39,14 +40,13 @@ function buildDocumentQualityReport(event) {
 }
 
 function documentEmailSubject(event) {
-  const code = event?.result?.codice_pratica || event?.metadata?.zap_run_id || event?.id;
-  return `Astebook - Documento procedura ${code}`;
+  return documentDisplayTitle(event);
 }
 
 function buildDocumentEmailHtml(event, report) {
   const result = event?.result || {};
   const merged = result.merged || {};
-  const code = result.codice_pratica || event?.metadata?.zap_run_id || event?.id || "-";
+  const code = documentProcedureCode(event);
   const address = [merged.immobile?.indirizzo, merged.immobile?.comune, merged.immobile?.provincia]
     .filter((value) => value && String(value).trim())
     .join(", ");
@@ -123,7 +123,7 @@ function buildDocumentEmailHtml(event, report) {
 
 function buildDocumentEmailText(event, report) {
   const result = event?.result || {};
-  const code = result.codice_pratica || event?.metadata?.zap_run_id || event?.id || "-";
+  const code = documentProcedureCode(event);
   const lines = [`Documento PDF Astebook per procedura ${code}.`, "", "Report elaborazione automatica:"];
   if (!report.issues.length) {
     lines.push("- Nessuna criticita rilevata dalla pipeline automatica.");
@@ -170,8 +170,7 @@ export function createDocumentEmailService(deps) {
 
     const pdf = await deps.buildDocumentPdf(event);
     const report = buildDocumentQualityReport(event);
-    const code = event.result?.codice_pratica || event.metadata?.zap_run_id || event.id;
-    const fileName = `astebook-${code}.pdf`.replace(/[^\w.-]+/g, "_");
+    const fileName = documentFileName(event, "pdf");
     const smtp = await deps.getSmtpSettings();
     const transporter = await deps.createSmtpTransporter();
 

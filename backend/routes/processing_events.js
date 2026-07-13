@@ -1,4 +1,5 @@
 import { buildDocumentDocx, buildDocumentPdf } from "../lib/document_builder.js";
+import { documentFileName } from "../lib/document_naming.js";
 import { parseEmailRecipients } from "../lib/settings_validation.js";
 
 function valueAtPath(obj, path) {
@@ -118,7 +119,7 @@ export function registerProcessingEventRoutes(app, {
     }
 
     const format = String(req.query.format || "pdf").toLowerCase();
-    const fileName = `astebook-${event.id}.${format === "doc" ? "doc" : format}`;
+    const fileName = documentFileName(event, format === "doc" ? "doc" : format);
 
     if (format === "html") {
       res.status(410).json({
@@ -144,7 +145,7 @@ export function registerProcessingEventRoutes(app, {
           return;
         }
         res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-        res.setHeader("content-disposition", `attachment; filename="astebook-${event.id}.docx"`);
+        res.setHeader("content-disposition", `attachment; filename="${documentFileName(event, "docx")}"`);
         res.send(docx);
       } catch (error) {
         res.status(500).json({

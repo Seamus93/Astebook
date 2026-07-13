@@ -69,8 +69,9 @@ export function buildDocumentFields(event) {
   const annuncio = extracted.annuncio || result.zapier_response?.annuncio || {};
   const codicePratica =
     result.codice_pratica ||
+    merged.codice_pratica ||
+    event?.metadata?.codice_pratica ||
     event?.metadata?.zap_run_id ||
-    event?.metadata?.email_id ||
     " ";
 
   return {

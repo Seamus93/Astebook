@@ -1,8 +1,9 @@
 const settingsSections = [
   {
+    id: "smtp",
     title: "SMTP",
+    tag: "Email in uscita",
     icon: "outgoing_mail",
-    open: true,
     fields: [
       ["smtpHost", "smtp_host", "SMTP Host", "smtp.gmail.com", "off", "text", "Server SMTP usato per inviare le email generate dalla pipeline."],
       ["smtpPort", "smtp_port", "SMTP Port", "465 o 587", "off", "text", "Porta di connessione SMTP. Di solito 465 con SSL oppure 587 con STARTTLS."],
@@ -13,9 +14,10 @@ const settingsSections = [
     ],
   },
   {
+    id: "watcher-email",
     title: "Watcher Email",
+    tag: "Email in ingresso",
     icon: "mark_email_unread",
-    open: true,
     fields: [
       ["emailWatcherEnabled", "email_watcher_enabled", "Watcher Email", "true o false", "off", "text", "Abilita o disabilita il controllo automatico delle nuove email in arrivo."],
       ["emailWatcherImapHost", "email_watcher_imap_host", "IMAP Host", "imap.gmail.com", "off", "text", "Server IMAP della casella che Astebook deve ascoltare per trovare nuove email."],
@@ -35,18 +37,20 @@ const settingsSections = [
     ],
   },
   {
+    id: "documenti-invio",
     title: "Documenti e Invio",
+    tag: "Output pipeline",
     icon: "description",
-    open: true,
     fields: [
       ["documentTemplateUrl", "document_template_url", "Template Documento", "Link Google Doc template con placeholder {{campo}}", "off", "text", "Link del template documento usato per generare l'output con i dati estratti."],
       ["documentSendTo", "document_send_to", "Send to", "email@dominio.it, altra@dominio.it", "off", "text", "Lista destinatari che riceveranno i documenti o le notifiche finali della pipeline."],
     ],
   },
   {
+    id: "api-ai-ocr",
     title: "API AI e OCR",
+    tag: "Estrazione dati",
     icon: "psychology",
-    open: true,
     fields: [
       ["aiApiKey", "ai_api_key", "AI API Key", "Chiave API OpenRouter/OpenAI", "off", "password", "Chiave API usata dagli agenti AI per estrarre e normalizzare i dati."],
       ["aiBaseUrl", "ai_base_url", "AI Base URL", "https://openrouter.ai/api/v1", "off", "text", "Endpoint compatibile OpenAI/OpenRouter a cui Astebook invia le richieste AI."],
@@ -57,9 +61,10 @@ const settingsSections = [
     ],
   },
   {
+    id: "sicurezza-utenti",
     title: "Sicurezza e Utenti",
+    tag: "Accessi e token",
     icon: "admin_panel_settings",
-    open: true,
     fields: [
       ["processingUiToken", "processing_ui_token", "Token UI", "Token per le API della UI", "off", "password", "Token usato dalla console admin per chiamare le API protette della pipeline."],
       ["zapierWebhookToken", "zapier_webhook_token", "Token Webhook Zapier", "Token richiesto dagli hook Zapier", "off", "password", "Token richiesto dai vecchi webhook Zapier. Serve solo se il webhook Zapier resta attivo."],
@@ -109,18 +114,53 @@ export default function ConsoleAdmin() {
       </header>
       <div className="settings-page-content">
         <form id="settingsForm" className="settings-form settings-form-page">
-          <div className="settings-sections">
-            {settingsSections.map((section) => (
-              <details className="settings-section" key={section.title} open={section.open}>
-                <summary>
-                  <span className="material-symbols-outlined" aria-hidden="true">{section.icon}</span>
-                  <span>{section.title}</span>
-                </summary>
-                <div className="settings-section-grid">
-                  {section.fields.map(renderField)}
-                </div>
-              </details>
-            ))}
+          <div className="settings-view-shell">
+            <nav className="settings-view-nav" aria-label="Sezioni impostazioni">
+              <div className="settings-view-search">
+                <span className="material-symbols-outlined" aria-hidden="true">search</span>
+                <input id="settingsSectionSearch" type="search" placeholder="Cerca sezione" autoComplete="off" />
+              </div>
+              <div className="settings-view-list">
+                {settingsSections.map((section, index) => (
+                  <button
+                    className={`settings-view-tab ${index === 0 ? "active" : ""}`}
+                    type="button"
+                    data-settings-tab={section.id}
+                    key={section.id}
+                    aria-controls={`settings-section-${section.id}`}
+                    aria-selected={index === 0 ? "true" : "false"}
+                  >
+                    <span className="material-symbols-outlined" aria-hidden="true">{section.icon}</span>
+                    <span>
+                      <strong>{section.title}</strong>
+                      <small>{section.tag}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </nav>
+            <div className="settings-view-content">
+              {settingsSections.map((section, index) => (
+                <section
+                  id={`settings-section-${section.id}`}
+                  className="settings-section"
+                  data-settings-section={section.id}
+                  key={section.id}
+                  hidden={index !== 0}
+                >
+                  <header className="settings-section-header">
+                    <div>
+                      <p className="eyebrow">{section.tag}</p>
+                      <h2>{section.title}</h2>
+                    </div>
+                    <span className="material-symbols-outlined" aria-hidden="true">{section.icon}</span>
+                  </header>
+                  <div className="settings-section-grid">
+                    {section.fields.map(renderField)}
+                  </div>
+                </section>
+              ))}
+            </div>
           </div>
         </form>
         <aside className="settings-side-panel">

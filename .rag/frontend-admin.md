@@ -6,7 +6,7 @@ Updated: 2026-07-10
 
 - `frontend/src/main.jsx`: React entry point.
 - `frontend/src/App.jsx`: static admin shell markup served under `/admin`; imports `adminClient.js` on mount.
-- `frontend/src/ConsoleAdmin.jsx`: dedicated `/admin/settings` page markup with collapsible settings sections.
+- `frontend/src/ConsoleAdmin.jsx`: dedicated `/admin/settings` page markup with searchable settings section view.
 - `frontend/src/adminClient.js`: thin initializer that wires admin controllers.
 - `frontend/src/admin/apiClient.js`: authenticated fetch and token retry.
 - `frontend/src/admin/detailController.js`: selected event loading, detail panes and action buttons.
@@ -63,7 +63,7 @@ Current modules:
 
 - Settings are displayed as a dedicated protected page at `/admin/settings`, not as a modal.
 - The dashboard button navigates to `/admin/settings`; the page's Dashboard button navigates back to `/admin/`.
-- Settings are grouped in collapsible sections: SMTP, Watcher Email, Documenti e Invio, AI e OCR, Sicurezza e Utenti.
+- Settings are grouped in a searchable section view: SMTP, Watcher Email, Documenti e Invio, AI e OCR, Sicurezza e Utenti.
 - Settings API is loaded with `GET /api/v1/admin/settings?reveal=1`.
 - `Send to` (`document_send_to`) is shown as recipient chips in the saved-values panel.
 - The right side of the settings page includes an Autoapprendimento AI panel with correction totals, scopes, top fields and recent feedback.

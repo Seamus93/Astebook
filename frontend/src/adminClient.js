@@ -29,6 +29,7 @@ export default function initAdminClient() {
   window.addEventListener("popstate", renderRoute);
 
   settings.initRevealButtons();
+  settings.initSettingsSectionView();
   learning.initLearningControls();
   initSidebarToggle();
   qs("settingsForm").addEventListener("submit", settings.saveSettings);

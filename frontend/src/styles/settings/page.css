@@ -41,9 +41,96 @@
   border-bottom: 0;
 }
 
-.settings-sections {
+.settings-view-shell {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.settings-view-nav {
+  position: sticky;
+  top: 20px;
   display: grid;
   gap: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 12px;
+}
+
+.settings-view-search {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.settings-view-search input {
+  min-width: 0;
+  height: 40px;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+}
+
+.settings-view-list {
+  display: grid;
+  gap: 6px;
+}
+
+.settings-view-tab {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 10px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.settings-view-tab:hover,
+.settings-view-tab.active {
+  border-color: #a8c9d8;
+  background: var(--accent-soft);
+}
+
+.settings-view-tab.active {
+  color: var(--accent);
+}
+
+.settings-view-tab span:last-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.settings-view-tab strong,
+.settings-view-tab small {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.settings-view-tab small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.settings-view-content {
+  min-width: 0;
 }
 
 .settings-section {
@@ -53,21 +140,28 @@
   overflow: visible;
 }
 
-.settings-section:not([open]) {
-  min-height: 0;
+.settings-section[hidden],
+.settings-view-tab[hidden] {
+  display: none;
 }
 
-.settings-section > summary {
+.settings-section-header {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 12px;
   padding: 14px 16px;
-  cursor: pointer;
-  font-weight: 900;
+  border-bottom: 1px solid var(--line);
 }
 
-.settings-section[open] > summary {
-  border-bottom: 1px solid var(--line);
+.settings-section-header h2 {
+  margin: 2px 0 0;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.settings-section-header > .material-symbols-outlined {
+  color: var(--accent);
 }
 
 .settings-section-grid {
@@ -78,10 +172,6 @@
   min-height: 0;
   opacity: 1;
   visibility: visible;
-}
-
-.settings-section[open] .settings-section-grid {
-  display: grid;
 }
 
 .settings-field {

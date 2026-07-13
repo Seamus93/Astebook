@@ -187,6 +187,42 @@ export function suggestModelBasedOnBaseUrl() {
   }
 }
 
+function initSettingsSectionView() {
+  const search = qs("settingsSectionSearch");
+  const tabs = Array.from(document.querySelectorAll("[data-settings-tab]"));
+  const sections = Array.from(document.querySelectorAll("[data-settings-section]"));
+  if (!tabs.length || !sections.length) return;
+
+  const activate = (sectionId) => {
+    tabs.forEach((tab) => {
+      const active = tab.dataset.settingsTab === sectionId;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", String(active));
+    });
+    sections.forEach((section) => {
+      section.hidden = section.dataset.settingsSection !== sectionId;
+    });
+  };
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => activate(tab.dataset.settingsTab));
+  });
+
+  if (search) {
+    search.addEventListener("input", () => {
+      const query = String(search.value || "").trim().toLowerCase();
+      const visibleTabs = tabs.filter((tab) => {
+        const visible = !query || tab.textContent.toLowerCase().includes(query);
+        tab.hidden = !visible;
+        return visible;
+      });
+      if (visibleTabs.length && !visibleTabs.some((tab) => tab.classList.contains("active"))) {
+        activate(visibleTabs[0].dataset.settingsTab);
+      }
+    });
+  }
+}
+
 export function createSettingsController() {
   async function loadSettings() {
     try {
@@ -243,6 +279,7 @@ export function createSettingsController() {
   }
 
   return {
+    initSettingsSectionView,
     initRevealButtons,
     loadSettings,
     saveSettings,

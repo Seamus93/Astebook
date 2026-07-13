@@ -6,7 +6,12 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 
 import { createAiExtractionPipeline } from "./lib/extraction_pipeline.js";
-import { appendExtractionFeedback, listExtractionFeedback } from "./lib/extraction_feedback.js";
+import {
+  appendExtractionFeedback,
+  buildExtractionFeedbackContext,
+  listExtractionFeedback,
+  summarizeExtractionFeedback,
+} from "./lib/extraction_feedback.js";
 import { createAdminAuth } from "./routes/admin_auth.js";
 import { registerAdminSettingsRoutes } from "./routes/admin_settings.js";
 import { registerCallAiRoute } from "./routes/call_ai.js";
@@ -210,6 +215,7 @@ registerEmailIntakeRoutes(app, {
 
 registerProcessingEventRoutes(app, {
   appendExtractionFeedback,
+  buildExtractionFeedbackContext,
   collectDocumentEmailConfigurationIssues,
   collectPipelineConfigurationIssues,
   getEffectiveSetting,
@@ -219,6 +225,7 @@ registerProcessingEventRoutes(app, {
   requireProcessingUiToken,
   runAiExtractionPipeline,
   sendDocumentEmailForEvent,
+  summarizeExtractionFeedback,
   updateProcessingEvent,
 });
 

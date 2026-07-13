@@ -14,6 +14,7 @@ Updated: 2026-07-10
 - `frontend/src/admin/eventList.js`: event list loading and rendering.
 - `frontend/src/admin/fileSections.js`: file/step grouping and file sections.
 - `frontend/src/admin/html.js`: HTML escaping.
+- `frontend/src/admin/learningController.js`: auto-learning feedback summary panel.
 - `frontend/src/admin/settingsController.js`: settings loading/saving, saved-values panel and recipient deletion.
 - `frontend/src/admin/shell.js`: sidebar collapse behavior.
 - `frontend/src/admin/structuredView.js`: generic nested data rendering.
@@ -37,7 +38,7 @@ Updated: 2026-07-10
 
 `frontend/src/adminClient.js` now only:
 
-- creates settings, detail and event-list controllers;
+- creates settings, learning, detail and event-list controllers;
 - opens/closes the settings modal;
 - wires reveal buttons, sidebar toggle, settings submit and AI base URL hint;
 - starts `loadSettings()` and `loadEvents()`.
@@ -49,6 +50,7 @@ Current modules:
 - `frontend/src/admin/apiClient.js`: `apiFetch`, token handling, endpoint helpers.
 - `frontend/src/admin/toast.js`: toast rendering.
 - `frontend/src/admin/settingsController.js`: settings loading/saving, saved-values panel, recipient deletion.
+- `frontend/src/admin/learningController.js`: loads `/api/v1/extraction-feedback/summary` and renders AI memory metrics.
 - `frontend/src/admin/eventList.js`: events fetch/list rendering.
 - `frontend/src/admin/detailController.js`: selected event loading and action buttons.
 - `frontend/src/admin/structuredView.js`: generic key/value display helpers.
@@ -64,6 +66,7 @@ Current modules:
 - Settings are grouped in collapsible sections: SMTP, Watcher Email, Documenti e Invio, AI e OCR, Sicurezza e Utenti.
 - Settings API is loaded with `GET /api/v1/admin/settings?reveal=1`.
 - `Send to` (`document_send_to`) is shown as recipient chips in the saved-values panel.
+- The right side of the settings page includes an Autoapprendimento AI panel with correction totals, scopes, top fields and recent feedback.
 - Clicking a recipient chip X posts `{ document_send_to: nextValue }` to `/api/v1/admin/settings`, reloads settings, and updates the input.
 - Non-secret settings fields should be rendered as text fields, not password fields.
 - Secret fields still use reveal buttons.

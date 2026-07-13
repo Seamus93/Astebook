@@ -73,7 +73,10 @@ Updated: 2026-07-10
 - Human corrections are saved in `runtime/extraction-feedback.jsonl`.
 - Each feedback entry records event id, field path, AI value, corrected value, source file, source excerpt, model and prompt version.
 - The admin event detail UI includes a correction form that can apply the corrected value to the current event immediately.
-- Current implementation stores supervised examples; automated prompt/evaluation generation is not implemented yet.
+- Extraction agents load recent scoped feedback as human-correction context for `annuncio`, `proposta` and `provvigione` prompts.
+- `GET /api/v1/extraction-feedback/summary` exposes dataset metrics for the admin console.
+- `GET /api/v1/extraction-feedback/context?scope=...` exposes the generated prompt-memory context.
+- Offline benchmark evaluation against a frozen gold dataset is not implemented yet.
 
 ## Runtime Settings
 

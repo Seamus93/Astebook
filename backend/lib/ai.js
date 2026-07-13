@@ -3,6 +3,7 @@
 import OpenAI from "openai";
 import dotenv from "dotenv";
 import { getEffectiveSetting } from "./app_config.js";
+import { buildExtractionFeedbackContext } from "./extraction_feedback.js";
 import {
   AI_FIELD_AGENTS,
   PROMPT_ANNUNCIO,
@@ -296,7 +297,7 @@ export const schemaCodicePratica = {
 
 /* --------------- CALLERS (Responses API corretto) --------------- */
 
-async function callJsonSchema({ prompt, content, fileName, schema }) {
+async function callJsonSchema({ prompt, content, fileName, schema, feedbackContext = "" }) {
   if (process.env.ASTEBOOK_AI_MOCK === "1") {
     return mockJsonFromSchema(schema.schema, { content, fileName });
   }
@@ -314,6 +315,8 @@ async function callJsonSchema({ prompt, content, fileName, schema }) {
       {
         role: "user",
         content: `${prompt}
+
+${feedbackContext ? `Memoria di correzioni umane:\n${feedbackContext}\n` : ""}
 
 Schema JSON richiesto:
 ${JSON.stringify(schema.schema)}
@@ -338,12 +341,14 @@ ${content}`,
 export async function aiExtractProvvigionePercentuale({ text, fileName }) {
   const content = clampText(text || "");
   const guess = preExtractAnnuncioProvvigionePercentuale(content);
+  const feedbackContext = await buildExtractionFeedbackContext({ scope: "provvigione" });
 
   const json = await callJsonSchema({
     prompt: PROMPT_PROVVIGIONE,
     content,
     fileName: fileName || "provvigione_ocr.txt",
-    schema: schemaProvvigione
+    schema: schemaProvvigione,
+    feedbackContext,
   });
 
   json.provvigione_percentuale = normalizePercent(json.provvigione_percentuale);
@@ -422,12 +427,14 @@ export async function aiExtractProposta({ text, fileName }) {
   const red = preExtractRedazione(content);
   const ibanGuess = preExtractIban(content);
   const catastoGuess = preExtractPropostaCatasto(content);
+  const feedbackContext = await buildExtractionFeedbackContext({ scope: "proposta" });
 
   const json = await callJsonSchema({
     prompt: PROMPT_PROPOSTA,
     content,
     fileName: fileName || "proposta.pdf",
-    schema: schemaProposta
+    schema: schemaProposta,
+    feedbackContext,
   });
 
   json.raw_length = content.length;
@@ -502,12 +509,14 @@ export async function aiExtractAnnuncio({ text, fileName }) {
   const extras = preExtractAnnuncioGara(content);
   const provvigioneGuess = preExtractAnnuncioProvvigionePercentuale(content);
   const descrFB = preExtractAnnuncioDescrizione(content);
+  const feedbackContext = await buildExtractionFeedbackContext({ scope: "annuncio" });
 
   const json = await callJsonSchema({
     prompt: PROMPT_ANNUNCIO,
     content,
     fileName: fileName || "annuncio.pdf",
-    schema: schemaAnnuncio
+    schema: schemaAnnuncio,
+    feedbackContext,
   });
 
   json.raw_length = content.length;

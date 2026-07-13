@@ -100,3 +100,91 @@ export async function listExtractionFeedback({ limit = 200, eventId } = {}) {
     .sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)))
     .slice(0, Number(limit || 200));
 }
+
+function feedbackMatchesScope(entry, scope) {
+  const normalizedScope = String(scope || "").trim().toLowerCase();
+  if (!normalizedScope) return true;
+  const path = String(entry?.field_path || "").toLowerCase();
+  if (normalizedScope === "annuncio") return path.startsWith("extracted.annuncio.");
+  if (normalizedScope === "proposta") return path.startsWith("extracted.proposta.");
+  if (normalizedScope === "provvigione") return path.startsWith("extracted.provvigione.");
+  return path.includes(normalizedScope);
+}
+
+function scopeForFieldPath(fieldPath) {
+  const path = String(fieldPath || "").toLowerCase();
+  if (path.startsWith("extracted.annuncio.")) return "annuncio";
+  if (path.startsWith("extracted.proposta.")) return "proposta";
+  if (path.startsWith("extracted.provvigione.")) return "provvigione";
+  return "altro";
+}
+
+function compactValue(value) {
+  if (value === null || value === undefined) return "null";
+  const text = typeof value === "string" ? value : JSON.stringify(value);
+  return String(text || "").replace(/\s+/g, " ").trim().slice(0, 280);
+}
+
+export async function buildExtractionFeedbackContext({ scope, limit = 8 } = {}) {
+  const entries = (await listExtractionFeedback({ limit: 500 }))
+    .filter((entry) => feedbackMatchesScope(entry, scope))
+    .slice(0, Number(limit || 8));
+
+  if (!entries.length) return "";
+
+  const examples = entries.map((entry, index) => {
+    const source = entry.source_file ? ` file=${entry.source_file};` : "";
+    const reason = entry.reason ? ` nota=${compactValue(entry.reason)};` : "";
+    return [
+      `Esempio ${index + 1}:`,
+      `campo=${entry.field_path};${source}`,
+      `valore_ai=${compactValue(entry.ai_value)};`,
+      `valore_corretto=${compactValue(entry.corrected_value)};${reason}`,
+    ].join(" ");
+  });
+
+  return [
+    "Correzioni umane gia validate da usare come esempi di estrazione.",
+    "Quando un caso simile compare nel testo, preferisci la logica del valore_corretto rispetto al valore_ai.",
+    "Non copiare valori se non sono presenti nel nuovo documento.",
+    ...examples,
+  ].join("\n");
+}
+
+export async function summarizeExtractionFeedback({ limit = 500 } = {}) {
+  const entries = await listExtractionFeedback({ limit });
+  const byScope = {};
+  const byField = {};
+  const byReason = {};
+
+  entries.forEach((entry) => {
+    const scope = scopeForFieldPath(entry.field_path);
+    byScope[scope] = (byScope[scope] || 0) + 1;
+    byField[entry.field_path] = (byField[entry.field_path] || 0) + 1;
+    const reason = String(entry.reason || "Senza motivo").trim() || "Senza motivo";
+    byReason[reason] = (byReason[reason] || 0) + 1;
+  });
+
+  const sortCountEntries = (values, max = 12) =>
+    Object.entries(values)
+      .map(([key, count]) => ({ key, count }))
+      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key))
+      .slice(0, max);
+
+  return {
+    total: entries.length,
+    by_scope: sortCountEntries(byScope),
+    top_fields: sortCountEntries(byField),
+    top_reasons: sortCountEntries(byReason, 8),
+    recent: entries.slice(0, 10).map((entry) => ({
+      id: entry.id,
+      event_id: entry.event_id,
+      field_path: entry.field_path,
+      corrected_value: entry.corrected_value,
+      ai_value: entry.ai_value,
+      source_file: entry.source_file,
+      reason: entry.reason,
+      created_at: entry.created_at,
+    })),
+  };
+}

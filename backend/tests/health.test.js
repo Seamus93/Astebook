@@ -13,6 +13,7 @@ process.env.PROCESSING_UI_TOKEN = "test-ui-token";
 process.env.ZAPIER_WEBHOOK_TOKEN = "test-webhook-token";
 process.env.ASTEBOOK_AI_MOCK = "1";
 const { app, mergeExtractedProposta } = await import("../server.js");
+const { buildExtractionFeedbackContext } = await import("../lib/extraction_feedback.js");
 
 test.after(async () => {
   await rm(runtimeDir, { recursive: true, force: true });
@@ -179,6 +180,40 @@ test("Zapier intake creates a processing event visible from the UI API", async (
     assert.equal(feedbackListResponse.status, 200);
     assert.equal(feedbackListPayload.feedback.length, 1);
     assert.equal(feedbackListPayload.feedback[0].event_id, intakePayload.event_id);
+
+    const feedbackContext = await buildExtractionFeedbackContext({ scope: "annuncio" });
+    assert.match(feedbackContext, /extracted\.annuncio\.indirizzo/);
+    assert.match(feedbackContext, /Via Roma 10, Roma/);
+
+    const unrelatedFeedbackContext = await buildExtractionFeedbackContext({ scope: "proposta" });
+    assert.doesNotMatch(unrelatedFeedbackContext, /extracted\.annuncio\.indirizzo/);
+
+    const feedbackSummaryResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/extraction-feedback/summary`,
+      {
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    const feedbackSummaryPayload = await feedbackSummaryResponse.json();
+
+    assert.equal(feedbackSummaryResponse.status, 200);
+    assert.equal(feedbackSummaryPayload.summary.total, 1);
+    assert.ok(
+      feedbackSummaryPayload.summary.top_fields.some(
+        (item) => item.key === "extracted.annuncio.indirizzo" && item.count === 1
+      )
+    );
+
+    const feedbackContextResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/extraction-feedback/context?scope=annuncio`,
+      {
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    const feedbackContextPayload = await feedbackContextResponse.json();
+
+    assert.equal(feedbackContextResponse.status, 200);
+    assert.match(feedbackContextPayload.context, /Via Roma 10, Roma/);
 
     const reprocessResponse = await fetch(
       `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}/reprocess`,

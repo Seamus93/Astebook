@@ -123,13 +123,27 @@ export default function ConsoleAdmin() {
             ))}
           </div>
         </form>
-        <section className="settings-summary settings-summary-page">
-          <div>
-            <p className="eyebrow">Runtime</p>
-            <h2>Valori salvati</h2>
-          </div>
-          <div id="settingsPane" className="settings-cards"></div>
-        </section>
+        <aside className="settings-side-panel">
+          <section className="settings-summary settings-summary-page">
+            <div>
+              <p className="eyebrow">Runtime</p>
+              <h2>Valori salvati</h2>
+            </div>
+            <div id="settingsPane" className="settings-cards"></div>
+          </section>
+          <section className="settings-summary learning-summary">
+            <div className="settings-panel-header">
+              <div>
+                <p className="eyebrow">Memoria</p>
+                <h2>Autoapprendimento AI</h2>
+              </div>
+              <button id="refreshLearningButton" className="icon-button" type="button" title="Aggiorna memoria AI">
+                <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
+              </button>
+            </div>
+            <div id="learningPane" className="learning-pane"></div>
+          </section>
+        </aside>
       </div>
     </main>
   );

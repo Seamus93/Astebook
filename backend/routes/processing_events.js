@@ -24,6 +24,7 @@ function setValueAtPath(obj, path, value) {
 
 export function registerProcessingEventRoutes(app, {
   appendExtractionFeedback,
+  buildExtractionFeedbackContext,
   collectDocumentEmailConfigurationIssues,
   collectPipelineConfigurationIssues,
   getEffectiveSetting,
@@ -33,6 +34,7 @@ export function registerProcessingEventRoutes(app, {
   requireProcessingUiToken,
   runAiExtractionPipeline,
   sendDocumentEmailForEvent,
+  summarizeExtractionFeedback,
   updateProcessingEvent,
 }) {
   app.get("/api/v1/processing-events", requireProcessingUiToken, async (req, res) => {
@@ -48,6 +50,22 @@ export function registerProcessingEventRoutes(app, {
       return;
     }
     res.json({ ok: true, event });
+  });
+
+  app.get("/api/v1/extraction-feedback/summary", requireProcessingUiToken, async (req, res) => {
+    const summary = await summarizeExtractionFeedback({
+      limit: Number(req.query.limit || 500),
+    });
+    res.json({ ok: true, summary });
+  });
+
+  app.get("/api/v1/extraction-feedback/context", requireProcessingUiToken, async (req, res) => {
+    const scope = String(req.query.scope || "").trim();
+    const context = await buildExtractionFeedbackContext({
+      scope,
+      limit: Number(req.query.limit || 8),
+    });
+    res.json({ ok: true, scope: scope || null, context });
   });
 
   app.get("/api/v1/extraction-feedback", requireProcessingUiToken, async (req, res) => {

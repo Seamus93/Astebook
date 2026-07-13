@@ -119,12 +119,30 @@ By default the correction is also applied to the event `result` at `field_path` 
 
 ## `GET /api/v1/extraction-feedback`
 
-Returns saved extraction feedback examples for evaluation and future prompt improvement.
+Returns saved extraction feedback examples for evaluation and prompt improvement. The extraction agents also reuse recent scoped feedback as human-correction context for future `annuncio`, `proposta` and `provvigione` extractions.
 
 Query parameters:
 
 - `event_id`: optional event filter.
 - `limit`: optional max results, default `200`.
+
+## `GET /api/v1/extraction-feedback/summary`
+
+Returns auto-learning dataset metrics for the admin console:
+
+- total validated corrections.
+- correction counts by extraction scope.
+- most corrected fields.
+- most recent corrections.
+
+## `GET /api/v1/extraction-feedback/context`
+
+Returns the prompt-memory context generated from validated feedback.
+
+Query parameters:
+
+- `scope`: optional `annuncio`, `proposta` or `provvigione`.
+- `limit`: optional max examples, default `8`.
 
 ## `GET /api/v1/admin/settings`
 

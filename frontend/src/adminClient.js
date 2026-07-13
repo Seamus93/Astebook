@@ -1,10 +1,12 @@
 import { createDetailController } from "./admin/detailController.js";
 import { createEventListController } from "./admin/eventList.js";
+import { createLearningController } from "./admin/learningController.js";
 import { createSettingsController } from "./admin/settingsController.js";
 import { initSidebarToggle } from "./admin/shell.js";
 import { qs } from "./admin/dom.js";
 
 export default function initAdminClient() {
+  const learning = createLearningController();
   const settings = createSettingsController();
   const details = createDetailController();
   const events = createEventListController({ selectEvent: details.selectEvent });
@@ -27,6 +29,7 @@ export default function initAdminClient() {
   window.addEventListener("popstate", renderRoute);
 
   settings.initRevealButtons();
+  learning.initLearningControls();
   initSidebarToggle();
   qs("settingsForm").addEventListener("submit", settings.saveSettings);
 
@@ -34,6 +37,7 @@ export default function initAdminClient() {
   if (baseInput) baseInput.addEventListener("input", settings.suggestModelBasedOnBaseUrl);
 
   settings.loadSettings();
+  learning.loadLearningSummary();
   events.loadEvents();
   renderRoute();
 }

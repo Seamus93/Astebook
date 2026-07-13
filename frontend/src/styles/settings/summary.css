@@ -31,3 +31,71 @@
 .setting-card span {
   color: var(--muted);
 }
+
+.learning-pane {
+  display: grid;
+  gap: 14px;
+}
+
+.learning-total {
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.learning-total strong {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.learning-total span,
+.learning-recent-item small {
+  color: var(--muted);
+}
+
+.learning-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.learning-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.learning-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.learning-list span,
+.learning-recent-item strong,
+.learning-recent-item span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.learning-recent-list {
+  display: grid;
+  gap: 8px;
+}
+
+.learning-recent-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}

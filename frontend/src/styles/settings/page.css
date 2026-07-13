@@ -30,9 +30,6 @@
 }
 
 .settings-page-content {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
-  gap: 20px;
   padding: 20px;
 }
 
@@ -243,30 +240,25 @@
   transform: translate(-50%, 0);
 }
 
-.settings-side-panel {
-  align-self: start;
-  position: sticky;
-  top: 20px;
-  display: grid;
-  gap: 12px;
-}
-
-.settings-summary-page,
-.learning-summary {
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--panel);
-}
-
-.settings-summary-page h2,
-.learning-summary h2 {
-  margin: 2px 0 12px;
-  font-size: 18px;
-}
-
 .settings-panel-header {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: 12px;
+}
+
+.settings-section-panel {
+  display: grid;
+  gap: 14px;
+  margin: 0 16px 16px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel-soft);
+}
+
+.settings-section-panel h3 {
+  margin: 2px 0 0;
+  font-size: 18px;
+  line-height: 1.2;
 }

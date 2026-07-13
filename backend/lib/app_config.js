@@ -15,6 +15,8 @@ const defaultConfig = {
     ai_api_key: "",
     ai_base_url: "https://openrouter.ai/api/v1",
     ai_model: "openai/gpt-4o-mini",
+    ai_memory_enabled: "true",
+    ai_memory_examples_limit: "8",
     pdf_app_api_key: "",
     pdf_app_ocr_endpoint: "",
     pdf_app_job_endpoint: "",

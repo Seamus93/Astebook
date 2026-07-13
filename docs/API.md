@@ -155,6 +155,11 @@ Updates runtime settings for:
 - `processing_ui_token`
 - `zapier_webhook_token`
 - `admin_session_secret`
+- `ai_api_key`, `ai_base_url`, `ai_model`: AI provider settings.
+- `ai_memory_enabled`: `true` lets extraction prompts use validated human corrections.
+- `ai_memory_examples_limit`: max recent correction examples injected per extraction scope.
+- `pdf_app_api_key`, `pdf_app_ocr_endpoint`, `pdf_app_job_endpoint`: OCR provider settings.
+- `document_template_url`: Google Docs/DOCX template URL used for document generation.
 - `document_send_to`: comma, semicolon or newline separated default recipients for document PDF emails.
 - `smtp_host`, `smtp_port`, `smtp_secure`, `smtp_user`, `smtp_password`, `smtp_from`: SMTP delivery settings used when matching environment variables are not set.
 - `email_watcher_enabled`: `true` enables the VPS email watcher.

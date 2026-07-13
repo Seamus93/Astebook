@@ -72,6 +72,17 @@ const settingsSections = [
       ["adminPassword", "admin_password", "Nuova Password Admin", "Lascia vuoto per non cambiarla", "new-password", "password", "Imposta una nuova password admin. Se resta vuoto, la password attuale non cambia."],
     ],
   },
+  {
+    id: "memoria-ai",
+    title: "Memoria AI",
+    tag: "Autoapprendimento",
+    icon: "neurology",
+    fields: [
+      ["aiMemoryEnabled", "ai_memory_enabled", "Memoria AI", "true o false", "off", "text", "Abilita o disabilita l'uso delle correzioni validate nei prompt futuri."],
+      ["aiMemoryExamplesLimit", "ai_memory_examples_limit", "Esempi nei prompt", "8", "off", "text", "Numero massimo di correzioni recenti da passare all'AI per ogni estrazione."],
+    ],
+    panel: "learning",
+  },
 ];
 
 export default function ConsoleAdmin() {
@@ -158,32 +169,25 @@ export default function ConsoleAdmin() {
                   <div className="settings-section-grid">
                     {section.fields.map(renderField)}
                   </div>
+                  {section.panel === "learning" ? (
+                    <div className="settings-section-panel">
+                      <div className="settings-panel-header">
+                        <div>
+                          <p className="eyebrow">Memoria validata</p>
+                          <h3>Autoapprendimento AI</h3>
+                        </div>
+                        <button id="refreshLearningButton" className="icon-button" type="button" title="Aggiorna memoria AI">
+                          <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
+                        </button>
+                      </div>
+                      <div id="learningPane" className="learning-pane"></div>
+                    </div>
+                  ) : null}
                 </section>
               ))}
             </div>
           </div>
         </form>
-        <aside className="settings-side-panel">
-          <section className="settings-summary settings-summary-page">
-            <div>
-              <p className="eyebrow">Runtime</p>
-              <h2>Valori salvati</h2>
-            </div>
-            <div id="settingsPane" className="settings-cards"></div>
-          </section>
-          <section className="settings-summary learning-summary">
-            <div className="settings-panel-header">
-              <div>
-                <p className="eyebrow">Memoria</p>
-                <h2>Autoapprendimento AI</h2>
-              </div>
-              <button id="refreshLearningButton" className="icon-button" type="button" title="Aggiorna memoria AI">
-                <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
-              </button>
-            </div>
-            <div id="learningPane" className="learning-pane"></div>
-          </section>
-        </aside>
       </div>
     </main>
   );

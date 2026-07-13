@@ -130,6 +130,30 @@ function clampText(t, maxChars = 120_000) {
   return t.length > maxChars ? t.slice(0, maxChars) : t;
 }
 
+function boolValue(value, fallback = false) {
+  const normalized = String(value ?? "").trim().toLowerCase();
+  if (!normalized) return fallback;
+  return ["1", "true", "yes", "on", "si"].includes(normalized);
+}
+
+function intValue(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+async function buildAiMemoryContext(scope) {
+  const enabled = boolValue(
+    await getEffectiveSetting("AI_MEMORY_ENABLED", "ai_memory_enabled"),
+    true
+  );
+  if (!enabled) return "";
+  const limit = intValue(
+    await getEffectiveSetting("AI_MEMORY_EXAMPLES_LIMIT", "ai_memory_examples_limit"),
+    8
+  );
+  return buildExtractionFeedbackContext({ scope, limit });
+}
+
 /* ---------------- SCHEMI ---------------- */
 
 export const schemaAnnuncio = {
@@ -341,7 +365,7 @@ ${content}`,
 export async function aiExtractProvvigionePercentuale({ text, fileName }) {
   const content = clampText(text || "");
   const guess = preExtractAnnuncioProvvigionePercentuale(content);
-  const feedbackContext = await buildExtractionFeedbackContext({ scope: "provvigione" });
+  const feedbackContext = await buildAiMemoryContext("provvigione");
 
   const json = await callJsonSchema({
     prompt: PROMPT_PROVVIGIONE,
@@ -427,7 +451,7 @@ export async function aiExtractProposta({ text, fileName }) {
   const red = preExtractRedazione(content);
   const ibanGuess = preExtractIban(content);
   const catastoGuess = preExtractPropostaCatasto(content);
-  const feedbackContext = await buildExtractionFeedbackContext({ scope: "proposta" });
+  const feedbackContext = await buildAiMemoryContext("proposta");
 
   const json = await callJsonSchema({
     prompt: PROMPT_PROPOSTA,
@@ -509,7 +533,7 @@ export async function aiExtractAnnuncio({ text, fileName }) {
   const extras = preExtractAnnuncioGara(content);
   const provvigioneGuess = preExtractAnnuncioProvvigionePercentuale(content);
   const descrFB = preExtractAnnuncioDescrizione(content);
-  const feedbackContext = await buildExtractionFeedbackContext({ scope: "annuncio" });
+  const feedbackContext = await buildAiMemoryContext("annuncio");
 
   const json = await callJsonSchema({
     prompt: PROMPT_ANNUNCIO,

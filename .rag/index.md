@@ -47,7 +47,7 @@ Indexed source classes:
 
 ## High-Value Retrieval Queries
 
-- Admin settings UI: `rg -n "settings|documentSendTo|recipient|ConsoleAdmin|settingsPane" frontend/src .rag`
+- Admin settings UI: `rg -n "settings|documentSendTo|recipient|ConsoleAdmin|learningPane" frontend/src .rag`
 - Admin CSS: `rg -n "settings-section|workflow-status|panel-toggle|toast|recipient" frontend/src/styles frontend/src/styles.css .rag`
 - Event detail UI: `rg -n "selectEvent|renderPipelineSteps|fileStepGroups|workflow" frontend/src .rag`
 - Zapier intake: `rg -n "email-activation|zapier|email_id|duplicate|webhook" backend .rag`

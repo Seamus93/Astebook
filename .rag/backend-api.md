@@ -88,6 +88,8 @@ Key settings include:
 - `ai_api_key`
 - `ai_base_url`
 - `ai_model`
+- `ai_memory_enabled`
+- `ai_memory_examples_limit`
 - `pdf_app_api_key`
 - `pdf_app_ocr_endpoint`
 - `pdf_app_job_endpoint`

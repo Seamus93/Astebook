@@ -12,11 +12,6 @@
   }
 
   .settings-view-nav,
-  .settings-side-panel,
-  .settings-summary-page {
-    position: static;
-  }
-
   .sidebar {
     min-height: auto;
     border-right: 0;

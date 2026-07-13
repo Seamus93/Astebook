@@ -63,10 +63,10 @@ Current modules:
 
 - Settings are displayed as a dedicated protected page at `/admin/settings`, not as a modal.
 - The dashboard button navigates to `/admin/settings`; the page's Dashboard button navigates back to `/admin/`.
-- Settings are grouped in a searchable section view: SMTP, Watcher Email, Documenti e Invio, AI e OCR, Sicurezza e Utenti.
+- Settings are grouped in a searchable section view: SMTP, Watcher Email, Documenti e Invio, AI e OCR, Sicurezza e Utenti, Memoria AI.
 - Settings API is loaded with `GET /api/v1/admin/settings?reveal=1`.
 - `Send to` (`document_send_to`) is shown as recipient chips in the saved-values panel.
-- The right side of the settings page includes an Autoapprendimento AI panel with correction totals, scopes, top fields and recent feedback.
+- The Memoria AI section includes memory settings plus an Autoapprendimento AI panel with correction totals, scopes, top fields and recent feedback.
 - Clicking a recipient chip X posts `{ document_send_to: nextValue }` to `/api/v1/admin/settings`, reloads settings, and updates the input.
 - Non-secret settings fields should be rendered as text fields, not password fields.
 - Secret fields still use reveal buttons.

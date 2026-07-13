@@ -426,6 +426,8 @@ test("Admin login can read and update runtime settings", async () => {
         smtp_user: "smtp@example.com",
         smtp_password: "smtp-secret",
         smtp_from: "smtp@example.com",
+        ai_memory_enabled: "false",
+        ai_memory_examples_limit: "5",
         email_watcher_enabled: "true",
         email_watcher_imap_host: "imap.gmail.com",
         email_watcher_imap_port: "993",
@@ -483,6 +485,8 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(updatedSettingsPayload.settings.smtp_user, "smtp@example.com");
     assert.equal(updatedSettingsPayload.settings.smtp_password, "smtp-secret");
     assert.equal(updatedSettingsPayload.settings.smtp_from, "smtp@example.com");
+    assert.equal(updatedSettingsPayload.settings.ai_memory_enabled, "false");
+    assert.equal(updatedSettingsPayload.settings.ai_memory_examples_limit, "5");
     assert.equal(updatedSettingsPayload.settings.email_watcher_enabled, "true");
     assert.equal(updatedSettingsPayload.settings.email_watcher_imap_host, "imap.gmail.com");
     assert.equal(updatedSettingsPayload.settings.email_watcher_imap_port, "993");

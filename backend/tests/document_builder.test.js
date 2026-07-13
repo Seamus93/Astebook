@@ -29,7 +29,24 @@ test("document fields prefer normalized merged address and redazione", () => {
   assert.equal(fields.comune, "Latiano");
   assert.equal(fields.provincia, "BR");
   assert.equal(fields.indirizzo, "Via Cosimo Argentieri, 156-158-160");
+  assert.equal(fields.localizzazione, "Latiano (BR) in Via Cosimo Argentieri, 156-158-160");
   assert.equal(fields.luogo_redazione, "Milano");
+});
+
+test("document localizzazione omits empty province parentheses", () => {
+  const fields = buildDocumentFields({
+    result: {
+      merged: {
+        immobile: {
+          indirizzo: "Via Aiaccia, 3",
+          comune: "Collesalvetti",
+          provincia: " ",
+        },
+      },
+    },
+  });
+
+  assert.equal(fields.localizzazione, "Collesalvetti in Via Aiaccia, 3");
 });
 
 test("document fields do not use technical email message id as practice code", () => {

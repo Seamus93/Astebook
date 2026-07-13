@@ -24,6 +24,22 @@ function firstValue(obj, paths, fallback = " ") {
   return fallback;
 }
 
+function cleanField(value) {
+  if (value === undefined || value === null) return "";
+  const clean = String(value).trim();
+  if (!clean || clean === "-" || /^[…._\s”")/]+$/.test(clean)) return "";
+  return clean;
+}
+
+function buildLocalizzazione({ comune, provincia, indirizzo }) {
+  const cleanComune = cleanField(comune);
+  const cleanProvincia = cleanField(provincia).toUpperCase();
+  const cleanIndirizzo = cleanField(indirizzo);
+  const place = cleanComune && cleanProvincia ? `${cleanComune} (${cleanProvincia})` : cleanComune;
+  if (place && cleanIndirizzo) return `${place} in ${cleanIndirizzo}`;
+  return place || cleanIndirizzo || " ";
+}
+
 function money(value) {
   if (value === "-" || value === null || value === undefined || String(value).trim() === "") return " ";
   const number = typeof value === "number" ? value : Number(String(value).replace(/\./g, "").replace(",", "."));
@@ -73,18 +89,23 @@ export function buildDocumentFields(event) {
     event?.metadata?.codice_pratica ||
     event?.metadata?.zap_run_id ||
     " ";
+  const comune = firstValue({ merged, proposta, annuncio }, ["merged.immobile.comune", "annuncio.comune", "proposta.comune"]);
+  const provincia = firstValue(
+    { merged, proposta, annuncio },
+    ["merged.immobile.provincia", "annuncio.provincia", "proposta.provincia"]
+  );
+  const indirizzo = firstValue(
+    { merged, proposta, annuncio },
+    ["merged.immobile.indirizzo", "proposta.indirizzo_immobile", "annuncio.indirizzo", "annuncio.indirizzo_raw"]
+  );
+  const cap = firstValue({ merged, proposta, annuncio }, ["merged.immobile.cap", "annuncio.cap", "proposta.cap"]);
 
   return {
-    comune: firstValue({ merged, proposta, annuncio }, ["merged.immobile.comune", "annuncio.comune", "proposta.comune"]),
-    provincia: firstValue(
-      { merged, proposta, annuncio },
-      ["merged.immobile.provincia", "annuncio.provincia", "proposta.provincia"]
-    ),
-    indirizzo: firstValue(
-      { merged, proposta, annuncio },
-      ["merged.immobile.indirizzo", "proposta.indirizzo_immobile", "annuncio.indirizzo", "annuncio.indirizzo_raw"]
-    ),
-    cap: firstValue({ merged, proposta, annuncio }, ["merged.immobile.cap", "annuncio.cap", "proposta.cap"]),
+    comune,
+    provincia,
+    indirizzo,
+    cap,
+    localizzazione: buildLocalizzazione({ comune, provincia, indirizzo }),
     descrizione_immobile: firstValue(
       { proposta, annuncio },
       ["proposta.descrizione_immobile", "annuncio.descrizione", "annuncio.categoria_macro"]

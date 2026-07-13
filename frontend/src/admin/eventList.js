@@ -1,4 +1,5 @@
 import { apiFetch } from "./apiClient.js";
+import { formatEventTimestamp } from "./dateFormat.js";
 
 export function createEventListController({ selectEvent }) {
   let allEvents = [];
@@ -28,8 +29,15 @@ export function createEventListController({ selectEvent }) {
       const el = document.createElement("button");
       el.type = "button";
       el.className = "event-item";
-      el.textContent = `${title} — ${ev.status || ""}`;
       el.dataset.eventId = ev.id;
+
+      const titleEl = document.createElement("strong");
+      titleEl.textContent = title;
+
+      const timestampEl = document.createElement("span");
+      timestampEl.textContent = formatEventTimestamp(ev.received_at || ev.updated_at);
+
+      el.append(titleEl, timestampEl);
       el.addEventListener("click", () => selectEvent(ev.id));
       container.appendChild(el);
     }

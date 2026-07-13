@@ -1,4 +1,5 @@
 import { apiFetch } from "./apiClient.js";
+import { formatEventTimestamp } from "./dateFormat.js";
 import { fileNameFromStep, renderFileSections, renderPipelineSteps } from "./fileSections.js";
 import { renderStructured } from "./structuredView.js";
 import { showToast } from "./toast.js";
@@ -196,8 +197,8 @@ export function createDetailController() {
 
       document.getElementById("selectedTitle").textContent = ev.metadata?.subject || ev.id;
       document.getElementById("selectedSource").textContent = ev.source || "-";
-      document.getElementById("receivedAt").textContent = ev.received_at || "-";
-      document.getElementById("updatedAt").textContent = ev.updated_at || "-";
+      document.getElementById("receivedAt").textContent = formatEventTimestamp(ev.received_at);
+      document.getElementById("updatedAt").textContent = formatEventTimestamp(ev.updated_at);
       document.getElementById("fileCount").textContent = Array.isArray(ev.request?.files) ? ev.request.files.length : "-";
 
       renderWorkflowStatus(ev);

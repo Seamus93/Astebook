@@ -11,6 +11,14 @@ function mailboxState(message) {
       issue: null,
     };
   }
+  if (message.before_baseline) {
+    return {
+      key: "before-baseline",
+      label: "Vecchia ignorata",
+      tone: "done",
+      issue: null,
+    };
+  }
   if (!message.required_filename_match) {
     return {
       key: "skipped-file",
@@ -107,12 +115,43 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     }
   }
 
+  async function deleteEvent(eventId, title) {
+    if (!window.confirm(`Eliminare questa lavorazione dalla lista?\n\n${title}`)) return;
+    try {
+      const resp = await apiFetch(`/api/v1/processing-events/${eventId}`, { method: "DELETE" });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok || payload.ok === false) {
+        showToast({
+          title: "Lavorazione non eliminata",
+          message: payload.error || `HTTP ${resp.status}`,
+          tone: "error",
+        });
+        return;
+      }
+      showToast({
+        title: "Lavorazione eliminata",
+        message: "Il record e stato rimosso dal log Astebook.",
+        tone: "info",
+      });
+      await loadEvents();
+    } catch (error) {
+      showToast({
+        title: "Lavorazione non eliminata",
+        message: error.message || String(error),
+        tone: "error",
+      });
+    }
+  }
+
   function renderEventItem(container, ev) {
     const title = ev.metadata?.subject || ev.metadata?.email_id || ev.metadata?.zap_run_id || ev.id;
+    const row = document.createElement("div");
+    row.className = "event-item event-item-row";
+    row.dataset.eventId = ev.id;
+
     const el = document.createElement("button");
     el.type = "button";
-    el.className = "event-item";
-    el.dataset.eventId = ev.id;
+    el.className = "event-item-main";
 
     const titleEl = document.createElement("strong");
     titleEl.textContent = title;
@@ -122,7 +161,19 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
 
     el.append(titleEl, timestampEl);
     el.addEventListener("click", () => selectEvent(ev.id));
-    container.appendChild(el);
+
+    const deleteButton = document.createElement("button");
+    deleteButton.type = "button";
+    deleteButton.className = "event-item-menu icon-button";
+    deleteButton.title = "Elimina lavorazione";
+    deleteButton.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">delete</span>';
+    deleteButton.addEventListener("click", (event) => {
+      event.stopPropagation();
+      deleteEvent(ev.id, title);
+    });
+
+    row.append(el, deleteButton);
+    container.appendChild(row);
   }
 
   function renderMailboxItem(container, message) {
@@ -146,6 +197,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       message.seen ? "letta" : "non letta",
       message.processed ? "state" : "no state",
       message.event_id ? "evento" : "no evento",
+      message.before_baseline ? "prima baseline" : "dopo baseline",
     ].join(" · ");
     metaEl.textContent = `Mailbox ${formatEventTimestamp(message.date)} · ${status}`;
 
@@ -177,14 +229,15 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       .map((message) => ({ message, state: mailboxState(message) }))
       .filter((item) => item.state.issue)
       .map(({ message, state }) => ({
-        type: "mailbox",
+      type: "mailbox",
         id: message.id,
         title: message.subject || "(senza oggetto)",
         badge: state.label,
         at: message.date,
         details: [
-          state.issue,
-          `Mittente: ${(message.from || []).join(", ") || "-"}`,
+        state.issue,
+        message.before_baseline ? `Baseline watcher: ${formatEventTimestamp(message.ignore_before)}` : "",
+        `Mittente: ${(message.from || []).join(", ") || "-"}`,
           `Allegati: ${(message.filenames || []).join(", ") || "nessun allegato"}`,
         ],
         open: () => {

@@ -218,6 +218,14 @@ export async function updateProcessingEvent(id, patch, step) {
   return next;
 }
 
+export async function deleteProcessingEvent(id) {
+  const events = await readEvents();
+  const nextEvents = events.filter((event) => event.id !== id);
+  if (nextEvents.length === events.length) return false;
+  await writeEvents(nextEvents);
+  return true;
+}
+
 export async function listProcessingEvents({ limit = 100 } = {}) {
   const events = await readEvents();
   return events

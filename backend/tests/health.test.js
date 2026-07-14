@@ -361,6 +361,53 @@ test("Zapier intake is idempotent for the same external email id", async () => {
   }
 });
 
+test("Processing event can be deleted from the admin list", async () => {
+  const server = app.listen(0);
+  await new Promise((resolve) => server.once("listening", resolve));
+
+  try {
+    const { port } = server.address();
+    const intakeResponse = await fetch(`http://127.0.0.1:${port}/api/v1/zapier/email-activation`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-astebook-webhook-token": "test-webhook-token",
+      },
+      body: JSON.stringify({
+        subject: "DELETE_ME_TEST procedura competitiva",
+        from: "cliente@example.com",
+        email_body_text: "Evento di prova da eliminare.",
+        email_id: "delete-me-test",
+      }),
+    });
+    const intakePayload = await intakeResponse.json();
+    assert.equal(intakeResponse.status, 202);
+
+    const deleteResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}`,
+      {
+        method: "DELETE",
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    const deletePayload = await deleteResponse.json();
+    assert.equal(deleteResponse.status, 200);
+    assert.equal(deletePayload.ok, true);
+
+    const detailResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/processing-events/${intakePayload.event_id}`,
+      {
+        headers: { "x-astebook-token": "test-ui-token" },
+      }
+    );
+    assert.equal(detailResponse.status, 404);
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
+});
+
 test("Admin UI requires login before serving the processing interface", async () => {
   const server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));
@@ -456,6 +503,20 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(resetWatcherStateResponse.status, 200);
     assert.equal(resetWatcherStatePayload.ok, true);
     assert.deepEqual(watcherState.processed, []);
+
+    const baselineResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/admin/email-watcher/state/ignore-before-now`,
+      {
+        method: "POST",
+        headers: { cookie },
+      }
+    );
+    const baselinePayload = await baselineResponse.json();
+    const watcherStateWithBaseline = JSON.parse(await readFile(watcherStatePath, "utf8"));
+
+    assert.equal(baselineResponse.status, 200);
+    assert.equal(baselinePayload.ok, true);
+    assert.match(watcherStateWithBaseline.ignore_before, /^\d{4}-\d{2}-\d{2}T/);
 
     await writeFile(watcherStatePath, JSON.stringify({ processed: ["email-a", "email-b"] }), "utf8");
     const forgetWatcherStateResponse = await fetch(

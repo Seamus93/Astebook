@@ -24,6 +24,7 @@ import {
   forgetEmailWatcherMessageState,
   listEmailWatcherMessages,
   resetEmailWatcherState,
+  setEmailWatcherIgnoreBefore,
 } from "./lib/email_watcher.js";
 import {
   createSmtpTransporter as createSmtpTransporterWithSettings,
@@ -37,6 +38,7 @@ import {
 } from "./lib/settings_validation.js";
 import {
   createProcessingEvent,
+  deleteProcessingEvent,
   findProcessingEventByExternalEmailId,
   getProcessingEvent,
   listProcessingEvents,
@@ -224,6 +226,7 @@ registerProcessingEventRoutes(app, {
   buildExtractionFeedbackContext,
   collectDocumentEmailConfigurationIssues,
   collectPipelineConfigurationIssues,
+  deleteProcessingEvent,
   getEffectiveSetting,
   getProcessingEvent,
   listExtractionFeedback,
@@ -254,6 +257,11 @@ app.post("/api/v1/admin/email-watcher/scan", requireAdminSession, async (_req, r
 
 app.post("/api/v1/admin/email-watcher/state/reset", requireAdminSession, async (_req, res) => {
   const result = await resetEmailWatcherState();
+  res.json({ ok: true, ...result });
+});
+
+app.post("/api/v1/admin/email-watcher/state/ignore-before-now", requireAdminSession, async (_req, res) => {
+  const result = await setEmailWatcherIgnoreBefore();
   res.json({ ok: true, ...result });
 });
 

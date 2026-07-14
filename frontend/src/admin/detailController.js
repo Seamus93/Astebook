@@ -13,6 +13,16 @@ function mailboxState(message) {
       notes: ["La mail ha un evento pipeline collegato."],
     };
   }
+  if (message.before_baseline) {
+    return {
+      label: "Vecchia ignorata",
+      issue: null,
+      notes: [
+        "La mail e precedente alla baseline del watcher e non verra processata automaticamente.",
+        `Baseline watcher: ${formatEventTimestamp(message.ignore_before)}`,
+      ],
+    };
+  }
   if (!message.required_filename_match) {
     return {
       label: "Scartata",
@@ -244,6 +254,8 @@ export function createDetailController() {
       date: message.date,
       seen: message.seen,
       processed_state: message.processed,
+      before_baseline: message.before_baseline,
+      ignore_before: message.ignore_before,
       required_filename_match: message.required_filename_match,
       required_filename: message.required_filename,
       filenames: message.filenames,

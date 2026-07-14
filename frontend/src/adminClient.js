@@ -35,6 +35,7 @@ export default function initAdminClient() {
   settings.initSettingsSectionView();
   settings.initManualAnalyzeLatestEmailButton();
   settings.initManualSendLatestDocumentButton();
+  settings.initWatcherIgnoreBeforeNowButton();
   settings.initWatcherResetStateButton();
   settings.initWatcherScanButton();
   events.initNotifications();

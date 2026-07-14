@@ -28,6 +28,7 @@ export function registerProcessingEventRoutes(app, {
   buildExtractionFeedbackContext,
   collectDocumentEmailConfigurationIssues,
   collectPipelineConfigurationIssues,
+  deleteProcessingEvent,
   getEffectiveSetting,
   getProcessingEvent,
   listExtractionFeedback,
@@ -51,6 +52,15 @@ export function registerProcessingEventRoutes(app, {
       return;
     }
     res.json({ ok: true, event });
+  });
+
+  app.delete("/api/v1/processing-events/:id", requireProcessingUiToken, async (req, res) => {
+    const deleted = await deleteProcessingEvent(req.params.id);
+    if (!deleted) {
+      res.status(404).json({ ok: false, error: "Processing event not found" });
+      return;
+    }
+    res.json({ ok: true, deleted: true });
   });
 
   app.get("/api/v1/extraction-feedback/summary", requireProcessingUiToken, async (req, res) => {

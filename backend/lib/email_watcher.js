@@ -63,20 +63,27 @@ async function readState() {
   const parsed = raw.trim() ? JSON.parse(raw) : {};
   return {
     processed: Array.isArray(parsed.processed) ? parsed.processed : [],
+    ignore_before: parsed.ignore_before || null,
   };
 }
 
 async function writeState(state) {
   await mkdir(runtimeDir, { recursive: true });
   const processed = Array.from(new Set(state.processed || [])).slice(-1000);
-  await writeFile(watcherStateFile, `${JSON.stringify({ processed }, null, 2)}\n`, "utf8");
+  const nextState = {
+    processed,
+    ...(state.ignore_before ? { ignore_before: state.ignore_before } : {}),
+  };
+  await writeFile(watcherStateFile, `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
 }
 
 export async function resetEmailWatcherState() {
-  await writeState({ processed: [] });
+  const state = await readState();
+  await writeState({ processed: [], ignore_before: state.ignore_before });
   return {
     file: watcherStateFile,
     processed: 0,
+    ignore_before: state.ignore_before,
   };
 }
 
@@ -89,12 +96,31 @@ export async function forgetEmailWatcherMessageState(messageId) {
   const state = await readState();
   const before = state.processed.length;
   const processed = state.processed.filter((item) => String(item || "").trim() !== normalizedMessageId);
-  await writeState({ processed });
+  await writeState({ processed, ignore_before: state.ignore_before });
   return {
     file: watcherStateFile,
     removed: before - processed.length,
     processed: processed.length,
+    ignore_before: state.ignore_before,
   };
+}
+
+export async function setEmailWatcherIgnoreBefore(date = new Date()) {
+  const state = await readState();
+  const ignoreBefore = date instanceof Date ? date.toISOString() : new Date(date).toISOString();
+  await writeState({ processed: state.processed, ignore_before: ignoreBefore });
+  return {
+    file: watcherStateFile,
+    ignore_before: ignoreBefore,
+    processed: state.processed.length,
+  };
+}
+
+function isBeforeIgnoreDate(parsed, state) {
+  if (!state.ignore_before || !parsed.date) return false;
+  const messageTime = parsed.date.getTime();
+  const ignoreBeforeTime = new Date(state.ignore_before).getTime();
+  return Number.isFinite(messageTime) && Number.isFinite(ignoreBeforeTime) && messageTime < ignoreBeforeTime;
 }
 
 function senderAddresses(parsed) {
@@ -169,6 +195,7 @@ function resolveSettings(rawSettings) {
 }
 
 async function pollMailbox(settings, onAcceptedMail) {
+  const state = await readState();
   const stats = {
     enabled: settings.enabled,
     scanned: 0,
@@ -176,6 +203,8 @@ async function pollMailbox(settings, onAcceptedMail) {
     duplicates: 0,
     skipped_sender: 0,
     skipped_filename: 0,
+    skipped_before_baseline: 0,
+    ignore_before: state.ignore_before,
     diagnostics: [],
   };
   if (!settings.enabled) return stats;
@@ -187,7 +216,6 @@ async function pollMailbox(settings, onAcceptedMail) {
     };
   }
 
-  const state = await readState();
   const processed = new Set(state.processed);
   const client = new ImapFlow({
     host: settings.host,
@@ -211,6 +239,20 @@ async function pollMailbox(settings, onAcceptedMail) {
         stats.scanned += 1;
         const parsed = await simpleParser(message.source);
         const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
+        if (isBeforeIgnoreDate(parsed, state)) {
+          stats.skipped_before_baseline += 1;
+          addDiagnostic(stats, {
+            reason: "before_baseline",
+            subject: parsed.subject || null,
+            from: senderAddresses(parsed),
+            date: parsed.date?.toISOString?.() || null,
+            ignore_before: state.ignore_before,
+            filenames: attachmentFilenames(parsed),
+          });
+          processed.add(messageKey);
+          continue;
+        }
+
         if (processed.has(messageKey)) {
           stats.duplicates += 1;
           addDiagnostic(stats, {
@@ -332,6 +374,8 @@ export async function listEmailWatcherMessages({
           date: parsed.date?.toISOString?.() || null,
           seen: Array.from(message.flags || []).includes("\\Seen"),
           processed: processed.has(messageKey),
+          before_baseline: isBeforeIgnoreDate(parsed, state),
+          ignore_before: state.ignore_before,
           required_filename_match: hasRequiredAttachment(parsed, settings.requiredFilename),
           required_filename: settings.requiredFilename,
           filenames: attachmentFilenames(parsed),

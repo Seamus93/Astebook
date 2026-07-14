@@ -51,6 +51,28 @@
   cursor: pointer;
 }
 
+.event-item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: center;
+  padding: 0;
+  cursor: default;
+}
+
+.event-item-main {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 14px 8px 14px 16px;
+  cursor: pointer;
+}
+
+.event-item-menu {
+  margin-right: 8px;
+}
+
 .mailbox-item {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 36px;

@@ -3,6 +3,11 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
+import {
+  attachmentFilenameMatchesRequired,
+  collectEmailSenderAddresses,
+  evaluateEmailInterceptorDecision,
+} from "../ai_agents/Interceptor.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -25,25 +30,7 @@ function parseList(value) {
     .filter(Boolean);
 }
 
-function searchableText(value) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-export function attachmentFilenameMatchesRequired(fileName, requiredFilename) {
-  const keyword = searchableText(requiredFilename);
-  if (!keyword) return true;
-
-  const filename = searchableText(fileName);
-  if (filename.includes(keyword)) return true;
-
-  const keywordTokens = keyword.split(/\s+/).filter(Boolean);
-  return keywordTokens.length > 0 && keywordTokens.every((token) => filename.includes(token));
-}
+export { attachmentFilenameMatchesRequired };
 
 function deriveImapHost({ imapHost, smtpHost }) {
   if (imapHost) return imapHost;
@@ -120,29 +107,17 @@ export async function setEmailWatcherIgnoreBefore(date = new Date()) {
   };
 }
 
-function isBeforeIgnoreDate(parsed, state) {
-  if (!state.ignore_before || !parsed.date) return false;
-  const messageTime = parsed.date.getTime();
-  const ignoreBeforeTime = new Date(state.ignore_before).getTime();
-  return Number.isFinite(messageTime) && Number.isFinite(ignoreBeforeTime) && messageTime < ignoreBeforeTime;
-}
-
 function senderAddresses(parsed) {
-  return (parsed.from?.value || [])
-    .map((item) => String(item.address || "").trim().toLowerCase())
-    .filter(Boolean);
+  return collectEmailSenderAddresses(parsed);
 }
 
-function hasRequiredAttachment(parsed, requiredFilename) {
-  return (parsed.attachments || []).some((attachment) =>
-    attachmentFilenameMatchesRequired(attachment.filename, requiredFilename)
-  );
-}
-
-function attachmentFilenames(parsed) {
-  return (parsed.attachments || [])
-    .map((attachment) => String(attachment.filename || "").trim())
-    .filter(Boolean);
+function interceptorDecision(parsed, settings, state, messageKey) {
+  return evaluateEmailInterceptorDecision({
+    message: parsed,
+    settings,
+    state,
+    messageKey,
+  });
 }
 
 function addDiagnostic(stats, diagnostic) {
@@ -243,56 +218,56 @@ async function pollMailbox(settings, onAcceptedMail) {
         stats.scanned += 1;
         const parsed = await simpleParser(message.source);
         const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
-        if (isBeforeIgnoreDate(parsed, state)) {
+        const decision = interceptorDecision(parsed, settings, state, messageKey);
+        if (decision.before_baseline) {
           stats.skipped_before_baseline += 1;
           addDiagnostic(stats, {
             reason: "before_baseline",
             subject: parsed.subject || null,
-            from: senderAddresses(parsed),
+            from: decision.sender_candidates.from,
+            sender_candidates: decision.sender_candidates,
             date: parsed.date?.toISOString?.() || null,
             ignore_before: state.ignore_before,
-            filenames: attachmentFilenames(parsed),
+            filenames: decision.filenames,
           });
           processed.add(messageKey);
           continue;
         }
 
-        if (processed.has(messageKey)) {
+        if (decision.processed) {
           stats.duplicates += 1;
           addDiagnostic(stats, {
             reason: "duplicate",
             subject: parsed.subject || null,
-            from: senderAddresses(parsed),
-            filenames: attachmentFilenames(parsed),
+            from: decision.sender_candidates.from,
+            sender_candidates: decision.sender_candidates,
+            filenames: decision.filenames,
           });
           continue;
         }
 
-        const senders = senderAddresses(parsed);
-        const senderAllowed =
-          settings.fromAllowlist.length === 0 ||
-          senders.some((sender) => settings.fromAllowlist.includes(sender));
-        const filenameAllowed = hasRequiredAttachment(parsed, settings.requiredFilename);
-
-        if (!senderAllowed || !filenameAllowed) {
-          if (!senderAllowed) stats.skipped_sender += 1;
-          if (!filenameAllowed) stats.skipped_filename += 1;
+        if (!decision.processable) {
+          if (!decision.sender_allowed) stats.skipped_sender += 1;
+          if (!decision.required_filename_match) stats.skipped_filename += 1;
           addDiagnostic(stats, {
-            reason: !senderAllowed && !filenameAllowed
+            reason: !decision.sender_allowed && !decision.required_filename_match
               ? "sender_and_filename"
-              : !senderAllowed
+              : !decision.sender_allowed
               ? "sender"
               : "filename",
             subject: parsed.subject || null,
-            from: senders,
-            allowed_from: settings.fromAllowlist,
-            required_filename: settings.requiredFilename,
-            filenames: attachmentFilenames(parsed),
+            from: decision.sender_candidates.from,
+            sender_candidates: decision.sender_candidates,
+            allowed_from: decision.allowed_from,
+            required_filename: decision.required_filename,
+            filenames: decision.filenames,
+            interceptor: decision,
           });
           processed.add(messageKey);
           continue;
         }
 
+        const senders = senderAddresses(parsed);
         await onAcceptedMail({
           body: bodyFromMail(parsed, messageKey, settings),
           files: filesFromMail(parsed),
@@ -312,7 +287,7 @@ async function pollMailbox(settings, onAcceptedMail) {
     }
   } finally {
     await client.logout().catch(() => {});
-    await writeState({ processed: Array.from(processed) });
+    await writeState({ processed: Array.from(processed), ignore_before: state.ignore_before });
   }
   return stats;
 }
@@ -335,7 +310,6 @@ export async function listEmailWatcherMessages({
   const selectedFrom = String(from || "").trim().toLowerCase();
   const allowedSenders = selectedFrom ? [selectedFrom] : settings.fromAllowlist;
   const state = await readState();
-  const processed = new Set(state.processed);
   const client = new ImapFlow({
     host: settings.host,
     port: settings.port,
@@ -362,12 +336,15 @@ export async function listEmailWatcherMessages({
       scanned = selectedUids.length;
       for await (const message of client.fetch(selectedUids, { uid: true, flags: true, source: true }, { uid: true })) {
         const parsed = await simpleParser(message.source);
-        const senders = senderAddresses(parsed);
-        const senderAllowed =
-          allowedSenders.length === 0 || senders.some((sender) => allowedSenders.includes(sender));
-        if (!senderAllowed) continue;
-
         const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
+        const decision = interceptorDecision(
+          parsed,
+          { ...settings, fromAllowlist: allowedSenders },
+          state,
+          messageKey
+        );
+        if (!decision.sender_allowed) continue;
+
         const matchingEvent = await findProcessingEventByExternalEmailId?.({
           source: "imap.email_activation",
           emailId: messageKey,
@@ -376,18 +353,20 @@ export async function listEmailWatcherMessages({
           id: messageKey,
           uid: message.uid,
           subject: parsed.subject || "(senza oggetto)",
-          from: senders,
+          from: decision.sender_candidates.from,
+          sender_candidates: decision.sender_candidates,
           to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean),
           date: parsed.date?.toISOString?.() || null,
           seen: Array.from(message.flags || []).includes("\\Seen"),
-          sender_allowed: senderAllowed,
-          allowed_from: allowedSenders,
-          processed: processed.has(messageKey),
-          before_baseline: isBeforeIgnoreDate(parsed, state),
+          sender_allowed: decision.sender_allowed,
+          allowed_from: decision.allowed_from,
+          processed: decision.processed,
+          before_baseline: decision.before_baseline,
           ignore_before: state.ignore_before,
-          required_filename_match: hasRequiredAttachment(parsed, settings.requiredFilename),
-          required_filename: settings.requiredFilename,
-          filenames: attachmentFilenames(parsed),
+          required_filename_match: decision.required_filename_match,
+          required_filename: decision.required_filename,
+          filenames: decision.filenames,
+          interceptor: decision,
           event_id: matchingEvent?.id || null,
           status: matchingEvent?.status || null,
         });

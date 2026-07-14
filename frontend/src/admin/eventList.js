@@ -103,6 +103,37 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     }
   }
 
+  async function scanWatcherThenReload() {
+    const refreshButton = document.getElementById("refreshButton");
+    if (refreshButton) refreshButton.disabled = true;
+    try {
+      const resp = await apiFetch("/api/v1/admin/email-watcher/scan", { method: "POST" });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok || payload.ok === false) {
+        showToast({
+          title: "Scansione watcher non completata",
+          message: payload.error || `HTTP ${resp.status}`,
+          tone: "error",
+        });
+      } else {
+        showToast({
+          title: "Watcher aggiornato",
+          message: `Processate ${payload.accepted || 0} email. Duplicate ${payload.duplicates || 0}.`,
+          tone: "info",
+        });
+      }
+    } catch (error) {
+      showToast({
+        title: "Scansione watcher non riuscita",
+        message: error.message || String(error),
+        tone: "error",
+      });
+    } finally {
+      await loadEvents();
+      if (refreshButton) refreshButton.disabled = false;
+    }
+  }
+
   async function forgetMailboxMessageState(message) {
     try {
       const resp = await apiFetch("/api/v1/admin/email-watcher/state/forget", {
@@ -417,5 +448,5 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     }
   }
 
-  return { initNotifications, initSelectionControls, loadEvents, renderEventList };
+  return { initNotifications, initSelectionControls, loadEvents, renderEventList, scanWatcherThenReload };
 }

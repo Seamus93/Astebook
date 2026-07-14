@@ -29,6 +29,7 @@ export default function initAdminClient() {
 
   document.getElementById("settingsButton").addEventListener("click", () => navigate("/admin/settings"));
   document.getElementById("closeSettingsButton").addEventListener("click", () => navigate("/admin/"));
+  document.getElementById("refreshButton").addEventListener("click", events.scanWatcherThenReload);
   window.addEventListener("popstate", renderRoute);
 
   settings.initRevealButtons();

@@ -25,6 +25,26 @@ function parseList(value) {
     .filter(Boolean);
 }
 
+function searchableText(value) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+export function attachmentFilenameMatchesRequired(fileName, requiredFilename) {
+  const keyword = searchableText(requiredFilename);
+  if (!keyword) return true;
+
+  const filename = searchableText(fileName);
+  if (filename.includes(keyword)) return true;
+
+  const keywordTokens = keyword.split(/\s+/).filter(Boolean);
+  return keywordTokens.length > 0 && keywordTokens.every((token) => filename.includes(token));
+}
+
 function deriveImapHost({ imapHost, smtpHost }) {
   if (imapHost) return imapHost;
   const host = String(smtpHost || "").trim();
@@ -59,10 +79,8 @@ function senderAddresses(parsed) {
 }
 
 function hasRequiredAttachment(parsed, requiredFilename) {
-  const keyword = String(requiredFilename || "").trim().toLowerCase();
-  if (!keyword) return true;
   return (parsed.attachments || []).some((attachment) =>
-    String(attachment.filename || "").toLowerCase().includes(keyword)
+    attachmentFilenameMatchesRequired(attachment.filename, requiredFilename)
   );
 }
 

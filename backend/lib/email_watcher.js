@@ -156,6 +156,9 @@ async function pollMailbox(settings, onAcceptedMail) {
     },
     logger: false,
   });
+  client.on("error", (error) => {
+    console.warn("[email_watcher] IMAP client error", error.message || String(error));
+  });
 
   try {
     await client.connect();

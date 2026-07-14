@@ -241,9 +241,9 @@ export function createSettingsController() {
         const message = watcherScanSummary(payload);
         status.textContent = message;
         showToast({
-          title: resp.ok ? "Scansione completata" : "Scansione non completata",
+          title: payload.busy ? "Scansione gia in corso" : resp.ok ? "Scansione completata" : "Scansione non completata",
           message: payload.error || message,
-          tone: resp.ok ? "info" : "error",
+          tone: resp.ok || payload.busy ? "info" : "error",
         });
       } catch (error) {
         const message = error.message || String(error);

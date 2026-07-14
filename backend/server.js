@@ -22,10 +22,10 @@ import { createDocumentEmailService } from "./lib/document_email.js";
 import {
   createEmailWatcher,
   forgetEmailWatcherMessageState,
-  listEmailWatcherMessages,
   resetEmailWatcherState,
   setEmailWatcherIgnoreBefore,
 } from "./lib/email_watcher.js";
+import { listMailboxMessages } from "./lib/mailbox_browser.js";
 import {
   createSmtpTransporter as createSmtpTransporterWithSettings,
   getSmtpSettings as getSmtpSettingsWithSettings,
@@ -278,19 +278,24 @@ app.post("/api/v1/admin/email-watcher/state/ignore-before-now", requireAdminSess
   }
 });
 
-app.get("/api/v1/admin/email-watcher/messages", requireAdminSession, async (req, res) => {
+async function handleMailboxMessages(req, res) {
   try {
-    const result = await listEmailWatcherMessages({
+    const result = await listMailboxMessages({
       getSettings: getRuntimeSettings,
       findProcessingEventByExternalEmailId,
       from: req.query.from,
+      includeAllSenders: req.query.include_all_senders === "1" || req.query.include_all_senders === "true",
       limit: Number.parseInt(String(req.query.limit || "50"), 10) || 50,
+      query: req.query.q || "",
     });
     res.status(result.ok === false ? 503 : 200).json(result);
   } catch (error) {
     res.status(500).json({ ok: false, error: error.message || String(error), messages: [] });
   }
-});
+}
+
+app.get("/api/v1/admin/mailbox/messages", requireAdminSession, handleMailboxMessages);
+app.get("/api/v1/admin/email-watcher/messages", requireAdminSession, handleMailboxMessages);
 
 app.post("/api/v1/admin/email-watcher/state/forget", requireAdminSession, async (req, res) => {
   try {

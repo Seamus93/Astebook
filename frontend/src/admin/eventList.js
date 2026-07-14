@@ -81,7 +81,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       if (allEvents.length) selectEvent(allEvents[0].id);
 
       try {
-        const mailboxResp = await apiFetch("/api/v1/admin/email-watcher/messages?limit=100");
+        const mailboxResp = await apiFetch("/api/v1/admin/mailbox/messages?limit=100");
         if (!mailboxResp.ok) {
           mailboxMessages = [];
           renderEventList("Mailbox non disponibile.");
@@ -109,7 +109,13 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     try {
       const resp = await apiFetch("/api/v1/admin/email-watcher/scan", { method: "POST" });
       const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok || payload.ok === false) {
+      if (payload.busy) {
+        showToast({
+          title: "Scansione gia in corso",
+          message: "Il watcher sta gia controllando la mailbox. Aggiorno la UI con gli ultimi dati disponibili.",
+          tone: "info",
+        });
+      } else if (!resp.ok || payload.ok === false) {
         showToast({
           title: "Scansione watcher non completata",
           message: payload.error || `HTTP ${resp.status}`,

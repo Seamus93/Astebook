@@ -23,6 +23,16 @@ function mailboxState(message) {
       ],
     };
   }
+  if (message.sender_allowed === false) {
+    return {
+      label: "Mittente escluso",
+      issue: `Mittente non autorizzato: ${(message.from || []).join(", ") || "-"}.`,
+      notes: [
+        `Allowlist configurata: ${(message.allowed_from || []).join(", ") || "vuota"}.`,
+        "Aggiungi questo mittente ai Mittenti autorizzati oppure inoltra da un mittente gia autorizzato.",
+      ],
+    };
+  }
   if (!message.required_filename_match) {
     return {
       label: "Scartata",
@@ -253,6 +263,8 @@ export function createDetailController() {
       subject: message.subject,
       date: message.date,
       seen: message.seen,
+      sender_allowed: message.sender_allowed,
+      allowed_from: message.allowed_from,
       processed_state: message.processed,
       before_baseline: message.before_baseline,
       ignore_before: message.ignore_before,

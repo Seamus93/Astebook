@@ -362,7 +362,7 @@ export async function listEmailWatcherMessages({
         const senders = senderAddresses(parsed);
         const senderAllowed =
           allowedSenders.length === 0 || senders.some((sender) => allowedSenders.includes(sender));
-        if (!senderAllowed) continue;
+        if (selectedFrom && !senderAllowed) continue;
 
         const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
         const matchingEvent = await findProcessingEventByExternalEmailId?.({
@@ -377,6 +377,8 @@ export async function listEmailWatcherMessages({
           to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean),
           date: parsed.date?.toISOString?.() || null,
           seen: Array.from(message.flags || []).includes("\\Seen"),
+          sender_allowed: senderAllowed,
+          allowed_from: allowedSenders,
           processed: processed.has(messageKey),
           before_baseline: isBeforeIgnoreDate(parsed, state),
           ignore_before: state.ignore_before,

@@ -19,6 +19,14 @@ function mailboxState(message) {
       issue: null,
     };
   }
+  if (message.sender_allowed === false) {
+    return {
+      key: "skipped-sender",
+      label: "Mittente escluso",
+      tone: "bad",
+      issue: `Mittente non autorizzato: ${(message.from || []).join(", ") || "-"}.`,
+    };
+  }
   if (!message.required_filename_match) {
     return {
       key: "skipped-file",
@@ -198,6 +206,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       message.processed ? "state" : "no state",
       message.event_id ? "evento" : "no evento",
       message.before_baseline ? "prima baseline" : "dopo baseline",
+      message.sender_allowed === false ? "mittente escluso" : "mittente ok",
     ].join(" · ");
     metaEl.textContent = `Mailbox ${formatEventTimestamp(message.date)} · ${status}`;
 
@@ -238,7 +247,8 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
         state.issue,
         message.before_baseline ? `Baseline watcher: ${formatEventTimestamp(message.ignore_before)}` : "",
         `Mittente: ${(message.from || []).join(", ") || "-"}`,
-          `Allegati: ${(message.filenames || []).join(", ") || "nessun allegato"}`,
+        message.sender_allowed === false ? `Allowlist: ${(message.allowed_from || []).join(", ") || "vuota"}` : "",
+        `Allegati: ${(message.filenames || []).join(", ") || "nessun allegato"}`,
         ],
         open: () => {
           if (message.event_id) {

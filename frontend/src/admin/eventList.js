@@ -66,7 +66,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   const selectedEventIds = new Set();
 
   async function fetchMailboxMessages() {
-    const resp = await apiFetch("/api/v1/admin/mailbox/messages?limit=30&include_all_senders=1");
+    const resp = await apiFetch("/api/v1/admin/mailbox/messages?limit=30");
     const payload = await resp.json().catch(() => ({}));
     if (!resp.ok || payload.ok === false) {
       throw new Error(payload.error || payload.disabled_reason || `HTTP ${resp.status}`);
@@ -78,7 +78,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     const resp = await apiFetch("/api/v1/admin/mailbox/sync", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ limit: 30, include_all_senders: true }),
+      body: JSON.stringify({ limit: 30, include_all_senders: false }),
     });
     const payload = await resp.json().catch(() => ({}));
     if (!resp.ok || payload.ok === false) {

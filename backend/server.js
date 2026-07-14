@@ -19,7 +19,12 @@ import { createEmailIntakeHandlers, registerEmailIntakeRoutes } from "./routes/e
 import { registerProcessingEventRoutes } from "./routes/processing_events.js";
 import { buildDocumentPdf } from "./lib/document_builder.js";
 import { createDocumentEmailService } from "./lib/document_email.js";
-import { createEmailWatcher } from "./lib/email_watcher.js";
+import {
+  createEmailWatcher,
+  forgetEmailWatcherMessageState,
+  listEmailWatcherMessages,
+  resetEmailWatcherState,
+} from "./lib/email_watcher.js";
 import {
   createSmtpTransporter as createSmtpTransporterWithSettings,
   getSmtpSettings as getSmtpSettingsWithSettings,
@@ -245,6 +250,34 @@ app.post("/api/v1/admin/email-watcher/scan", requireAdminSession, async (_req, r
   const result = await emailWatcher.scanNow();
   const status = result.ok === false && result.busy ? 409 : result.ok === false ? 500 : 200;
   res.status(status).json(result);
+});
+
+app.post("/api/v1/admin/email-watcher/state/reset", requireAdminSession, async (_req, res) => {
+  const result = await resetEmailWatcherState();
+  res.json({ ok: true, ...result });
+});
+
+app.get("/api/v1/admin/email-watcher/messages", requireAdminSession, async (req, res) => {
+  try {
+    const result = await listEmailWatcherMessages({
+      getSettings: getRuntimeSettings,
+      findProcessingEventByExternalEmailId,
+      from: req.query.from,
+      limit: Number.parseInt(String(req.query.limit || "50"), 10) || 50,
+    });
+    res.status(result.ok === false ? 503 : 200).json(result);
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || String(error), messages: [] });
+  }
+});
+
+app.post("/api/v1/admin/email-watcher/state/forget", requireAdminSession, async (req, res) => {
+  try {
+    const result = await forgetEmailWatcherMessageState(req.body?.message_id);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message || String(error) });
+  }
 });
 
 export function startServer(port = process.env.PORT || 3000) {

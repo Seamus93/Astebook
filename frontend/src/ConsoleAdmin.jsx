@@ -273,10 +273,16 @@ export default function ConsoleAdmin() {
                           <p className="eyebrow">Azione manuale</p>
                           <h3>Scansione watcher</h3>
                         </div>
-                        <button id="manualWatcherScanButton" className="secondary-button" type="button">
-                          <span className="material-symbols-outlined" aria-hidden="true">play_arrow</span>
-                          Scansiona ora
-                        </button>
+                        <div className="settings-panel-actions">
+                          <button id="manualWatcherResetStateButton" className="secondary-button" type="button">
+                            <span className="material-symbols-outlined" aria-hidden="true">restart_alt</span>
+                            Svuota state
+                          </button>
+                          <button id="manualWatcherScanButton" className="secondary-button" type="button">
+                            <span className="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                            Scansiona ora
+                          </button>
+                        </div>
                       </div>
                       <p id="manualWatcherScanStatus" className="settings-help-text">
                         Avvia subito un controllo IMAP usando i filtri configurati sopra.

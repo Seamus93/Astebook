@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -440,6 +440,39 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(settingsPayload.ok, true);
     assert.equal(settingsPayload.admin.username, "admin");
     assert.equal(settingsPayload.settings.processing_ui_token, "test...oken");
+
+    const watcherStatePath = join(runtimeDir, "email-watcher-state.json");
+    await writeFile(watcherStatePath, JSON.stringify({ processed: ["email-a", "email-b"] }), "utf8");
+    const resetWatcherStateResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/admin/email-watcher/state/reset`,
+      {
+        method: "POST",
+        headers: { cookie },
+      }
+    );
+    const resetWatcherStatePayload = await resetWatcherStateResponse.json();
+    const watcherState = JSON.parse(await readFile(watcherStatePath, "utf8"));
+
+    assert.equal(resetWatcherStateResponse.status, 200);
+    assert.equal(resetWatcherStatePayload.ok, true);
+    assert.deepEqual(watcherState.processed, []);
+
+    await writeFile(watcherStatePath, JSON.stringify({ processed: ["email-a", "email-b"] }), "utf8");
+    const forgetWatcherStateResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/admin/email-watcher/state/forget`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ message_id: "email-a" }),
+      }
+    );
+    const forgetWatcherStatePayload = await forgetWatcherStateResponse.json();
+    const watcherStateAfterForget = JSON.parse(await readFile(watcherStatePath, "utf8"));
+
+    assert.equal(forgetWatcherStateResponse.status, 200);
+    assert.equal(forgetWatcherStatePayload.ok, true);
+    assert.equal(forgetWatcherStatePayload.removed, 1);
+    assert.deepEqual(watcherStateAfterForget.processed, ["email-b"]);
 
     const adminUiResponse = await fetch(`http://127.0.0.1:${port}/admin/`, {
       headers: { cookie },

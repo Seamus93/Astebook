@@ -72,6 +72,31 @@ async function writeState(state) {
   await writeFile(watcherStateFile, `${JSON.stringify({ processed }, null, 2)}\n`, "utf8");
 }
 
+export async function resetEmailWatcherState() {
+  await writeState({ processed: [] });
+  return {
+    file: watcherStateFile,
+    processed: 0,
+  };
+}
+
+export async function forgetEmailWatcherMessageState(messageId) {
+  const normalizedMessageId = String(messageId || "").trim();
+  if (!normalizedMessageId) {
+    throw new Error("message_id obbligatorio.");
+  }
+
+  const state = await readState();
+  const before = state.processed.length;
+  const processed = state.processed.filter((item) => String(item || "").trim() !== normalizedMessageId);
+  await writeState({ processed });
+  return {
+    file: watcherStateFile,
+    removed: before - processed.length,
+    processed: processed.length,
+  };
+}
+
 function senderAddresses(parsed) {
   return (parsed.from?.value || [])
     .map((item) => String(item.address || "").trim().toLowerCase())
@@ -244,6 +269,90 @@ async function pollMailbox(settings, onAcceptedMail) {
     await writeState({ processed: Array.from(processed) });
   }
   return stats;
+}
+
+export async function listEmailWatcherMessages({
+  getSettings,
+  findProcessingEventByExternalEmailId,
+  from,
+  limit = 50,
+} = {}) {
+  const settings = resolveSettings(await getSettings());
+  if (!settings.host || !settings.user || !settings.password) {
+    return {
+      ok: false,
+      disabled_reason: "IMAP host/user/password missing",
+      messages: [],
+    };
+  }
+
+  const selectedFrom = String(from || "").trim().toLowerCase();
+  const allowedSenders = selectedFrom ? [selectedFrom] : settings.fromAllowlist;
+  const state = await readState();
+  const processed = new Set(state.processed);
+  const client = new ImapFlow({
+    host: settings.host,
+    port: settings.port,
+    secure: settings.secure,
+    auth: {
+      user: settings.user,
+      pass: settings.password,
+    },
+    logger: false,
+  });
+  client.on("error", (error) => {
+    console.warn("[email_watcher] IMAP client error", error.message || String(error));
+  });
+
+  const messages = [];
+  try {
+    await client.connect();
+    const lock = await client.getMailboxLock(settings.mailbox);
+    try {
+      const uids = await client.search({ all: true }, { uid: true });
+      const selectedUids = uids.slice(-Math.max(1, Number(limit) * 3));
+      for await (const message of client.fetch(selectedUids, { uid: true, flags: true, source: true }, { uid: true })) {
+        const parsed = await simpleParser(message.source);
+        const senders = senderAddresses(parsed);
+        const senderAllowed =
+          allowedSenders.length === 0 || senders.some((sender) => allowedSenders.includes(sender));
+        if (!senderAllowed) continue;
+
+        const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
+        const matchingEvent = await findProcessingEventByExternalEmailId?.({
+          source: "imap.email_activation",
+          emailId: messageKey,
+        });
+        messages.push({
+          id: messageKey,
+          uid: message.uid,
+          subject: parsed.subject || "(senza oggetto)",
+          from: senders,
+          to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean),
+          date: parsed.date?.toISOString?.() || null,
+          seen: Array.from(message.flags || []).includes("\\Seen"),
+          processed: processed.has(messageKey),
+          required_filename_match: hasRequiredAttachment(parsed, settings.requiredFilename),
+          required_filename: settings.requiredFilename,
+          filenames: attachmentFilenames(parsed),
+          event_id: matchingEvent?.id || null,
+          status: matchingEvent?.status || null,
+        });
+      }
+    } finally {
+      lock.release();
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+
+  messages.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
+  return {
+    ok: true,
+    mailbox: settings.mailbox,
+    from: allowedSenders,
+    messages: messages.slice(0, limit),
+  };
 }
 
 export function createEmailWatcher({ getSettings, onAcceptedMail }) {

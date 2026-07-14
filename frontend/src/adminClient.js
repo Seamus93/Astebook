@@ -9,7 +9,10 @@ export default function initAdminClient() {
   const learning = createLearningController();
   const settings = createSettingsController();
   const details = createDetailController();
-  const events = createEventListController({ selectEvent: details.selectEvent });
+  const events = createEventListController({
+    selectEvent: details.selectEvent,
+    selectMailboxMessage: details.selectMailboxMessage,
+  });
 
   function renderRoute() {
     const onSettings = window.location.pathname.replace(/\/+$/, "") === "/admin/settings";
@@ -32,7 +35,9 @@ export default function initAdminClient() {
   settings.initSettingsSectionView();
   settings.initManualAnalyzeLatestEmailButton();
   settings.initManualSendLatestDocumentButton();
+  settings.initWatcherResetStateButton();
   settings.initWatcherScanButton();
+  events.initNotifications();
   learning.initLearningControls();
   initSidebarToggle();
   qs("settingsForm").addEventListener("submit", settings.saveSettings);

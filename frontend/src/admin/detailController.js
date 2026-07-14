@@ -5,6 +5,42 @@ import { renderStructured } from "./structuredView.js";
 import { showToast } from "./toast.js";
 import { renderWorkflowStatus } from "./workflowView.js";
 
+function mailboxState(message) {
+  if (message.event_id) {
+    return {
+      label: message.seen ? "Letta e processata" : "Processata",
+      issue: null,
+      notes: ["La mail ha un evento pipeline collegato."],
+    };
+  }
+  if (!message.required_filename_match) {
+    return {
+      label: "Scartata",
+      issue: `File richiesto non trovato: ${message.required_filename || "proposta"}.`,
+      notes: ["La mail non passa il filtro allegato configurato nel watcher."],
+    };
+  }
+  if (message.processed) {
+    return {
+      label: "State senza evento",
+      issue: "La mail risulta nello state, ma non esiste un evento collegato.",
+      notes: ["Cancella lo state della singola mail dal menu a tre puntini per permettere un nuovo tentativo."],
+    };
+  }
+  if (message.seen) {
+    return {
+      label: "Letta non processata",
+      issue: "La mail e letta: il watcher automatico la ignora finche non viene marcata non letta.",
+      notes: ["Marca la mail come non letta nella casella e avvia una scansione watcher."],
+    };
+  }
+  return {
+    label: "Da processare",
+    issue: "La mail e non letta e valida: avvia una scansione watcher.",
+    notes: ["La prossima scansione dovrebbe creare una lavorazione se IMAP e configurato correttamente."],
+  };
+}
+
 function renderNotes(event) {
   renderStructured(document.getElementById("notesPane"), event.result?.notes || [], "Nessuna nota.");
 }
@@ -183,6 +219,62 @@ function filteredRequestPayload(event) {
 export function createDetailController() {
   let currentEvent = null;
 
+  function selectMailboxMessage(message) {
+    currentEvent = null;
+    const state = mailboxState(message);
+
+    document.getElementById("selectedTitle").textContent = message.subject || "(senza oggetto)";
+    document.getElementById("selectedSource").textContent = `imap.mailbox · ${state.label}`;
+    document.getElementById("receivedAt").textContent = formatEventTimestamp(message.date);
+    document.getElementById("updatedAt").textContent = "-";
+    document.getElementById("fileCount").textContent = Array.isArray(message.filenames) ? message.filenames.length : "-";
+
+    renderWorkflowStatus({
+      status: message.processed ? "received" : "processing",
+      error: message.required_filename_match ? null : { message: "File richiesto non trovato." },
+      steps: [],
+    });
+
+    renderStructured(document.getElementById("requestPane"), {
+      id: message.id,
+      uid: message.uid,
+      from: message.from,
+      to: message.to,
+      subject: message.subject,
+      date: message.date,
+      seen: message.seen,
+      processed_state: message.processed,
+      required_filename_match: message.required_filename_match,
+      required_filename: message.required_filename,
+      filenames: message.filenames,
+      event_id: message.event_id,
+    }, "Nessun dato mailbox.");
+    renderStructured(document.getElementById("stepsPane"), [], "Questa mail non ha ancora un log pipeline.");
+    renderStructured(document.getElementById("filesPane"), message.filenames || [], "Nessun allegato.");
+    renderStructured(document.getElementById("resultPane"), {}, "Nessun dato estratto.");
+    renderStructured(document.getElementById("notesPane"), [
+      ...(state.issue ? [state.issue] : []),
+      ...state.notes,
+      message.processed
+        ? "Lo state contiene questa email."
+        : "Lo state non contiene questa email.",
+    ], "Nessuna nota.");
+    renderStructured(document.getElementById("missingFieldsPane"), [], "Nessun campo mancante.");
+    renderStructured(document.getElementById("errorPane"), [], "Nessun errore pipeline.");
+
+    const reprocessButton = document.getElementById("reprocessButton");
+    const documentButton = document.getElementById("documentButton");
+    const emailDocumentButton = document.getElementById("emailDocumentButton");
+    reprocessButton.disabled = true;
+    documentButton.disabled = true;
+    emailDocumentButton.disabled = true;
+    reprocessButton.onclick = null;
+    documentButton.onclick = null;
+    emailDocumentButton.onclick = null;
+
+    return message;
+  }
+
   async function selectEvent(id) {
     try {
       const resp = await apiFetch(`/api/v1/processing-events/${id}`);
@@ -224,7 +316,7 @@ export function createDetailController() {
     }
   }
 
-  return { selectEvent };
+  return { selectEvent, selectMailboxMessage };
 }
 
 function wireActionButtons(id, ev, selectEvent, getCurrentEvent) {

@@ -51,6 +51,66 @@
   cursor: pointer;
 }
 
+.mailbox-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: center;
+  padding: 0;
+  cursor: default;
+}
+
+.mailbox-done {
+  border-left: 4px solid #2f855a;
+}
+
+.mailbox-warn {
+  border-left: 4px solid #b7791f;
+}
+
+.mailbox-bad {
+  border-left: 4px solid var(--bad);
+}
+
+.mailbox-item-main {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  padding: 14px 8px 14px 16px;
+  cursor: pointer;
+}
+
+.mailbox-item-menu {
+  margin-right: 8px;
+}
+
+.mailbox-state-badge {
+  display: inline-block !important;
+  width: fit-content;
+  margin: 7px 0 0 !important;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.mailbox-state-badge.done {
+  background: #e2f3e9;
+  color: #20663f;
+}
+
+.mailbox-state-badge.warn {
+  background: #fff4d6;
+  color: #7a4f11;
+}
+
+.mailbox-state-badge.bad {
+  background: #fde8e6;
+  color: var(--bad);
+}
+
 .event-item:hover,
 .event-item.active {
   background: var(--accent-soft);

@@ -233,6 +233,36 @@ export function createSettingsController() {
     });
   }
 
+  function initWatcherResetStateButton() {
+    const button = qs("manualWatcherResetStateButton");
+    const status = qs("manualWatcherScanStatus");
+    if (!button || !status) return;
+
+    button.addEventListener("click", async () => {
+      button.disabled = true;
+      status.textContent = "Svuoto lo state del watcher...";
+      try {
+        const resp = await apiFetch("/api/v1/admin/email-watcher/state/reset", { method: "POST" });
+        const payload = await resp.json().catch(() => ({}));
+        if (!resp.ok || payload.ok === false) {
+          const message = payload.error || `HTTP ${resp.status}`;
+          status.textContent = `Reset state non riuscito: ${message}`;
+          showToast({ title: "Reset state non riuscito", message, tone: "error" });
+          return;
+        }
+
+        status.textContent = "State watcher svuotato. Rimarca la mail come non letta e avvia una scansione.";
+        showToast({ title: "State watcher svuotato", message: status.textContent, tone: "info" });
+      } catch (error) {
+        const message = error.message || String(error);
+        status.textContent = `Reset state fallito: ${message}`;
+        showToast({ title: "Reset state fallito", message, tone: "error" });
+      } finally {
+        button.disabled = false;
+      }
+    });
+  }
+
   function initManualSendLatestDocumentButton() {
     const button = qs("manualSendLatestDocumentButton");
     const status = qs("manualSendLatestDocumentStatus");
@@ -324,6 +354,7 @@ export function createSettingsController() {
     initRevealButtons,
     initManualAnalyzeLatestEmailButton,
     initManualSendLatestDocumentButton,
+    initWatcherResetStateButton,
     initWatcherScanButton,
     loadSettings,
     saveSettings,

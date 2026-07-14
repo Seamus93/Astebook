@@ -272,6 +272,13 @@
   gap: 12px;
 }
 
+.settings-panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .settings-section-panel {
   display: grid;
   gap: 14px;

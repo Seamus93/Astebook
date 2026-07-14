@@ -66,17 +66,24 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   const selectedEventIds = new Set();
 
   async function fetchMailboxMessages() {
+    const resp = await apiFetch("/api/v1/admin/mailbox/messages?limit=30&include_all_senders=1");
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok || payload.ok === false) {
+      throw new Error(payload.error || payload.disabled_reason || `HTTP ${resp.status}`);
+    }
+    return payload;
+  }
+
+  async function syncMailboxIndex() {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 18000);
     try {
-      const resp = await apiFetch("/api/v1/admin/mailbox/messages?limit=30&include_all_senders=1", {
+      await apiFetch("/api/v1/admin/mailbox/sync", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ limit: 30, include_all_senders: true }),
         signal: controller.signal,
       });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok || payload.ok === false) {
-        throw new Error(payload.error || payload.disabled_reason || `HTTP ${resp.status}`);
-      }
-      return payload;
     } finally {
       clearTimeout(timeout);
     }
@@ -97,24 +104,46 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       updateNotificationCenter();
       if (allEvents.length) selectEvent(allEvents[0].id);
 
+      let mailboxPayload = null;
       try {
-        const mailboxPayload = await fetchMailboxMessages();
-        mailboxMessages = mailboxPayload.messages || [];
-        const status = mailboxMessages.length
-          ? `Mailbox IMAP: ${mailboxMessages.length} email trovate.`
-          : `Mailbox IMAP: nessuna email dai mittenti autorizzati. Scansionate ${mailboxPayload.scanned || 0} email.`;
-        renderEventList(status);
-        updateNotificationCenter();
+        mailboxPayload = await fetchMailboxMessages();
       } catch (mailboxError) {
         console.warn("Failed to load mailbox messages", mailboxError);
         mailboxMessages = [];
-        const message =
-          mailboxError.name === "AbortError"
-            ? "timeout dopo 18s"
-            : mailboxError.message || String(mailboxError);
-        renderEventList(`Mailbox IMAP non caricata: ${message}. Sotto vedi solo le lavorazioni gia salvate.`);
+        renderEventList(`Indice mailbox non disponibile: ${mailboxError.message || String(mailboxError)}.`);
         updateNotificationCenter();
+        return;
       }
+
+      mailboxMessages = mailboxPayload.messages || [];
+      const status = mailboxMessages.length
+        ? `Mailbox indicizzata: ${mailboxMessages.length} email.`
+        : "Indice mailbox vuoto. Avvio sync IMAP in background...";
+      renderEventList(status);
+      updateNotificationCenter();
+
+      syncMailboxIndex()
+        .then(fetchMailboxMessages)
+        .then((freshPayload) => {
+          mailboxMessages = freshPayload.messages || [];
+          renderEventList(
+            mailboxMessages.length
+              ? `Mailbox indicizzata: ${mailboxMessages.length} email.`
+              : "Indice mailbox vuoto."
+          );
+          updateNotificationCenter();
+        })
+        .catch((syncError) => {
+          console.warn("Mailbox sync failed", syncError);
+          renderEventList(
+            mailboxMessages.length
+              ? `Mailbox indicizzata: ${mailboxMessages.length} email. Sync non completata.`
+              : `Indice mailbox vuoto. Sync non completata: ${
+                  syncError.name === "AbortError" ? "timeout dopo 18s" : syncError.message || String(syncError)
+                }.`
+          );
+          updateNotificationCenter();
+        });
     } catch (err) {
       console.error("loadEvents", err);
     }

@@ -6,6 +6,11 @@ import { simpleParser } from "mailparser";
 import { evaluateEmailInterceptorDecision } from "../ai_agents/Interceptor.js";
 import { collectEmailSenderAddresses } from "../ai_agents/Interceptor.js";
 import { withImapRetries } from "./imap_operation_lock.js";
+import {
+  listMailboxIndexMessages,
+  updateMailboxMessage,
+  upsertMailboxMessages,
+} from "./mailbox_index.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -174,9 +179,19 @@ function bodyFromMail(parsed, messageKey, settings) {
 
 export async function listMailboxMessages({
   getSettings,
+  includeAllSenders = false,
+  limit = 50,
+  query = "",
+} = {}) {
+  await getSettings?.();
+  return listMailboxIndexMessages({ includeAllSenders, limit, query });
+}
+
+export async function syncMailboxMessages({
+  getSettings,
   findProcessingEventByExternalEmailId,
   from,
-  includeAllSenders = false,
+  includeAllSenders = true,
   limit = 50,
   query = "",
 } = {}) {
@@ -245,6 +260,8 @@ export async function listMailboxMessages({
           });
           messages.push({
             id: messageKey,
+            message_id: messageKey,
+            mailbox: settings.mailbox,
             uid: message.uid,
             subject: parsed.subject || "(senza oggetto)",
             from: decision.sender_candidates.from,
@@ -263,6 +280,7 @@ export async function listMailboxMessages({
             interceptor: decision,
             event_id: matchingEvent?.id || null,
             status: matchingEvent?.status || null,
+            processing_status: matchingEvent?.status || null,
           });
         }
       } finally {
@@ -274,10 +292,11 @@ export async function listMailboxMessages({
     return { messages, scanned };
   });
 
+  await upsertMailboxMessages(messages);
   messages.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   return {
     ok: true,
-    kind: "mailbox_browser",
+    kind: "mailbox_sync",
     mailbox: settings.mailbox,
     from: filterSenders,
     scanned,
@@ -347,6 +366,15 @@ export async function processMailboxMessage({
           emailId: messageKey,
         });
         if (duplicateEvent) {
+          await updateMailboxMessage(
+            { uid: uidNumber, mailbox: settings.mailbox, message_id: messageKey },
+            {
+              event_id: duplicateEvent.id,
+              status: duplicateEvent.status,
+              processing_status: duplicateEvent.status,
+              processed: true,
+            }
+          );
           return {
             ok: true,
             duplicate: true,
@@ -379,6 +407,15 @@ export async function processMailboxMessage({
             manual_mailbox_process: true,
           },
         });
+        await updateMailboxMessage(
+          { uid: uidNumber, mailbox: settings.mailbox, message_id: messageKey },
+          {
+            event_id: event?.id || null,
+            status: event?.status || null,
+            processing_status: event?.status || null,
+            processed: true,
+          }
+        );
         return {
           ok: true,
           event,

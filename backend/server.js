@@ -25,7 +25,7 @@ import {
   resetEmailWatcherState,
   setEmailWatcherIgnoreBefore,
 } from "./lib/email_watcher.js";
-import { listMailboxMessages, processMailboxMessage } from "./lib/mailbox_browser.js";
+import { listMailboxMessages, processMailboxMessage, syncMailboxMessages } from "./lib/mailbox_browser.js";
 import {
   createSmtpTransporter as createSmtpTransporterWithSettings,
   getSmtpSettings as getSmtpSettingsWithSettings,
@@ -296,6 +296,22 @@ async function handleMailboxMessages(req, res) {
 
 app.get("/api/v1/admin/mailbox/messages", requireAdminSession, handleMailboxMessages);
 app.get("/api/v1/admin/email-watcher/messages", requireAdminSession, handleMailboxMessages);
+
+app.post("/api/v1/admin/mailbox/sync", requireAdminSession, async (req, res) => {
+  try {
+    const result = await syncMailboxMessages({
+      getSettings: getRuntimeSettings,
+      findProcessingEventByExternalEmailId,
+      from: req.body?.from,
+      includeAllSenders: req.body?.include_all_senders !== false,
+      limit: Number.parseInt(String(req.body?.limit || "30"), 10) || 30,
+      query: req.body?.q || "",
+    });
+    res.status(result.ok === false ? 503 : 202).json(result);
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error.message || String(error), messages: [] });
+  }
+});
 
 app.post("/api/v1/admin/mailbox/messages/process", requireAdminSession, async (req, res) => {
   try {

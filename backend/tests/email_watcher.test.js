@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { attachmentFilenameMatchesRequired } from "../lib/email_watcher.js";
-import { listMailboxMessages } from "../lib/mailbox_browser.js";
+import { syncMailboxMessages } from "../lib/mailbox_browser.js";
 import {
   collectEmailAddressCandidates,
   evaluateEmailInterceptorDecision,
@@ -137,7 +137,7 @@ test("email interceptor exposes sender candidates from structured fields", () =>
   assert.deepEqual(candidates.all, ["from@example.com", "sender@example.com", "reply@example.com"]);
 });
 
-test("mailbox browser reports missing IMAP configuration without polling watcher", async () => {
+test("mailbox sync reports missing IMAP configuration without polling watcher", async () => {
   const envKeys = [
     "SMTP_HOST",
     "SMTP_USER",
@@ -149,7 +149,7 @@ test("mailbox browser reports missing IMAP configuration without polling watcher
   const previous = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
   envKeys.forEach((key) => delete process.env[key]);
   try {
-    const result = await listMailboxMessages({
+    const result = await syncMailboxMessages({
       getSettings: async () => ({}),
       findProcessingEventByExternalEmailId: async () => null,
     });

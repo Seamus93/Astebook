@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import { evaluateEmailInterceptorDecision } from "../ai_agents/Interceptor.js";
+import { withImapRetries } from "./imap_operation_lock.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -100,78 +101,81 @@ export async function listMailboxMessages({
   const allowedSenders = includeAllSenders ? [] : selectedFrom ? [selectedFrom] : settings.fromAllowlist;
   const normalizedQuery = String(query || "").trim().toLowerCase();
   const state = await readWatcherState();
-  const client = new ImapFlow({
-    host: settings.host,
-    port: settings.port,
-    secure: settings.secure,
-    auth: {
-      user: settings.user,
-      pass: settings.password,
-    },
-    logger: false,
-  });
-  client.on("error", (error) => {
-    console.warn("[mailbox_browser] IMAP client error", error.message || String(error));
-  });
+  const { messages, scanned } = await withImapRetries(async () => {
+    const client = new ImapFlow({
+      host: settings.host,
+      port: settings.port,
+      secure: settings.secure,
+      auth: {
+        user: settings.user,
+        pass: settings.password,
+      },
+      logger: false,
+    });
+    client.on("error", (error) => {
+      console.warn("[mailbox_browser] IMAP client error", error.message || String(error));
+    });
 
-  const messages = [];
-  let scanned = 0;
-  try {
-    await client.connect();
-    const lock = await client.getMailboxLock(settings.mailbox);
+    const messages = [];
+    let scanned = 0;
     try {
-      const uids = await client.search({ all: true }, { uid: true });
-      const scanLimit = normalizedQuery
-        ? Math.max(Number(limit) * 50, 5000)
-        : allowedSenders.length
-        ? Math.max(Number(limit) * 20, 1000)
-        : Math.max(1, Number(limit) * 3);
-      const selectedUids = uids.slice(-scanLimit);
-      scanned = selectedUids.length;
-      for await (const message of client.fetch(selectedUids, { uid: true, flags: true, source: true }, { uid: true })) {
-        const parsed = await simpleParser(message.source);
-        const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
-        const decision = evaluateEmailInterceptorDecision({
-          message: parsed,
-          settings: { ...settings, fromAllowlist: allowedSenders },
-          state,
-          messageKey,
-        });
-        if (normalizedQuery && !messageSearchText(parsed, decision).includes(normalizedQuery)) continue;
-        if (!decision.sender_allowed) continue;
+      await client.connect();
+      const lock = await client.getMailboxLock(settings.mailbox);
+      try {
+        const uids = await client.search({ all: true }, { uid: true });
+        const scanLimit = normalizedQuery
+          ? Math.max(Number(limit) * 50, 5000)
+          : allowedSenders.length
+          ? Math.max(Number(limit) * 20, 1000)
+          : Math.max(1, Number(limit) * 3);
+        const selectedUids = uids.slice(-scanLimit);
+        scanned = selectedUids.length;
+        for await (const message of client.fetch(selectedUids, { uid: true, flags: true, source: true }, { uid: true })) {
+          const parsed = await simpleParser(message.source);
+          const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
+          const decision = evaluateEmailInterceptorDecision({
+            message: parsed,
+            settings: { ...settings, fromAllowlist: allowedSenders },
+            state,
+            messageKey,
+          });
+          if (normalizedQuery && !messageSearchText(parsed, decision).includes(normalizedQuery)) continue;
+          if (!decision.sender_allowed) continue;
 
-        const matchingEvent = await findProcessingEventByExternalEmailId?.({
-          source: "imap.email_activation",
-          emailId: messageKey,
-        });
-        messages.push({
-          id: messageKey,
-          uid: message.uid,
-          subject: parsed.subject || "(senza oggetto)",
-          from: decision.sender_candidates.from,
-          sender_candidates: decision.sender_candidates,
-          to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean),
-          date: parsed.date?.toISOString?.() || null,
-          seen: Array.from(message.flags || []).includes("\\Seen"),
-          sender_allowed: decision.sender_allowed,
-          allowed_from: decision.allowed_from,
-          processed: decision.processed,
-          before_baseline: decision.before_baseline,
-          ignore_before: state.ignore_before,
-          required_filename_match: decision.required_filename_match,
-          required_filename: decision.required_filename,
-          filenames: decision.filenames,
-          interceptor: decision,
-          event_id: matchingEvent?.id || null,
-          status: matchingEvent?.status || null,
-        });
+          const matchingEvent = await findProcessingEventByExternalEmailId?.({
+            source: "imap.email_activation",
+            emailId: messageKey,
+          });
+          messages.push({
+            id: messageKey,
+            uid: message.uid,
+            subject: parsed.subject || "(senza oggetto)",
+            from: decision.sender_candidates.from,
+            sender_candidates: decision.sender_candidates,
+            to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean),
+            date: parsed.date?.toISOString?.() || null,
+            seen: Array.from(message.flags || []).includes("\\Seen"),
+            sender_allowed: decision.sender_allowed,
+            allowed_from: decision.allowed_from,
+            processed: decision.processed,
+            before_baseline: decision.before_baseline,
+            ignore_before: state.ignore_before,
+            required_filename_match: decision.required_filename_match,
+            required_filename: decision.required_filename,
+            filenames: decision.filenames,
+            interceptor: decision,
+            event_id: matchingEvent?.id || null,
+            status: matchingEvent?.status || null,
+          });
+        }
+      } finally {
+        lock.release();
       }
     } finally {
-      lock.release();
+      await client.logout().catch(() => {});
     }
-  } finally {
-    await client.logout().catch(() => {});
-  }
+    return { messages, scanned };
+  });
 
   messages.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   return {

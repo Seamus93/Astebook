@@ -8,6 +8,7 @@ import {
   collectEmailSenderAddresses,
   evaluateEmailInterceptorDecision,
 } from "../ai_agents/Interceptor.js";
+import { withImapRetries } from "./imap_operation_lock.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -196,96 +197,101 @@ async function pollMailbox(settings, onAcceptedMail) {
   }
 
   const processed = new Set(state.processed);
-  const client = new ImapFlow({
-    host: settings.host,
-    port: settings.port,
-    secure: settings.secure,
-    auth: {
-      user: settings.user,
-      pass: settings.password,
-    },
-    logger: false,
-  });
-  client.on("error", (error) => {
-    console.warn("[email_watcher] IMAP client error", error.message || String(error));
-  });
-
   try {
-    await client.connect();
-    const lock = await client.getMailboxLock(settings.mailbox);
-    try {
-      for await (const message of client.fetch({ seen: false }, { uid: true, source: true })) {
-        stats.scanned += 1;
-        const parsed = await simpleParser(message.source);
-        const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
-        const decision = interceptorDecision(parsed, settings, state, messageKey);
-        if (decision.before_baseline) {
-          stats.skipped_before_baseline += 1;
-          addDiagnostic(stats, {
-            reason: "before_baseline",
-            subject: parsed.subject || null,
-            from: decision.sender_candidates.from,
-            sender_candidates: decision.sender_candidates,
-            date: parsed.date?.toISOString?.() || null,
-            ignore_before: state.ignore_before,
-            filenames: decision.filenames,
-          });
-          processed.add(messageKey);
-          continue;
+    await withImapRetries(async () => {
+      const client = new ImapFlow({
+        host: settings.host,
+        port: settings.port,
+        secure: settings.secure,
+        auth: {
+          user: settings.user,
+          pass: settings.password,
+        },
+        logger: false,
+      });
+      client.on("error", (error) => {
+        console.warn("[email_watcher] IMAP client error", error.message || String(error));
+      });
+
+      try {
+        await client.connect();
+        const lock = await client.getMailboxLock(settings.mailbox);
+        try {
+          for await (const message of client.fetch({ seen: false }, { uid: true, source: true })) {
+            stats.scanned += 1;
+            const parsed = await simpleParser(message.source);
+            const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
+            const decision = interceptorDecision(parsed, settings, state, messageKey);
+            if (decision.before_baseline) {
+              stats.skipped_before_baseline += 1;
+              addDiagnostic(stats, {
+                reason: "before_baseline",
+                subject: parsed.subject || null,
+                from: decision.sender_candidates.from,
+                sender_candidates: decision.sender_candidates,
+                date: parsed.date?.toISOString?.() || null,
+                ignore_before: state.ignore_before,
+                filenames: decision.filenames,
+              });
+              processed.add(messageKey);
+              continue;
+            }
+
+            if (decision.processed) {
+              stats.duplicates += 1;
+              addDiagnostic(stats, {
+                reason: "duplicate",
+                subject: parsed.subject || null,
+                from: decision.sender_candidates.from,
+                sender_candidates: decision.sender_candidates,
+                filenames: decision.filenames,
+              });
+              continue;
+            }
+
+            if (!decision.processable) {
+              if (!decision.sender_allowed) stats.skipped_sender += 1;
+              if (!decision.required_filename_match) stats.skipped_filename += 1;
+              addDiagnostic(stats, {
+                reason: !decision.sender_allowed && !decision.required_filename_match
+                  ? "sender_and_filename"
+                  : !decision.sender_allowed
+                  ? "sender"
+                  : "filename",
+                subject: parsed.subject || null,
+                from: decision.sender_candidates.from,
+                sender_candidates: decision.sender_candidates,
+                allowed_from: decision.allowed_from,
+                required_filename: decision.required_filename,
+                filenames: decision.filenames,
+                interceptor: decision,
+              });
+              continue;
+            }
+
+            const senders = senderAddresses(parsed);
+            await onAcceptedMail({
+              body: bodyFromMail(parsed, messageKey, settings),
+              files: filesFromMail(parsed),
+              metadata: {
+                subject: parsed.subject || null,
+                from: senders.join(", ") || null,
+                email_id: messageKey,
+              },
+            });
+
+            processed.add(messageKey);
+            stats.accepted += 1;
+            await client.messageFlagsAdd(message.uid, ["\\Seen"], { uid: true });
+          }
+        } finally {
+          lock.release();
         }
-
-        if (decision.processed) {
-          stats.duplicates += 1;
-          addDiagnostic(stats, {
-            reason: "duplicate",
-            subject: parsed.subject || null,
-            from: decision.sender_candidates.from,
-            sender_candidates: decision.sender_candidates,
-            filenames: decision.filenames,
-          });
-          continue;
-        }
-
-        if (!decision.processable) {
-          if (!decision.sender_allowed) stats.skipped_sender += 1;
-          if (!decision.required_filename_match) stats.skipped_filename += 1;
-          addDiagnostic(stats, {
-            reason: !decision.sender_allowed && !decision.required_filename_match
-              ? "sender_and_filename"
-              : !decision.sender_allowed
-              ? "sender"
-              : "filename",
-            subject: parsed.subject || null,
-            from: decision.sender_candidates.from,
-            sender_candidates: decision.sender_candidates,
-            allowed_from: decision.allowed_from,
-            required_filename: decision.required_filename,
-            filenames: decision.filenames,
-            interceptor: decision,
-          });
-          continue;
-        }
-
-        const senders = senderAddresses(parsed);
-        await onAcceptedMail({
-          body: bodyFromMail(parsed, messageKey, settings),
-          files: filesFromMail(parsed),
-          metadata: {
-            subject: parsed.subject || null,
-            from: senders.join(", ") || null,
-            email_id: messageKey,
-          },
-        });
-
-        processed.add(messageKey);
-        stats.accepted += 1;
-        await client.messageFlagsAdd(message.uid, ["\\Seen"], { uid: true });
+      } finally {
+        await client.logout().catch(() => {});
       }
-    } finally {
-      lock.release();
-    }
+    });
   } finally {
-    await client.logout().catch(() => {});
     await writeState({ processed: Array.from(processed), ignore_before: state.ignore_before });
   }
   return stats;

@@ -75,18 +75,20 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   }
 
   async function syncMailboxIndex() {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 18000);
-    try {
-      await apiFetch("/api/v1/admin/mailbox/sync", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ limit: 30, include_all_senders: true }),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timeout);
+    const resp = await apiFetch("/api/v1/admin/mailbox/sync", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ limit: 30, include_all_senders: true }),
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok || payload.ok === false) {
+      throw new Error(payload.error || payload.disabled_reason || `HTTP ${resp.status}`);
     }
+    return payload;
+  }
+
+  function wait(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
   async function loadEvents() {
@@ -123,13 +125,14 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       updateNotificationCenter();
 
       syncMailboxIndex()
+        .then(() => wait(3000))
         .then(fetchMailboxMessages)
         .then((freshPayload) => {
           mailboxMessages = freshPayload.messages || [];
           renderEventList(
             mailboxMessages.length
               ? `Mailbox indicizzata: ${mailboxMessages.length} email.`
-              : "Indice mailbox vuoto."
+              : "Sync mailbox avviato. Indice ancora vuoto."
           );
           updateNotificationCenter();
         })
@@ -138,9 +141,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
           renderEventList(
             mailboxMessages.length
               ? `Mailbox indicizzata: ${mailboxMessages.length} email. Sync non completata.`
-              : `Indice mailbox vuoto. Sync non completata: ${
-                  syncError.name === "AbortError" ? "timeout dopo 18s" : syncError.message || String(syncError)
-                }.`
+              : `Indice mailbox vuoto. Sync non avviato: ${syncError.message || String(syncError)}.`
           );
           updateNotificationCenter();
         });

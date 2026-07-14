@@ -214,6 +214,14 @@ const emailIntakeHandlers = createEmailIntakeHandlers({
 });
 const { processEmailWatcherActivation } = emailIntakeHandlers;
 let emailWatcher = null;
+let mailboxSyncRunning = false;
+let mailboxSyncStatus = {
+  running: false,
+  last_started_at: null,
+  last_finished_at: null,
+  last_error: null,
+  last_result: null,
+};
 
 registerEmailIntakeRoutes(app, {
   handleZapierEmailActivation: emailIntakeHandlers.handleZapierEmailActivation,
@@ -297,20 +305,71 @@ async function handleMailboxMessages(req, res) {
 app.get("/api/v1/admin/mailbox/messages", requireAdminSession, handleMailboxMessages);
 app.get("/api/v1/admin/email-watcher/messages", requireAdminSession, handleMailboxMessages);
 
-app.post("/api/v1/admin/mailbox/sync", requireAdminSession, async (req, res) => {
-  try {
-    const result = await syncMailboxMessages({
-      getSettings: getRuntimeSettings,
-      findProcessingEventByExternalEmailId,
-      from: req.body?.from,
-      includeAllSenders: req.body?.include_all_senders !== false,
-      limit: Number.parseInt(String(req.body?.limit || "30"), 10) || 30,
-      query: req.body?.q || "",
-    });
-    res.status(result.ok === false ? 503 : 202).json(result);
-  } catch (error) {
-    res.status(500).json({ ok: false, error: error.message || String(error), messages: [] });
+function startMailboxSync({ from, includeAllSenders = true, limit = 30, query = "" } = {}) {
+  if (mailboxSyncRunning) {
+    return { ok: true, started: false, busy: true, sync: mailboxSyncStatus };
   }
+
+  mailboxSyncRunning = true;
+  mailboxSyncStatus = {
+    ...mailboxSyncStatus,
+    running: true,
+    last_started_at: new Date().toISOString(),
+    last_finished_at: null,
+    last_error: null,
+  };
+
+  syncMailboxMessages({
+    getSettings: getRuntimeSettings,
+    findProcessingEventByExternalEmailId,
+    from,
+    includeAllSenders,
+    limit,
+    query,
+  })
+    .then((result) => {
+      mailboxSyncStatus = {
+        ...mailboxSyncStatus,
+        running: false,
+        last_finished_at: new Date().toISOString(),
+        last_error: result.ok === false ? result.error || result.disabled_reason || "Sync non completata" : null,
+        last_result: {
+          ok: result.ok !== false,
+          scanned: result.scanned || 0,
+          count: Array.isArray(result.messages) ? result.messages.length : 0,
+          mailbox: result.mailbox || null,
+        },
+      };
+    })
+    .catch((error) => {
+      mailboxSyncStatus = {
+        ...mailboxSyncStatus,
+        running: false,
+        last_finished_at: new Date().toISOString(),
+        last_error: error.message || String(error),
+      };
+      console.warn("[mailbox_sync] background sync failed", error);
+    })
+    .finally(() => {
+      mailboxSyncRunning = false;
+      mailboxSyncStatus = { ...mailboxSyncStatus, running: false };
+    });
+
+  return { ok: true, started: true, busy: false, sync: mailboxSyncStatus };
+}
+
+app.post("/api/v1/admin/mailbox/sync", requireAdminSession, (req, res) => {
+  const result = startMailboxSync({
+    from: req.body?.from,
+    includeAllSenders: req.body?.include_all_senders !== false,
+    limit: Number.parseInt(String(req.body?.limit || "30"), 10) || 30,
+    query: req.body?.q || "",
+  });
+  res.status(202).json(result);
+});
+
+app.get("/api/v1/admin/mailbox/sync/status", requireAdminSession, (_req, res) => {
+  res.json({ ok: true, sync: mailboxSyncStatus });
 });
 
 app.post("/api/v1/admin/mailbox/messages/process", requireAdminSession, async (req, res) => {

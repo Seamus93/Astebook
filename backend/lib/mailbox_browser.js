@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImapFlow } from "imapflow";
-import { simpleParser } from "mailparser";
 import { evaluateEmailInterceptorDecision } from "../ai_agents/Interceptor.js";
 import { withImapRetries } from "./imap_operation_lock.js";
 
@@ -80,6 +79,70 @@ function messageSearchText(parsed, decision) {
     .toLowerCase();
 }
 
+function normalizeAddress(address) {
+  return String(address || "").trim().toLowerCase();
+}
+
+function addressValueFromEnvelope(addresses = []) {
+  return (Array.isArray(addresses) ? addresses : [])
+    .map((item) => {
+      const address = normalizeAddress(item.address || item.addr || item.mailbox);
+      return address ? { address, name: item.name || item.label || "" } : null;
+    })
+    .filter(Boolean);
+}
+
+function valueFromParams(params, keys) {
+  if (!params) return "";
+  if (params instanceof Map) {
+    for (const key of keys) {
+      const value = params.get(key) || params.get(key.toLowerCase()) || params.get(key.toUpperCase());
+      if (value) return String(value);
+    }
+    return "";
+  }
+  for (const key of keys) {
+    const value = params[key] || params[key.toLowerCase()] || params[key.toUpperCase()];
+    if (value) return String(value);
+  }
+  return "";
+}
+
+function attachmentFilenamesFromBodyStructure(node, acc = []) {
+  if (!node || typeof node !== "object") return acc;
+  const disposition = String(node.disposition || node.dispositionType || "").toLowerCase();
+  const filename =
+    node.filename ||
+    valueFromParams(node.dispositionParameters, ["filename"]) ||
+    valueFromParams(node.parameters, ["name"]);
+  if (filename && (disposition === "attachment" || disposition === "inline" || node.dispositionParameters)) {
+    acc.push(String(filename));
+  }
+  const children = node.childNodes || node.children || node.parts || [];
+  if (Array.isArray(children)) {
+    children.forEach((child) => attachmentFilenamesFromBodyStructure(child, acc));
+  }
+  return acc;
+}
+
+function parsedSummaryFromImapMessage(message) {
+  const envelope = message.envelope || {};
+  const date = envelope.date || message.internalDate || null;
+  return {
+    subject: envelope.subject || "",
+    from: { value: addressValueFromEnvelope(envelope.from) },
+    sender: { value: addressValueFromEnvelope(envelope.sender) },
+    replyTo: { value: addressValueFromEnvelope(envelope.replyTo) },
+    to: { value: addressValueFromEnvelope(envelope.to) },
+    date,
+    messageId: envelope.messageId || null,
+    text: "",
+    attachments: attachmentFilenamesFromBodyStructure(message.bodyStructure).map((filename) => ({
+      filename,
+    })),
+  };
+}
+
 export async function listMailboxMessages({
   getSettings,
   findProcessingEventByExternalEmailId,
@@ -130,8 +193,12 @@ export async function listMailboxMessages({
           : Math.max(1, Number(limit) * 3);
         const selectedUids = uids.slice(-scanLimit);
         scanned = selectedUids.length;
-        for await (const message of client.fetch(selectedUids, { uid: true, flags: true, source: true }, { uid: true })) {
-          const parsed = await simpleParser(message.source);
+        for await (const message of client.fetch(
+          selectedUids,
+          { uid: true, flags: true, envelope: true, internalDate: true, bodyStructure: true },
+          { uid: true }
+        )) {
+          const parsed = parsedSummaryFromImapMessage(message);
           const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
           const decision = evaluateEmailInterceptorDecision({
             message: parsed,

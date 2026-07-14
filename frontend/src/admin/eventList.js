@@ -65,10 +65,27 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   let notificationItems = [];
   const selectedEventIds = new Set();
 
+  async function fetchMailboxMessages() {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 18000);
+    try {
+      const resp = await apiFetch("/api/v1/admin/mailbox/messages?limit=100", {
+        signal: controller.signal,
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok || payload.ok === false) {
+        throw new Error(payload.error || payload.disabled_reason || `HTTP ${resp.status}`);
+      }
+      return payload;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
   async function loadEvents() {
     try {
       mailboxMessages = [];
-      renderEventList("Carico mailbox...");
+      renderEventList("Mailbox IMAP: caricamento in corso...");
       const eventsResp = await apiFetch("/api/v1/processing-events");
       if (!eventsResp.ok) {
         console.warn("Failed to load events", eventsResp.status);
@@ -76,26 +93,26 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       }
       const data = await eventsResp.json();
       allEvents = data.events || [];
-      renderEventList("Carico mailbox...");
+      renderEventList("Mailbox IMAP: caricamento in corso...");
       updateNotificationCenter();
       if (allEvents.length) selectEvent(allEvents[0].id);
 
       try {
-        const mailboxResp = await apiFetch("/api/v1/admin/mailbox/messages?limit=100");
-        if (!mailboxResp.ok) {
-          mailboxMessages = [];
-          renderEventList("Mailbox non disponibile.");
-          updateNotificationCenter();
-          return;
-        }
-        const mailboxPayload = await mailboxResp.json();
+        const mailboxPayload = await fetchMailboxMessages();
         mailboxMessages = mailboxPayload.messages || [];
-        renderEventList(mailboxMessages.length ? "" : "Nessuna mail dai mittenti autorizzati.");
+        const status = mailboxMessages.length
+          ? `Mailbox IMAP: ${mailboxMessages.length} email trovate.`
+          : `Mailbox IMAP: nessuna email dai mittenti autorizzati. Scansionate ${mailboxPayload.scanned || 0} email.`;
+        renderEventList(status);
         updateNotificationCenter();
       } catch (mailboxError) {
         console.warn("Failed to load mailbox messages", mailboxError);
         mailboxMessages = [];
-        renderEventList("Mailbox non disponibile.");
+        const message =
+          mailboxError.name === "AbortError"
+            ? "timeout dopo 18s"
+            : mailboxError.message || String(mailboxError);
+        renderEventList(`Mailbox IMAP non caricata: ${message}. Sotto vedi solo le lavorazioni gia salvate.`);
         updateNotificationCenter();
       }
     } catch (err) {

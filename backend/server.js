@@ -260,9 +260,22 @@ app.post("/api/v1/admin/email-watcher/state/reset", requireAdminSession, async (
   res.json({ ok: true, ...result });
 });
 
+app.post("/api/v1/admin/email-watcher/state/ignore-before", requireAdminSession, async (req, res) => {
+  try {
+    const result = await setEmailWatcherIgnoreBefore(req.body?.ignore_before);
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message || String(error) });
+  }
+});
+
 app.post("/api/v1/admin/email-watcher/state/ignore-before-now", requireAdminSession, async (_req, res) => {
-  const result = await setEmailWatcherIgnoreBefore();
-  res.json({ ok: true, ...result });
+  try {
+    const result = await setEmailWatcherIgnoreBefore();
+    res.json({ ok: true, ...result });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message || String(error) });
+  }
 });
 
 app.get("/api/v1/admin/email-watcher/messages", requireAdminSession, async (req, res) => {

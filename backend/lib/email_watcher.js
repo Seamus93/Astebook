@@ -107,7 +107,11 @@ export async function forgetEmailWatcherMessageState(messageId) {
 
 export async function setEmailWatcherIgnoreBefore(date = new Date()) {
   const state = await readState();
-  const ignoreBefore = date instanceof Date ? date.toISOString() : new Date(date).toISOString();
+  const parsedDate = date instanceof Date ? date : new Date(date);
+  if (!Number.isFinite(parsedDate.getTime())) {
+    throw new Error("ignore_before non valido.");
+  }
+  const ignoreBefore = parsedDate.toISOString();
   await writeState({ processed: state.processed, ignore_before: ignoreBefore });
   return {
     file: watcherStateFile,

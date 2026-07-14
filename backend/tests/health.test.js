@@ -518,6 +518,22 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(baselinePayload.ok, true);
     assert.match(watcherStateWithBaseline.ignore_before, /^\d{4}-\d{2}-\d{2}T/);
 
+    const chosenBaseline = "2026-07-14T00:00:00.000Z";
+    const chosenBaselineResponse = await fetch(
+      `http://127.0.0.1:${port}/api/v1/admin/email-watcher/state/ignore-before`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json", cookie },
+        body: JSON.stringify({ ignore_before: chosenBaseline }),
+      }
+    );
+    const chosenBaselinePayload = await chosenBaselineResponse.json();
+    const watcherStateWithChosenBaseline = JSON.parse(await readFile(watcherStatePath, "utf8"));
+
+    assert.equal(chosenBaselineResponse.status, 200);
+    assert.equal(chosenBaselinePayload.ignore_before, chosenBaseline);
+    assert.equal(watcherStateWithChosenBaseline.ignore_before, chosenBaseline);
+
     await writeFile(watcherStatePath, JSON.stringify({ processed: ["email-a", "email-b"] }), "utf8");
     const forgetWatcherStateResponse = await fetch(
       `http://127.0.0.1:${port}/api/v1/admin/email-watcher/state/forget`,

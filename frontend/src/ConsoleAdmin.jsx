@@ -274,9 +274,13 @@ export default function ConsoleAdmin() {
                           <h3>Scansione watcher</h3>
                         </div>
                         <div className="settings-panel-actions">
-                          <button id="manualWatcherIgnoreBeforeNowButton" className="secondary-button" type="button">
+                          <label className="settings-inline-control" htmlFor="manualWatcherIgnoreBeforeInput">
+                            <span>Ignora prima di</span>
+                            <input id="manualWatcherIgnoreBeforeInput" type="datetime-local" />
+                          </label>
+                          <button id="manualWatcherIgnoreBeforeButton" className="secondary-button" type="button">
                             <span className="material-symbols-outlined" aria-hidden="true">block</span>
-                            Ignora vecchie da ora
+                            Ignora precedenti
                           </button>
                           <button id="manualWatcherResetStateButton" className="secondary-button" type="button">
                             <span className="material-symbols-outlined" aria-hidden="true">restart_alt</span>

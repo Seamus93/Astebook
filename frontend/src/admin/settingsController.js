@@ -152,6 +152,27 @@ function errorMessageFromPayload(payload, fallback) {
   return missing || payload.detail || payload.error || fallback;
 }
 
+function localDateTimeInputValue(date) {
+  const pad = (value) => String(value).padStart(2, "0");
+  return [
+    date.getFullYear(),
+    "-",
+    pad(date.getMonth() + 1),
+    "-",
+    pad(date.getDate()),
+    "T",
+    pad(date.getHours()),
+    ":",
+    pad(date.getMinutes()),
+  ].join("");
+}
+
+function startOfTodayInputValue() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return localDateTimeInputValue(date);
+}
+
 export function createSettingsController() {
   async function loadSettings() {
     try {
@@ -264,16 +285,29 @@ export function createSettingsController() {
     });
   }
 
-  function initWatcherIgnoreBeforeNowButton() {
-    const button = qs("manualWatcherIgnoreBeforeNowButton");
+  function initWatcherIgnoreBeforeButton() {
+    const input = qs("manualWatcherIgnoreBeforeInput");
+    const button = qs("manualWatcherIgnoreBeforeButton");
     const status = qs("manualWatcherScanStatus");
-    if (!button || !status) return;
+    if (!input || !button || !status) return;
+
+    if (!input.value) input.value = startOfTodayInputValue();
 
     button.addEventListener("click", async () => {
+      if (!input.value) {
+        status.textContent = "Seleziona giorno e ora della baseline.";
+        return;
+      }
+
       button.disabled = true;
       status.textContent = "Imposto la baseline del watcher...";
       try {
-        const resp = await apiFetch("/api/v1/admin/email-watcher/state/ignore-before-now", { method: "POST" });
+        const ignoreBefore = new Date(input.value).toISOString();
+        const resp = await apiFetch("/api/v1/admin/email-watcher/state/ignore-before", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ ignore_before: ignoreBefore }),
+        });
         const payload = await resp.json().catch(() => ({}));
         if (!resp.ok || payload.ok === false) {
           const message = payload.error || `HTTP ${resp.status}`;
@@ -385,7 +419,7 @@ export function createSettingsController() {
     initRevealButtons,
     initManualAnalyzeLatestEmailButton,
     initManualSendLatestDocumentButton,
-    initWatcherIgnoreBeforeNowButton,
+    initWatcherIgnoreBeforeButton,
     initWatcherResetStateButton,
     initWatcherScanButton,
     loadSettings,

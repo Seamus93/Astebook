@@ -8,7 +8,7 @@ import {
   collectEmailSenderAddresses,
   evaluateEmailInterceptorDecision,
 } from "../ai_agents/Interceptor.js";
-import { withImapRetries } from "./imap_operation_lock.js";
+import { isTransientImapError, withImapRetries } from "./imap_operation_lock.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -300,8 +300,20 @@ async function pollMailbox(settings, onAcceptedMail) {
 export function createEmailWatcher({ getSettings, onAcceptedMail }) {
   let timer = null;
   let running = false;
+  let consecutiveTransientFailures = 0;
+  let suspendedUntil = 0;
 
   async function runOnce({ reschedule = false } = {}) {
+    const now = Date.now();
+    if (now < suspendedUntil) {
+      const remainingSeconds = Math.ceil((suspendedUntil - now) / 1000);
+      if (reschedule) schedule(remainingSeconds);
+      return {
+        ok: false,
+        suspended: true,
+        error: `Watcher IMAP sospeso temporaneamente per ${remainingSeconds}s dopo errori di connessione.`,
+      };
+    }
     if (running) {
       return { ok: false, busy: true };
     }
@@ -309,11 +321,24 @@ export function createEmailWatcher({ getSettings, onAcceptedMail }) {
     try {
       const settings = resolveSettings(await getSettings());
       const stats = await pollMailbox(settings, onAcceptedMail);
+      consecutiveTransientFailures = 0;
       if (reschedule) schedule(settings.pollSeconds);
       return { ok: true, ...stats };
     } catch (error) {
-      console.error("[email_watcher] poll failed", error);
-      if (reschedule) schedule(120);
+      if (isTransientImapError(error)) {
+        consecutiveTransientFailures += 1;
+        console.warn(
+          `[email_watcher] transient poll failure ${consecutiveTransientFailures}: ${error.message || String(error)}`
+        );
+        if (consecutiveTransientFailures >= 3) {
+          suspendedUntil = Date.now() + 10 * 60 * 1000;
+          console.warn("[email_watcher] IMAP watcher suspended for 10 minutes after repeated transient failures");
+        }
+      } else {
+        consecutiveTransientFailures = 0;
+        console.error("[email_watcher] poll failed", error);
+      }
+      if (reschedule) schedule(suspendedUntil > Date.now() ? 600 : 120);
       return { ok: false, error: error.message || String(error) };
     } finally {
       running = false;

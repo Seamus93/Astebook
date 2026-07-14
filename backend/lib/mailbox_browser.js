@@ -218,7 +218,7 @@ export async function listMailboxMessages({
         const uids = await client.search({ all: true }, { uid: true });
         const scanLimit = normalizedQuery
           ? Math.max(Number(limit) * 50, 5000)
-          : allowedSenders.length
+          : filterSenders.length
           ? Math.max(Number(limit) * 20, 1000)
           : Math.max(1, Number(limit) * 3);
         const selectedUids = uids.slice(-scanLimit);

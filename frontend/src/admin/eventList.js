@@ -68,7 +68,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     try {
       const [eventsResp, mailboxResp] = await Promise.all([
         apiFetch("/api/v1/processing-events"),
-        apiFetch("/api/v1/admin/email-watcher/messages?limit=50"),
+        apiFetch("/api/v1/admin/email-watcher/messages?limit=100"),
       ]);
       if (!eventsResp.ok) {
         console.warn("Failed to load events", eventsResp.status);

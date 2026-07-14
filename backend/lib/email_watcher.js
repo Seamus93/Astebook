@@ -351,18 +351,21 @@ export async function listEmailWatcherMessages({
   });
 
   const messages = [];
+  let scanned = 0;
   try {
     await client.connect();
     const lock = await client.getMailboxLock(settings.mailbox);
     try {
       const uids = await client.search({ all: true }, { uid: true });
-      const selectedUids = uids.slice(-Math.max(1, Number(limit) * 3));
+      const scanLimit = allowedSenders.length ? Math.max(Number(limit) * 20, 1000) : Math.max(1, Number(limit) * 3);
+      const selectedUids = uids.slice(-scanLimit);
+      scanned = selectedUids.length;
       for await (const message of client.fetch(selectedUids, { uid: true, flags: true, source: true }, { uid: true })) {
         const parsed = await simpleParser(message.source);
         const senders = senderAddresses(parsed);
         const senderAllowed =
           allowedSenders.length === 0 || senders.some((sender) => allowedSenders.includes(sender));
-        if (selectedFrom && !senderAllowed) continue;
+        if (!senderAllowed) continue;
 
         const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
         const matchingEvent = await findProcessingEventByExternalEmailId?.({
@@ -401,6 +404,7 @@ export async function listEmailWatcherMessages({
     ok: true,
     mailbox: settings.mailbox,
     from: allowedSenders,
+    scanned,
     messages: messages.slice(0, limit),
   };
 }

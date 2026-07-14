@@ -66,25 +66,37 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
 
   async function loadEvents() {
     try {
-      const [eventsResp, mailboxResp] = await Promise.all([
-        apiFetch("/api/v1/processing-events"),
-        apiFetch("/api/v1/admin/email-watcher/messages?limit=100"),
-      ]);
+      mailboxMessages = [];
+      renderEventList("Carico mailbox...");
+      const eventsResp = await apiFetch("/api/v1/processing-events");
       if (!eventsResp.ok) {
         console.warn("Failed to load events", eventsResp.status);
         return;
       }
       const data = await eventsResp.json();
       allEvents = data.events || [];
-      if (mailboxResp.ok) {
-        const mailboxPayload = await mailboxResp.json();
-        mailboxMessages = mailboxPayload.messages || [];
-      } else {
-        mailboxMessages = [];
-      }
-      renderEventList();
+      renderEventList("Carico mailbox...");
       updateNotificationCenter();
       if (allEvents.length) selectEvent(allEvents[0].id);
+
+      try {
+        const mailboxResp = await apiFetch("/api/v1/admin/email-watcher/messages?limit=100");
+        if (!mailboxResp.ok) {
+          mailboxMessages = [];
+          renderEventList("Mailbox non disponibile.");
+          updateNotificationCenter();
+          return;
+        }
+        const mailboxPayload = await mailboxResp.json();
+        mailboxMessages = mailboxPayload.messages || [];
+        renderEventList(mailboxMessages.length ? "" : "Nessuna mail dai mittenti autorizzati.");
+        updateNotificationCenter();
+      } catch (mailboxError) {
+        console.warn("Failed to load mailbox messages", mailboxError);
+        mailboxMessages = [];
+        renderEventList("Mailbox non disponibile.");
+        updateNotificationCenter();
+      }
     } catch (err) {
       console.error("loadEvents", err);
     }
@@ -344,11 +356,20 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     });
   }
 
-  function renderEventList() {
+  function renderMailboxStatus(container, message) {
+    if (!message) return;
+    const el = document.createElement("div");
+    el.className = "event-empty";
+    el.textContent = message;
+    container.appendChild(el);
+  }
+
+  function renderEventList(mailboxStatus = "") {
     const container = document.getElementById("eventList");
     if (!container) return;
     container.innerHTML = "";
     mailboxMessages.forEach((message) => renderMailboxItem(container, message));
+    renderMailboxStatus(container, mailboxStatus);
     for (const ev of allEvents) {
       renderEventItem(container, ev);
     }

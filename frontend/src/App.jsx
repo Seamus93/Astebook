@@ -26,10 +26,16 @@ const adminMarkup = String.raw`
         </div>
       </div>
       <div class="search-bar">
+        <label class="selection-toggle" title="Seleziona tutte le lavorazioni">
+          <input id="selectAllEventsCheckbox" type="checkbox" />
+        </label>
         <label class="search-field" for="eventSearchInput">
           <span class="material-symbols-outlined" aria-hidden="true">search</span>
           <input id="eventSearchInput" type="search" placeholder="Cerca procedura, proponente, email..." />
         </label>
+        <button id="deleteSelectedEventsButton" class="icon-button selection-delete-button" type="button" title="Elimina selezionate" hidden>
+          <span class="material-symbols-outlined" aria-hidden="true">delete</span>
+        </button>
         <button id="filtersButton" class="icon-button" type="button" title="Filtri">
           <span class="material-symbols-outlined" aria-hidden="true">filter_list</span>
         </button>

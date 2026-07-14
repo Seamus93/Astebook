@@ -39,6 +39,7 @@ export default function initAdminClient() {
   settings.initWatcherResetStateButton();
   settings.initWatcherScanButton();
   events.initNotifications();
+  events.initSelectionControls();
   learning.initLearningControls();
   initSidebarToggle();
   qs("settingsForm").addEventListener("submit", settings.saveSettings);

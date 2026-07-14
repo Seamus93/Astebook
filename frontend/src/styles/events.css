@@ -6,11 +6,30 @@
 
 .search-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 38px;
+  grid-template-columns: 28px minmax(0, 1fr) 38px 38px;
   gap: 8px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
   background: var(--panel);
+}
+
+.selection-toggle {
+  display: grid;
+  place-items: center;
+  min-width: 0;
+}
+
+.selection-toggle input,
+.event-select input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.selection-delete-button[hidden] {
+  display: none;
 }
 
 .search-field {
@@ -53,10 +72,17 @@
 
 .event-item-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
   padding: 0;
   cursor: default;
+}
+
+.event-select {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  cursor: pointer;
 }
 
 .event-item-main {

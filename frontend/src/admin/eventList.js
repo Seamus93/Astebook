@@ -63,6 +63,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   let allEvents = [];
   let mailboxMessages = [];
   let notificationItems = [];
+  const selectedEventIds = new Set();
 
   async function loadEvents() {
     try {
@@ -135,32 +136,55 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     }
   }
 
-  async function deleteEvent(eventId, title) {
-    if (!window.confirm(`Eliminare questa lavorazione dalla lista?\n\n${title}`)) return;
+  async function deleteSelectedEvents() {
+    const selectedEvents = allEvents.filter((event) => selectedEventIds.has(event.id));
+    if (!selectedEvents.length) return;
+    if (!window.confirm(`Eliminare ${selectedEvents.length} lavorazioni selezionate dalla lista?`)) return;
+
     try {
-      const resp = await apiFetch(`/api/v1/processing-events/${eventId}`, { method: "DELETE" });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok || payload.ok === false) {
-        showToast({
-          title: "Lavorazione non eliminata",
-          message: payload.error || `HTTP ${resp.status}`,
-          tone: "error",
-        });
-        return;
-      }
+      const results = await Promise.all(
+        selectedEvents.map((event) =>
+          apiFetch(`/api/v1/processing-events/${event.id}`, { method: "DELETE" })
+        )
+      );
+      const failed = results.filter((resp) => !resp.ok).length;
+      selectedEventIds.clear();
       showToast({
-        title: "Lavorazione eliminata",
-        message: "Il record e stato rimosso dal log Astebook.",
-        tone: "info",
+        title: failed ? "Eliminazione parziale" : "Lavorazioni eliminate",
+        message: failed
+          ? `${failed} lavorazioni non sono state eliminate.`
+          : `${selectedEvents.length} lavorazioni rimosse dal log Astebook.`,
+        tone: failed ? "error" : "info",
       });
       await loadEvents();
     } catch (error) {
       showToast({
-        title: "Lavorazione non eliminata",
+        title: "Lavorazioni non eliminate",
         message: error.message || String(error),
         tone: "error",
       });
     }
+  }
+
+  function syncSelectionControls() {
+    const checkbox = document.getElementById("selectAllEventsCheckbox");
+    const deleteButton = document.getElementById("deleteSelectedEventsButton");
+    const selectedCount = selectedEventIds.size;
+    if (deleteButton) {
+      deleteButton.hidden = selectedCount === 0;
+      deleteButton.title = selectedCount ? `Elimina ${selectedCount} selezionate` : "Elimina selezionate";
+    }
+    if (checkbox) {
+      checkbox.checked = allEvents.length > 0 && selectedCount === allEvents.length;
+      checkbox.indeterminate = selectedCount > 0 && selectedCount < allEvents.length;
+    }
+  }
+
+  function toggleEventSelection(eventId, checked) {
+    if (checked) selectedEventIds.add(eventId);
+    else selectedEventIds.delete(eventId);
+    renderEventList();
+    syncSelectionControls();
   }
 
   function renderEventItem(container, ev) {
@@ -168,6 +192,16 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     const row = document.createElement("div");
     row.className = "event-item event-item-row";
     row.dataset.eventId = ev.id;
+
+    const selectWrap = document.createElement("label");
+    selectWrap.className = "event-select";
+    selectWrap.title = "Seleziona lavorazione";
+    const selectInput = document.createElement("input");
+    selectInput.type = "checkbox";
+    selectInput.checked = selectedEventIds.has(ev.id);
+    selectInput.addEventListener("click", (event) => event.stopPropagation());
+    selectInput.addEventListener("change", () => toggleEventSelection(ev.id, selectInput.checked));
+    selectWrap.appendChild(selectInput);
 
     const el = document.createElement("button");
     el.type = "button";
@@ -182,17 +216,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     el.append(titleEl, timestampEl);
     el.addEventListener("click", () => selectEvent(ev.id));
 
-    const deleteButton = document.createElement("button");
-    deleteButton.type = "button";
-    deleteButton.className = "event-item-menu icon-button";
-    deleteButton.title = "Elimina lavorazione";
-    deleteButton.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">delete</span>';
-    deleteButton.addEventListener("click", (event) => {
-      event.stopPropagation();
-      deleteEvent(ev.id, title);
-    });
-
-    row.append(el, deleteButton);
+    row.append(selectWrap, el);
     container.appendChild(row);
   }
 
@@ -373,7 +397,25 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     for (const ev of allEvents) {
       renderEventItem(container, ev);
     }
+    syncSelectionControls();
   }
 
-  return { initNotifications, loadEvents, renderEventList };
+  function initSelectionControls() {
+    const checkbox = document.getElementById("selectAllEventsCheckbox");
+    const deleteButton = document.getElementById("deleteSelectedEventsButton");
+    if (checkbox) {
+      checkbox.addEventListener("change", () => {
+        selectedEventIds.clear();
+        if (checkbox.checked) {
+          allEvents.forEach((event) => selectedEventIds.add(event.id));
+        }
+        renderEventList();
+      });
+    }
+    if (deleteButton) {
+      deleteButton.addEventListener("click", deleteSelectedEvents);
+    }
+  }
+
+  return { initNotifications, initSelectionControls, loadEvents, renderEventList };
 }

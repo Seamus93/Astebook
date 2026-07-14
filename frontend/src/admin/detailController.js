@@ -47,6 +47,13 @@ function mailboxState(message) {
       notes: ["Cancella lo state della singola mail dal menu a tre puntini per permettere un nuovo tentativo."],
     };
   }
+  if (message.interceptor?.processable) {
+    return {
+      label: message.seen ? "Letta processabile" : "Da processare",
+      issue: null,
+      notes: ["La mail e valida: puoi processarla manualmente dalla toolbar."],
+    };
+  }
   if (message.seen) {
     return {
       label: "Letta non processata",
@@ -289,10 +296,46 @@ export function createDetailController() {
     const reprocessButton = document.getElementById("reprocessButton");
     const documentButton = document.getElementById("documentButton");
     const emailDocumentButton = document.getElementById("emailDocumentButton");
-    reprocessButton.disabled = true;
+    const canProcessMailboxMessage = Boolean(message.interceptor?.processable && message.uid);
+    reprocessButton.disabled = !canProcessMailboxMessage;
+    reprocessButton.title = "Processa";
     documentButton.disabled = true;
     emailDocumentButton.disabled = true;
-    reprocessButton.onclick = null;
+    reprocessButton.onclick = canProcessMailboxMessage
+      ? async () => {
+          try {
+            reprocessButton.disabled = true;
+            const resp = await apiFetch("/api/v1/admin/mailbox/messages/process", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ uid: message.uid, message_id: message.id }),
+            });
+            const payload = await resp.json().catch(() => ({}));
+            if (!resp.ok || payload.ok === false) {
+              showToast({
+                title: "Processo mail non avviato",
+                message: payload.error || `HTTP ${resp.status}`,
+                tone: "error",
+              });
+              return;
+            }
+            showToast({
+              title: payload.duplicate ? "Evento gia presente" : "Mail processata",
+              message: payload.event_id ? `Evento ${payload.event_id}` : "Lavorazione creata.",
+              tone: "info",
+            });
+            if (payload.event_id) await selectEvent(payload.event_id);
+          } catch (error) {
+            showToast({
+              title: "Processo mail non avviato",
+              message: error.message || String(error),
+              tone: "error",
+            });
+          } finally {
+            reprocessButton.disabled = false;
+          }
+        }
+      : null;
     documentButton.onclick = null;
     emailDocumentButton.onclick = null;
 

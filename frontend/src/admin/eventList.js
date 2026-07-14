@@ -69,7 +69,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 18000);
     try {
-      const resp = await apiFetch("/api/v1/admin/mailbox/messages?limit=100", {
+      const resp = await apiFetch("/api/v1/admin/mailbox/messages?limit=30&include_all_senders=1", {
         signal: controller.signal,
       });
       const payload = await resp.json().catch(() => ({}));

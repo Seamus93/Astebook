@@ -2,7 +2,9 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
 import { evaluateEmailInterceptorDecision } from "../ai_agents/Interceptor.js";
+import { collectEmailSenderAddresses } from "../ai_agents/Interceptor.js";
 import { withImapRetries } from "./imap_operation_lock.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
@@ -143,6 +145,33 @@ function parsedSummaryFromImapMessage(message) {
   };
 }
 
+function filesFromMail(parsed) {
+  return (parsed.attachments || []).map((attachment, index) => ({
+    fieldname: `email_attachment_${index + 1}`,
+    originalname: attachment.filename || `attachment_${index + 1}`,
+    mimetype: attachment.contentType || "application/octet-stream",
+    size: attachment.size || attachment.content?.length || null,
+    encoding: "7bit",
+    buffer: attachment.content,
+  }));
+}
+
+function bodyFromMail(parsed, messageKey, settings) {
+  return {
+    subject: parsed.subject || "",
+    from: collectEmailSenderAddresses(parsed).join(", "),
+    to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean).join(", "),
+    date: parsed.date?.toISOString?.() || "",
+    email_id: messageKey,
+    message_id: parsed.messageId || messageKey,
+    email_body_text: parsed.text || "",
+    email_body_html: parsed.html || "",
+    source_mailbox: settings.mailbox,
+    watcher_required_filename: settings.requiredFilename,
+    manual_mailbox_process: "true",
+  };
+}
+
 export async function listMailboxMessages({
   getSettings,
   findProcessingEventByExternalEmailId,
@@ -161,7 +190,8 @@ export async function listMailboxMessages({
   }
 
   const selectedFrom = String(from || "").trim().toLowerCase();
-  const allowedSenders = includeAllSenders ? [] : selectedFrom ? [selectedFrom] : settings.fromAllowlist;
+  const filterSenders = includeAllSenders ? [] : selectedFrom ? [selectedFrom] : settings.fromAllowlist;
+  const decisionAllowlist = selectedFrom ? [selectedFrom] : settings.fromAllowlist;
   const normalizedQuery = String(query || "").trim().toLowerCase();
   const state = await readWatcherState();
   const { messages, scanned } = await withImapRetries(async () => {
@@ -202,12 +232,12 @@ export async function listMailboxMessages({
           const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
           const decision = evaluateEmailInterceptorDecision({
             message: parsed,
-            settings: { ...settings, fromAllowlist: allowedSenders },
+            settings: { ...settings, fromAllowlist: decisionAllowlist },
             state,
             messageKey,
           });
           if (normalizedQuery && !messageSearchText(parsed, decision).includes(normalizedQuery)) continue;
-          if (!decision.sender_allowed) continue;
+          if (!includeAllSenders && !decision.sender_allowed) continue;
 
           const matchingEvent = await findProcessingEventByExternalEmailId?.({
             source: "imap.email_activation",
@@ -249,8 +279,117 @@ export async function listMailboxMessages({
     ok: true,
     kind: "mailbox_browser",
     mailbox: settings.mailbox,
-    from: allowedSenders,
+    from: filterSenders,
     scanned,
     messages: messages.slice(0, limit),
   };
+}
+
+export async function processMailboxMessage({
+  getSettings,
+  findProcessingEventByExternalEmailId,
+  onAcceptedMail,
+  uid,
+  messageId,
+  force = true,
+} = {}) {
+  const settings = resolveMailboxSettings(await getSettings());
+  if (!settings.host || !settings.user || !settings.password) {
+    return {
+      ok: false,
+      error: "IMAP host/user/password missing",
+    };
+  }
+
+  const uidNumber = Number.parseInt(String(uid || ""), 10);
+  if (!Number.isFinite(uidNumber) || uidNumber <= 0) {
+    return {
+      ok: false,
+      error: "uid obbligatorio.",
+    };
+  }
+
+  return withImapRetries(async () => {
+    const client = new ImapFlow({
+      host: settings.host,
+      port: settings.port,
+      secure: settings.secure,
+      auth: {
+        user: settings.user,
+        pass: settings.password,
+      },
+      logger: false,
+    });
+    client.on("error", (error) => {
+      console.warn("[mailbox_browser] IMAP client error", error.message || String(error));
+    });
+
+    try {
+      await client.connect();
+      const lock = await client.getMailboxLock(settings.mailbox);
+      try {
+        let found = null;
+        for await (const message of client.fetch([uidNumber], { uid: true, source: true }, { uid: true })) {
+          found = message;
+          break;
+        }
+        if (!found?.source) {
+          return {
+            ok: false,
+            error: "Email IMAP non trovata.",
+          };
+        }
+
+        const parsed = await simpleParser(found.source);
+        const messageKey = parsed.messageId || messageId || `${settings.mailbox}:${uidNumber}`;
+        const duplicateEvent = await findProcessingEventByExternalEmailId?.({
+          source: "imap.email_activation",
+          emailId: messageKey,
+        });
+        if (duplicateEvent) {
+          return {
+            ok: true,
+            duplicate: true,
+            event: duplicateEvent,
+            event_id: duplicateEvent.id,
+          };
+        }
+
+        const decision = evaluateEmailInterceptorDecision({
+          message: parsed,
+          settings,
+          state: force ? { processed: [], ignore_before: null } : await readWatcherState(),
+          messageKey,
+        });
+        if (!decision.sender_allowed || !decision.required_filename_match) {
+          return {
+            ok: false,
+            error: "Email non processabile.",
+            interceptor: decision,
+          };
+        }
+
+        const event = await onAcceptedMail({
+          body: bodyFromMail(parsed, messageKey, settings),
+          files: filesFromMail(parsed),
+          metadata: {
+            subject: parsed.subject || null,
+            from: collectEmailSenderAddresses(parsed).join(", ") || null,
+            email_id: messageKey,
+            manual_mailbox_process: true,
+          },
+        });
+        return {
+          ok: true,
+          event,
+          event_id: event?.id || null,
+          interceptor: decision,
+        };
+      } finally {
+        lock.release();
+      }
+    } finally {
+      await client.logout().catch(() => {});
+    }
+  });
 }

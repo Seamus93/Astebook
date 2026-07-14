@@ -263,7 +263,6 @@ async function pollMailbox(settings, onAcceptedMail) {
             filenames: decision.filenames,
             interceptor: decision,
           });
-          processed.add(messageKey);
           continue;
         }
 

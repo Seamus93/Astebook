@@ -87,6 +87,45 @@ test("email interceptor explains why a mail is skipped", () => {
   ]);
 });
 
+test("email interceptor does not call skipped mail processed", () => {
+  const decision = evaluateEmailInterceptorDecision({
+    message: {
+      from: { value: [{ address: "lc@astebook.com" }] },
+      date: new Date("2026-07-14T09:45:00.000Z"),
+      attachments: [{ filename: "documento identita.pdf" }],
+    },
+    settings: {
+      fromAllowlist: ["lc@astebook.com"],
+      requiredFilename: "proposta",
+    },
+    state: { processed: [] },
+    messageKey: "mail-without-proposal",
+  });
+
+  assert.equal(decision.processable, false);
+  assert.equal(decision.processed, false);
+  assert.deepEqual(decision.reasons, ["required_attachment_missing"]);
+});
+
+test("email interceptor marks only state matches as already processed", () => {
+  const decision = evaluateEmailInterceptorDecision({
+    message: {
+      from: { value: [{ address: "lc@astebook.com" }] },
+      attachments: [{ filename: "Proposta.pdf" }],
+    },
+    settings: {
+      fromAllowlist: ["lc@astebook.com"],
+      requiredFilename: "proposta",
+    },
+    state: { processed: ["mail-processed"] },
+    messageKey: "mail-processed",
+  });
+
+  assert.equal(decision.processable, false);
+  assert.equal(decision.processed, true);
+  assert.deepEqual(decision.reasons, ["already_processed"]);
+});
+
 test("email interceptor exposes sender candidates from structured fields", () => {
   const candidates = collectEmailAddressCandidates({
     from: { value: [{ address: "from@example.com" }] },

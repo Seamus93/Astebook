@@ -63,7 +63,13 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   let allEvents = [];
   let mailboxMessages = [];
   let notificationItems = [];
+  let initialMailboxSyncStarted = false;
   const selectedEventIds = new Set();
+
+  function visibleEvents() {
+    const mailboxEventIds = new Set(mailboxMessages.map((message) => message.event_id).filter(Boolean));
+    return allEvents.filter((event) => !mailboxEventIds.has(event.id));
+  }
 
   async function fetchMailboxMessages() {
     const resp = await apiFetch("/api/v1/admin/mailbox/messages?limit=30");
@@ -87,13 +93,49 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     return payload;
   }
 
+  async function refreshMailboxIndexFromCache(status = "") {
+    try {
+      const mailboxPayload = await fetchMailboxMessages();
+      mailboxMessages = mailboxPayload.messages || [];
+      renderEventList(status || (mailboxMessages.length ? `Mailbox indicizzata: ${mailboxMessages.length} email.` : ""));
+      updateNotificationCenter();
+    } catch (error) {
+      console.warn("Mailbox index refresh failed", error);
+    }
+  }
+
   function wait(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
+  function startInitialMailboxSync() {
+    if (initialMailboxSyncStarted) return;
+    initialMailboxSyncStarted = true;
+    syncMailboxIndex()
+      .then(() => wait(3000))
+      .then(fetchMailboxMessages)
+      .then((freshPayload) => {
+        mailboxMessages = freshPayload.messages || [];
+        renderEventList(
+          mailboxMessages.length
+            ? `Mailbox indicizzata: ${mailboxMessages.length} email.`
+            : "Sync mailbox completato. Indice ancora vuoto."
+        );
+        updateNotificationCenter();
+      })
+      .catch((syncError) => {
+        console.warn("Initial mailbox sync failed", syncError);
+        renderEventList(
+          mailboxMessages.length
+            ? `Mailbox indicizzata: ${mailboxMessages.length} email. Sync iniziale non completata.`
+            : `Indice mailbox vuoto. Sync iniziale non avviata: ${syncError.message || String(syncError)}.`
+        );
+        updateNotificationCenter();
+      });
+  }
+
   async function loadEvents() {
     try {
-      mailboxMessages = [];
       renderEventList("Mailbox IMAP: caricamento in corso...");
       const eventsResp = await apiFetch("/api/v1/processing-events");
       if (!eventsResp.ok) {
@@ -123,40 +165,24 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
         : "Indice mailbox vuoto. Avvio sync IMAP in background...";
       renderEventList(status);
       updateNotificationCenter();
-
-      syncMailboxIndex()
-        .then(() => wait(3000))
-        .then(fetchMailboxMessages)
-        .then((freshPayload) => {
-          mailboxMessages = freshPayload.messages || [];
-          renderEventList(
-            mailboxMessages.length
-              ? `Mailbox indicizzata: ${mailboxMessages.length} email.`
-              : "Sync mailbox avviato. Indice ancora vuoto."
-          );
-          updateNotificationCenter();
-        })
-        .catch((syncError) => {
-          console.warn("Mailbox sync failed", syncError);
-          renderEventList(
-            mailboxMessages.length
-              ? `Mailbox indicizzata: ${mailboxMessages.length} email. Sync non completata.`
-              : `Indice mailbox vuoto. Sync non avviato: ${syncError.message || String(syncError)}.`
-          );
-          updateNotificationCenter();
-        });
+      startInitialMailboxSync();
     } catch (err) {
       console.error("loadEvents", err);
     }
+  }
+
+  function startMailboxIndexPolling() {
+    const intervalMs = 60_000;
+    window.setInterval(() => {
+      if (document.hidden) return;
+      refreshMailboxIndexFromCache();
+    }, intervalMs);
   }
 
   async function scanWatcherThenReload() {
     const refreshButton = document.getElementById("refreshButton");
     if (refreshButton) refreshButton.disabled = true;
     try {
-      await syncMailboxIndex().catch((syncError) => {
-        console.warn("Mailbox sync could not be started from refresh", syncError);
-      });
       const resp = await apiFetch("/api/v1/admin/email-watcher/scan", { method: "POST" });
       const payload = await resp.json().catch(() => ({}));
       if (payload.busy) {
@@ -258,13 +284,14 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     const checkbox = document.getElementById("selectAllEventsCheckbox");
     const deleteButton = document.getElementById("deleteSelectedEventsButton");
     const selectedCount = selectedEventIds.size;
+    const selectableEvents = visibleEvents();
     if (deleteButton) {
       deleteButton.hidden = selectedCount === 0;
       deleteButton.title = selectedCount ? `Elimina ${selectedCount} selezionate` : "Elimina selezionate";
     }
     if (checkbox) {
-      checkbox.checked = allEvents.length > 0 && selectedCount === allEvents.length;
-      checkbox.indeterminate = selectedCount > 0 && selectedCount < allEvents.length;
+      checkbox.checked = selectableEvents.length > 0 && selectedCount === selectableEvents.length;
+      checkbox.indeterminate = selectedCount > 0 && selectedCount < selectableEvents.length;
     }
   }
 
@@ -482,7 +509,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     container.innerHTML = "";
     mailboxMessages.forEach((message) => renderMailboxItem(container, message));
     renderMailboxStatus(container, mailboxStatus);
-    for (const ev of allEvents) {
+    for (const ev of visibleEvents()) {
       renderEventItem(container, ev);
     }
     syncSelectionControls();
@@ -495,7 +522,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       checkbox.addEventListener("change", () => {
         selectedEventIds.clear();
         if (checkbox.checked) {
-          allEvents.forEach((event) => selectedEventIds.add(event.id));
+          visibleEvents().forEach((event) => selectedEventIds.add(event.id));
         }
         renderEventList();
       });
@@ -505,5 +532,12 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     }
   }
 
-  return { initNotifications, initSelectionControls, loadEvents, renderEventList, scanWatcherThenReload };
+  return {
+    initNotifications,
+    initSelectionControls,
+    loadEvents,
+    renderEventList,
+    scanWatcherThenReload,
+    startMailboxIndexPolling,
+  };
 }

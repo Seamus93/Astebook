@@ -1,6 +1,10 @@
 .event-list {
   display: grid;
   gap: 1px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
   background: var(--line);
 }
 

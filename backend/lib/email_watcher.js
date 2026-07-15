@@ -9,6 +9,7 @@ import {
   evaluateEmailInterceptorDecision,
 } from "../ai_agents/Interceptor.js";
 import { isTransientImapError, withImapRetries } from "./imap_operation_lock.js";
+import { updateMailboxMessage, upsertMailboxMessages } from "./mailbox_index.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -126,6 +127,32 @@ function addDiagnostic(stats, diagnostic) {
   stats.diagnostics = stats.diagnostics.slice(-20);
 }
 
+function mailboxIndexMessageFromWatcher({ parsed, message, messageKey, settings, state, decision, eventId = null }) {
+  return {
+    id: messageKey,
+    message_id: parsed.messageId || messageKey,
+    uid: message.uid,
+    mailbox: settings.mailbox,
+    subject: parsed.subject || "",
+    from: (parsed.from?.value || []).map((item) => item.address).filter(Boolean),
+    sender_candidates: decision.sender_candidates,
+    to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean),
+    date: parsed.date?.toISOString?.() || null,
+    seen: false,
+    sender_allowed: decision.sender_allowed,
+    allowed_from: decision.allowed_from,
+    processed: decision.processed,
+    before_baseline: decision.before_baseline,
+    ignore_before: state.ignore_before || null,
+    required_filename_match: decision.required_filename_match,
+    required_filename: decision.required_filename,
+    filenames: decision.filenames,
+    interceptor: decision,
+    event_id: eventId,
+    status: eventId ? "received" : null,
+  };
+}
+
 function filesFromMail(parsed) {
   return (parsed.attachments || []).map((attachment, index) => ({
     fieldname: `email_attachment_${index + 1}`,
@@ -222,6 +249,14 @@ async function pollMailbox(settings, onAcceptedMail) {
             const parsed = await simpleParser(message.source);
             const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
             const decision = interceptorDecision(parsed, settings, state, messageKey);
+            await upsertMailboxMessages(mailboxIndexMessageFromWatcher({
+              parsed,
+              message,
+              messageKey,
+              settings,
+              state,
+              decision,
+            }));
             if (decision.before_baseline) {
               stats.skipped_before_baseline += 1;
               addDiagnostic(stats, {
@@ -270,7 +305,7 @@ async function pollMailbox(settings, onAcceptedMail) {
             }
 
             const senders = senderAddresses(parsed);
-            await onAcceptedMail({
+            const acceptedEvent = await onAcceptedMail({
               body: bodyFromMail(parsed, messageKey, settings),
               files: filesFromMail(parsed),
               metadata: {
@@ -283,6 +318,15 @@ async function pollMailbox(settings, onAcceptedMail) {
             processed.add(messageKey);
             stats.accepted += 1;
             await client.messageFlagsAdd(message.uid, ["\\Seen"], { uid: true });
+            await updateMailboxMessage(
+              { uid: message.uid, mailbox: settings.mailbox, message_id: messageKey },
+              {
+                seen: true,
+                processed: true,
+                event_id: acceptedEvent?.id || null,
+                status: acceptedEvent?.status || "received",
+              }
+            );
           }
         } finally {
           lock.release();

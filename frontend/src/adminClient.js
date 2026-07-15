@@ -51,6 +51,7 @@ export default function initAdminClient() {
   settings.loadSettings();
   learning.loadLearningSummary();
   events.loadEvents();
+  events.startMailboxIndexPolling();
   renderRoute();
 }
 

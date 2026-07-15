@@ -14,8 +14,14 @@
 }
 
 .sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
   border-right: 1px solid var(--line);
   background: var(--panel);
+  height: 100vh;
+  height: 100dvh;
   min-height: 100vh;
   min-width: 0;
   overflow: hidden;

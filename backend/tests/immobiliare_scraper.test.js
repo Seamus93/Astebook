@@ -96,6 +96,7 @@ test("immobiliare scraper can use Apify actor dataset output", async () => {
         assert.equal(options.method, "POST");
         assert.deepEqual(JSON.parse(options.body), {
           startUrls: [{ url: "https://www.immobiliare.it/annunci/123456789/" }],
+          maxItems: 1,
         });
         return {
           ok: true,
@@ -129,4 +130,33 @@ test("immobiliare scraper can use Apify actor dataset output", async () => {
   assert.equal(result.data.prezzo, 151000);
   assert.equal(result.data.disponibilita, "libero");
   assert.equal(result.data.indirizzo, "Piazza Roma 1 Ancona AN");
+});
+
+test("immobiliare scraper adapts input for Azzouzana search-url actor", async () => {
+  const result = await scrapeImmobiliareAnnouncement("https://www.immobiliare.it/annunci/123456789/", {
+    provider: "apify",
+    apifyConfig: {
+      apiBaseUrl: "https://api.apify.test",
+      token: "token",
+      actorId: "azzouzana/immobiliare-it-listing-page-scraper-by-search-url",
+    },
+    fetchImpl: async (url, options = {}) => {
+      assert.equal(
+        url,
+        "https://api.apify.test/v2/actors/azzouzana~immobiliare-it-listing-page-scraper-by-search-url/run-sync-get-dataset-items?token=token"
+      );
+      assert.deepEqual(JSON.parse(options.body), {
+        startUrl: "https://www.immobiliare.it/annunci/123456789/",
+        maxItems: 10,
+      });
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ([{ title: "Da search actor", price: "100000" }]),
+      };
+    },
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.title, "Da search actor");
 });

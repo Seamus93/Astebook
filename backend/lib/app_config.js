@@ -41,6 +41,7 @@ const defaultConfig = {
     immobiliare_scraper_provider: "direct",
     apify_token: "",
     apify_immobiliare_actor_id: "",
+    apify_immobiliare_input_template: "",
   },
 };
 

@@ -73,6 +73,8 @@ export function registerAdminSettingsRoutes(app, {
         apify_token: secretValue("APIFY_TOKEN", "apify_token"),
         apify_immobiliare_actor_id:
           process.env.APIFY_IMMOBILIARE_ACTOR_ID || settings.apify_immobiliare_actor_id || "",
+        apify_immobiliare_input_template:
+          process.env.APIFY_IMMOBILIARE_INPUT_TEMPLATE || settings.apify_immobiliare_input_template || "",
       },
     });
   });
@@ -117,6 +119,7 @@ export function registerAdminSettingsRoutes(app, {
       "email_watcher_poll_seconds",
       "immobiliare_scraper_provider",
       "apify_immobiliare_actor_id",
+      "apify_immobiliare_input_template",
     ].forEach((key) => {
       if (Object.prototype.hasOwnProperty.call(body, key)) {
         settings[key] = String(body[key] || "").trim();

@@ -655,6 +655,7 @@ test("Admin login can read and update runtime settings", async () => {
         immobiliare_scraper_provider: "apify",
         apify_token: "apify-secret",
         apify_immobiliare_actor_id: "user/immobiliare-scraper",
+        apify_immobiliare_input_template: "{\"startUrls\":[{\"url\":\"{url}\"}],\"maxItems\":1}",
       }),
     });
     const updatePayload = await updateResponse.json();
@@ -717,6 +718,7 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(updatedSettingsPayload.settings.immobiliare_scraper_provider, "apify");
     assert.equal(updatedSettingsPayload.settings.apify_token, "apify-secret");
     assert.equal(updatedSettingsPayload.settings.apify_immobiliare_actor_id, "user/immobiliare-scraper");
+    assert.equal(updatedSettingsPayload.settings.apify_immobiliare_input_template, "{\"startUrls\":[{\"url\":\"{url}\"}],\"maxItems\":1}");
 
     const badSmtpUpdateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
       method: "POST",

@@ -114,7 +114,7 @@ async function readApifyConfig(overrides = {}) {
     apiBaseUrl: String(overrides.apiBaseUrl || process.env.APIFY_API_BASE_URL || "https://api.apify.com").replace(/\/$/, ""),
     token: String(overrides.token || process.env.APIFY_TOKEN || settings.apify_token || "").trim(),
     actorId: String(overrides.actorId || process.env.APIFY_IMMOBILIARE_ACTOR_ID || settings.apify_immobiliare_actor_id || "").trim(),
-    inputTemplate: overrides.inputTemplate || process.env.APIFY_IMMOBILIARE_INPUT_TEMPLATE || null,
+    inputTemplate: overrides.inputTemplate || process.env.APIFY_IMMOBILIARE_INPUT_TEMPLATE || settings.apify_immobiliare_input_template || null,
   };
 }
 
@@ -139,7 +139,14 @@ function buildApifyInput(url, config) {
       return { startUrls: [{ url }], url };
     }
   }
-  return { startUrls: [{ url }] };
+  const actorId = String(config.actorId || "").toLowerCase();
+  if (actorId.includes("immobiliare-it-listing-page-scraper-by-search-url")) {
+    return { startUrl: url, maxItems: 10 };
+  }
+  if (actorId.includes("immobiliare-it-listing-page-scraper-by-items-urls")) {
+    return { startUrls: [url] };
+  }
+  return { startUrls: [{ url }], maxItems: 1 };
 }
 
 function firstValue(source, paths) {
@@ -185,7 +192,6 @@ function normalizeApifyItem(item, url) {
     superficie_mq: firstValue(item, ["surface", "surfaceMq", "area", "details.surface"]) || null,
     rooms: firstValue(item, ["rooms", "locali", "details.rooms"]) || null,
     property_type: firstValue(item, ["propertyType", "typology", "type"]) || null,
-    raw: item,
   };
 }
 

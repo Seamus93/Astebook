@@ -115,7 +115,16 @@ const settingsSections = [
         ],
       ],
       ["apifyToken", "apify_token", "Apify Token", "Token API Apify", "off", "password", "Token usato per eseguire l'actor Apify."],
-      ["apifyImmobiliareActorId", "apify_immobiliare_actor_id", "Actor Immobiliare", "user/immobiliare-scraper", "off", "text", "ID dell'actor Apify da eseguire per leggere un annuncio Immobiliare.it."],
+      ["apifyImmobiliareActorId", "apify_immobiliare_actor_id", "Actor Immobiliare", "azzouzana/immobiliare-it-listing-page-scraper-by-search-url", "off", "text", "ID dell'actor Apify da eseguire per leggere un annuncio Immobiliare.it."],
+      [
+        "apifyImmobiliareInputTemplate",
+        "apify_immobiliare_input_template",
+        "Input template Actor",
+        "{\"startUrl\":\"{url}\",\"maxItems\":10}",
+        "off",
+        "text",
+        "JSON opzionale inviato all'actor. Usa {url} come placeholder e spegni qui foto, agenzie o contatti se l'actor li supporta.",
+      ],
     ],
   },
   {

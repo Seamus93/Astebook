@@ -35,6 +35,7 @@ const settingsInputIds = {
   immobiliare_scraper_provider: "immobiliareScraperProvider",
   apify_token: "apifyToken",
   apify_immobiliare_actor_id: "apifyImmobiliareActorId",
+  apify_immobiliare_input_template: "apifyImmobiliareInputTemplate",
 };
 
 export function suggestModelBasedOnBaseUrl() {

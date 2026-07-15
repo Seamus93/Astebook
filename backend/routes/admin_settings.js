@@ -68,6 +68,11 @@ export function registerAdminSettingsRoutes(app, {
           process.env.EMAIL_WATCHER_REQUIRED_FILENAME || settings.email_watcher_required_filename || "proposta",
         email_watcher_poll_seconds:
           process.env.EMAIL_WATCHER_POLL_SECONDS || settings.email_watcher_poll_seconds || "120",
+        immobiliare_scraper_provider:
+          process.env.IMMOBILIARE_SCRAPER_PROVIDER || settings.immobiliare_scraper_provider || "direct",
+        apify_token: secretValue("APIFY_TOKEN", "apify_token"),
+        apify_immobiliare_actor_id:
+          process.env.APIFY_IMMOBILIARE_ACTOR_ID || settings.apify_immobiliare_actor_id || "",
       },
     });
   });
@@ -101,6 +106,7 @@ export function registerAdminSettingsRoutes(app, {
     assignIfFilled("smtp_user");
     assignIfFilled("smtp_password");
     assignIfFilled("smtp_from");
+    assignIfFilled("apify_token");
     [
       "email_watcher_enabled",
       "email_watcher_imap_host",
@@ -109,6 +115,8 @@ export function registerAdminSettingsRoutes(app, {
       "email_watcher_from_allowlist",
       "email_watcher_required_filename",
       "email_watcher_poll_seconds",
+      "immobiliare_scraper_provider",
+      "apify_immobiliare_actor_id",
     ].forEach((key) => {
       if (Object.prototype.hasOwnProperty.call(body, key)) {
         settings[key] = String(body[key] || "").trim();

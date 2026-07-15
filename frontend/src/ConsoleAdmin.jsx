@@ -95,6 +95,30 @@ const settingsSections = [
     ],
   },
   {
+    id: "immobiliare",
+    title: "Immobiliare.it",
+    tag: "Dati immobiliari",
+    icon: "real_estate_agent",
+    fields: [
+      [
+        "immobiliareScraperProvider",
+        "immobiliare_scraper_provider",
+        "Provider acquisizione",
+        "direct, apify o off",
+        "off",
+        "select",
+        "Scegli come acquisire i dati degli annunci Immobiliare.it. Apify usa l'actor configurato sotto.",
+        [
+          ["direct", "Direct"],
+          ["apify", "Apify"],
+          ["off", "Disattivato"],
+        ],
+      ],
+      ["apifyToken", "apify_token", "Apify Token", "Token API Apify", "off", "password", "Token usato per eseguire l'actor Apify."],
+      ["apifyImmobiliareActorId", "apify_immobiliare_actor_id", "Actor Immobiliare", "user/immobiliare-scraper", "off", "text", "ID dell'actor Apify da eseguire per leggere un annuncio Immobiliare.it."],
+    ],
+  },
+  {
     id: "sicurezza-utenti",
     title: "Sicurezza e Utenti",
     tag: "Accessi e token",

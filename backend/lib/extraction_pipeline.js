@@ -169,6 +169,37 @@ export function createAiExtractionPipeline({
     }
   }
 
+  function updateImmobiliareFallbackFromEmail(result, emailAnnouncement) {
+    if (!result?.immobiliare?.url || !emailAnnouncement) return false;
+    if (result.immobiliare.ok === true && result.immobiliare.data) return false;
+    const fallbackData = {
+      source: "email_body_fallback",
+      url: result.immobiliare.url,
+      title: null,
+      description: emailAnnouncement.descrizione || null,
+      prezzo: emailAnnouncement.offerta_minima ?? emailAnnouncement.prezzo_base ?? null,
+      prezzo_raw: null,
+      disponibilita: emailAnnouncement.stato || null,
+      indirizzo: emailAnnouncement.indirizzo || emailAnnouncement.indirizzo_raw || null,
+      address: null,
+      jsonld_found: 0,
+    };
+    const hasFallbackData = Boolean(
+      fallbackData.description ||
+        fallbackData.prezzo != null ||
+        fallbackData.disponibilita ||
+        fallbackData.indirizzo
+    );
+    if (!hasFallbackData) return false;
+    result.immobiliare = {
+      ...result.immobiliare,
+      fallback_ok: true,
+      fallback_source: "email_body",
+      data: fallbackData,
+    };
+    return true;
+  }
+
   async function buildMergedFromExtractionResult(result) {
     const annuncio = result.extracted?.annuncio || {};
     const proposta = result.extracted?.proposta || {};
@@ -384,6 +415,12 @@ export function createAiExtractionPipeline({
         await updateProcessingEvent(event.id, { result }, {
           message: "Email body announcement extracted",
           data: emailAnnouncement,
+        });
+      }
+      if (updateImmobiliareFallbackFromEmail(result, emailAnnouncement)) {
+        await updateProcessingEvent(event.id, { result }, {
+          message: "Immobiliare.it data filled from email body",
+          data: result.immobiliare,
         });
       }
     }

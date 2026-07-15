@@ -32,6 +32,9 @@ const settingsInputIds = {
   email_watcher_from_allowlist: "emailWatcherFromAllowlist",
   email_watcher_required_filename: "emailWatcherRequiredFilename",
   email_watcher_poll_seconds: "emailWatcherPollSeconds",
+  immobiliare_scraper_provider: "immobiliareScraperProvider",
+  apify_token: "apifyToken",
+  apify_immobiliare_actor_id: "apifyImmobiliareActorId",
 };
 
 export function suggestModelBasedOnBaseUrl() {

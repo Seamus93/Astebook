@@ -65,3 +65,68 @@ test("immobiliare scraper fetches one supported announcement url", async () => {
   assert.equal(result.data.title, "Annuncio test");
   assert.equal(result.data.description, "Descrizione test");
 });
+
+test("immobiliare scraper reports blocked access clearly", async () => {
+  const result = await scrapeImmobiliareAnnouncement("https://www.immobiliare.it/annunci/123456789/", {
+    fetchImpl: async () => ({
+      ok: false,
+      status: 403,
+      text: async () => "",
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.blocked, true);
+  assert.equal(result.http_status, 403);
+  assert.equal(result.error, "Accesso bloccato da Immobiliare.it.");
+});
+
+test("immobiliare scraper can use Apify actor dataset output", async () => {
+  const calls = [];
+  const result = await scrapeImmobiliareAnnouncement("https://www.immobiliare.it/annunci/123456789/", {
+    provider: "apify",
+    apifyConfig: {
+      apiBaseUrl: "https://api.apify.test",
+      token: "token",
+      actorId: "user/immobiliare-scraper",
+    },
+    fetchImpl: async (url, options = {}) => {
+      calls.push({ url, options });
+      if (url === "https://api.apify.test/v2/actors/user~immobiliare-scraper/run-sync-get-dataset-items?token=token") {
+        assert.equal(options.method, "POST");
+        assert.deepEqual(JSON.parse(options.body), {
+          startUrls: [{ url: "https://www.immobiliare.it/annunci/123456789/" }],
+        });
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ([
+            {
+              url: "https://www.immobiliare.it/annunci/123456789/",
+              title: "Ufficio in vendita",
+              description: "Uffici al quinto piano.",
+              price: "€ 151.000",
+              availability: "libero",
+              address: {
+                street: "Piazza Roma",
+                streetNumber: "1",
+                city: "Ancona",
+                province: "AN",
+              },
+            },
+          ]),
+        };
+      }
+      throw new Error(`Unexpected fetch ${url}`);
+    },
+  });
+
+  assert.equal(calls.length, 1);
+  assert.equal(result.ok, true);
+  assert.equal(result.provider, "apify");
+  assert.equal(result.data.source, "apify");
+  assert.equal(result.data.title, "Ufficio in vendita");
+  assert.equal(result.data.prezzo, 151000);
+  assert.equal(result.data.disponibilita, "libero");
+  assert.equal(result.data.indirizzo, "Piazza Roma 1 Ancona AN");
+});

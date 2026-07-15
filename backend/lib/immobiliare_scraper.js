@@ -1,3 +1,5 @@
+import { getRuntimeSettings } from "./app_config.js";
+
 const DETAIL_URL_RE = /^https?:\/\/(?:www\.)?immobiliare\.it\/annunci\/\d+\/?/i;
 
 function cleanText(value) {
@@ -96,6 +98,132 @@ function numberFromText(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+async function configuredProvider(provider) {
+  if (provider) return String(provider).trim().toLowerCase();
+  const settings = await getRuntimeSettings();
+  return String(
+    process.env.IMMOBILIARE_SCRAPER_PROVIDER ||
+      settings.immobiliare_scraper_provider ||
+      "direct"
+  ).trim().toLowerCase();
+}
+
+async function readApifyConfig(overrides = {}) {
+  const settings = await getRuntimeSettings();
+  return {
+    apiBaseUrl: String(overrides.apiBaseUrl || process.env.APIFY_API_BASE_URL || "https://api.apify.com").replace(/\/$/, ""),
+    token: String(overrides.token || process.env.APIFY_TOKEN || settings.apify_token || "").trim(),
+    actorId: String(overrides.actorId || process.env.APIFY_IMMOBILIARE_ACTOR_ID || settings.apify_immobiliare_actor_id || "").trim(),
+    inputTemplate: overrides.inputTemplate || process.env.APIFY_IMMOBILIARE_INPUT_TEMPLATE || null,
+  };
+}
+
+function apifyActorPath(actorId) {
+  return encodeURIComponent(String(actorId || "").replace("/", "~"));
+}
+
+function replaceUrlPlaceholder(value, url) {
+  if (typeof value === "string") return value.replaceAll("{url}", url);
+  if (Array.isArray(value)) return value.map((item) => replaceUrlPlaceholder(item, url));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, replaceUrlPlaceholder(item, url)]));
+  }
+  return value;
+}
+
+function buildApifyInput(url, config) {
+  if (config.inputTemplate) {
+    try {
+      return replaceUrlPlaceholder(JSON.parse(config.inputTemplate), url);
+    } catch {
+      return { startUrls: [{ url }], url };
+    }
+  }
+  return { startUrls: [{ url }] };
+}
+
+function firstValue(source, paths) {
+  for (const path of paths) {
+    const value = path.split(".").reduce((current, key) => current?.[key], source);
+    if (value !== undefined && value !== null && value !== "") return value;
+  }
+  return null;
+}
+
+function normalizeAddress(value) {
+  if (!value) return { raw: null, text: null };
+  if (typeof value === "string") return { raw: value, text: cleanText(value) || null };
+  const parts = [
+    value.street || value.streetAddress || value.address || value.route,
+    value.streetNumber || value.houseNumber || value.number,
+    value.city || value.locality || value.municipality || value.addressLocality,
+    value.province || value.region || value.addressRegion,
+  ];
+  return { raw: value, text: parts.filter(Boolean).join(" ").replace(/\s+,/g, ",").trim() || null };
+}
+
+function normalizeApifyItem(item, url) {
+  const address = normalizeAddress(firstValue(item, ["address", "location", "property.address"]));
+  const priceRaw = firstValue(item, [
+    "price",
+    "prezzo",
+    "priceRaw",
+    "price.raw",
+    "details.price",
+    "property.price",
+  ]);
+  return {
+    source: "apify",
+    url: firstValue(item, ["url", "listingUrl", "link"]) || url,
+    title: firstValue(item, ["title", "name", "headline", "property.title"]) || null,
+    description: firstValue(item, ["description", "descrizione", "text", "property.description"]) || null,
+    prezzo: typeof priceRaw === "number" ? priceRaw : numberFromText(priceRaw),
+    prezzo_raw: priceRaw != null ? String(priceRaw) : null,
+    disponibilita: firstValue(item, ["availability", "disponibilita", "status", "property.availability"]) || null,
+    indirizzo: address.text,
+    address: address.raw,
+    superficie_mq: firstValue(item, ["surface", "surfaceMq", "area", "details.surface"]) || null,
+    rooms: firstValue(item, ["rooms", "locali", "details.rooms"]) || null,
+    property_type: firstValue(item, ["propertyType", "typology", "type"]) || null,
+    raw: item,
+  };
+}
+
+async function scrapeWithApify(url, { fetchImpl = fetch, config } = {}) {
+  if (!config.token) return { ok: false, provider: "apify", error: "APIFY_TOKEN non configurato.", url };
+  if (!config.actorId) return { ok: false, provider: "apify", error: "APIFY_IMMOBILIARE_ACTOR_ID non configurato.", url };
+
+  const endpoint = `${config.apiBaseUrl}/v2/actors/${apifyActorPath(config.actorId)}/run-sync-get-dataset-items?token=${encodeURIComponent(config.token)}`;
+  const response = await fetchImpl(endpoint, {
+    method: "POST",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(buildApifyInput(url, config)),
+  });
+  if (!response.ok) {
+    return {
+      ok: false,
+      provider: "apify",
+      error: `Apify HTTP ${response.status}`,
+      http_status: response.status,
+      url,
+    };
+  }
+  const items = await response.json();
+  const firstItem = Array.isArray(items) ? items[0] : items?.items?.[0] || items;
+  if (!firstItem) {
+    return { ok: false, provider: "apify", error: "Apify non ha restituito dati.", url };
+  }
+  return {
+    ok: true,
+    provider: "apify",
+    scraped_at: new Date().toISOString(),
+    data: normalizeApifyItem(firstItem, url),
+  };
+}
+
 function dataAttribute(html, names) {
   for (const name of names) {
     const re = new RegExp(`(?:data-${name}|${name})=["']([^"']+)["']`, "i");
@@ -150,10 +278,18 @@ export function parseImmobiliareHtml(html, url) {
   };
 }
 
-export async function scrapeImmobiliareAnnouncement(url, { fetchImpl = fetch } = {}) {
+export async function scrapeImmobiliareAnnouncement(url, { fetchImpl = fetch, provider, apifyConfig } = {}) {
   const safeUrl = absoluteImmobiliareUrl(url);
   if (!safeUrl || !DETAIL_URL_RE.test(safeUrl)) {
     return { ok: false, error: "URL Immobiliare.it non supportato.", url };
+  }
+
+  const selectedProvider = await configuredProvider(provider);
+  if (selectedProvider === "off") {
+    return { ok: false, skipped: true, error: "Acquisizione Immobiliare.it disattivata.", url: safeUrl };
+  }
+  if (selectedProvider === "apify") {
+    return scrapeWithApify(safeUrl, { fetchImpl, config: await readApifyConfig(apifyConfig) });
   }
 
   const response = await fetchImpl(safeUrl, {
@@ -163,7 +299,14 @@ export async function scrapeImmobiliareAnnouncement(url, { fetchImpl = fetch } =
     },
   });
   if (!response.ok) {
-    return { ok: false, error: `Immobiliare.it HTTP ${response.status}`, url: safeUrl };
+    const blocked = response.status === 401 || response.status === 403;
+    return {
+      ok: false,
+      blocked,
+      error: blocked ? "Accesso bloccato da Immobiliare.it." : `Immobiliare.it HTTP ${response.status}`,
+      http_status: response.status,
+      url: safeUrl,
+    };
   }
   const html = await response.text();
   return {

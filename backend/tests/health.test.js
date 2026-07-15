@@ -652,6 +652,9 @@ test("Admin login can read and update runtime settings", async () => {
         email_watcher_from_allowlist: "lc@astebook.com, mv@astebook.com",
         email_watcher_required_filename: "proposta",
         email_watcher_poll_seconds: "120",
+        immobiliare_scraper_provider: "apify",
+        apify_token: "apify-secret",
+        apify_immobiliare_actor_id: "user/immobiliare-scraper",
       }),
     });
     const updatePayload = await updateResponse.json();
@@ -711,6 +714,9 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(updatedSettingsPayload.settings.email_watcher_from_allowlist, "lc@astebook.com, mv@astebook.com");
     assert.equal(updatedSettingsPayload.settings.email_watcher_required_filename, "proposta");
     assert.equal(updatedSettingsPayload.settings.email_watcher_poll_seconds, "120");
+    assert.equal(updatedSettingsPayload.settings.immobiliare_scraper_provider, "apify");
+    assert.equal(updatedSettingsPayload.settings.apify_token, "apify-secret");
+    assert.equal(updatedSettingsPayload.settings.apify_immobiliare_actor_id, "user/immobiliare-scraper");
 
     const badSmtpUpdateResponse = await fetch(`http://127.0.0.1:${port}/api/v1/admin/settings`, {
       method: "POST",

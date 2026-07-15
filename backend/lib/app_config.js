@@ -38,6 +38,9 @@ const defaultConfig = {
     email_watcher_from_allowlist: "",
     email_watcher_required_filename: "proposta",
     email_watcher_poll_seconds: "120",
+    immobiliare_scraper_provider: "direct",
+    apify_token: "",
+    apify_immobiliare_actor_id: "",
   },
 };
 

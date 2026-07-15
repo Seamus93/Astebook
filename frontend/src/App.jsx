@@ -51,6 +51,9 @@ const adminMarkup = String.raw`
     <section class="detail">
       <header class="detail-header">
         <div class="detail-title">
+          <button id="sidebarRestoreButton" class="icon-button sidebar-restore-button" type="button" title="Apri/chiudi elenco" aria-label="Apri o chiudi elenco" aria-expanded="true">
+            <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+          </button>
           <div>
           <p id="selectedSource" class="eyebrow">Nessun evento</p>
           <h1 id="selectedTitle">Seleziona una lavorazione</h1>

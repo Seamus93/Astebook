@@ -10,5 +10,7 @@ export const catastoVociAgent = createFieldAgent({
     "Mantieni tutte le righe catastali trovate.",
     "Non deduplicare unita diverse.",
     "Compila mappale con particella quando nel documento i termini sono usati come sinonimi.",
+    "Riconosci righe compatte tipo: foglio 8 part. 63 sub 16 cat. A/10.",
+    "Se trovi due righe con stesso foglio/particella ma sub/categoria diversi, restituiscile entrambe.",
   ],
 });

@@ -451,6 +451,8 @@ export async function aiExtractProposta({ text, fileName }) {
   const red = preExtractRedazione(content);
   const ibanGuess = preExtractIban(content);
   const catastoGuess = preExtractPropostaCatasto(content);
+  const catastoVociGuess = preExtractPropostaCatastoVoci(content);
+  const indirizzoGuess = preExtractPropostaIndirizzo(content);
   const feedbackContext = await buildAiMemoryContext("proposta");
 
   const json = await callJsonSchema({
@@ -469,12 +471,16 @@ export async function aiExtractProposta({ text, fileName }) {
   if (json.data_redazione  == null) json.data_redazione  = red.data;
   if (json.anno_redazione  == null) json.anno_redazione  = red.anno;
   if (json.iban_beneficiario == null) json.iban_beneficiario = ibanGuess;
+  if (isBlankExtractedValue(json.indirizzo_immobile)) json.indirizzo_immobile = indirizzoGuess;
   if (!json.catasto) json.catasto = {};
-  if (json.catasto.foglio == null) json.catasto.foglio = catastoGuess.foglio;
-  if (json.catasto.particella == null) json.catasto.particella = catastoGuess.particella;
-  if (json.catasto.mappale == null) json.catasto.mappale = catastoGuess.mappale;
-  if (json.catasto.subalterno == null) json.catasto.subalterno = catastoGuess.subalterno;
-  if (json.catasto.categoria == null) json.catasto.categoria = catastoGuess.categoria;
+  if (isBlankExtractedValue(json.catasto.foglio)) json.catasto.foglio = catastoGuess.foglio;
+  if (isBlankExtractedValue(json.catasto.particella)) json.catasto.particella = catastoGuess.particella;
+  if (isBlankExtractedValue(json.catasto.mappale)) json.catasto.mappale = catastoGuess.mappale;
+  if (isBlankExtractedValue(json.catasto.subalterno)) json.catasto.subalterno = catastoGuess.subalterno;
+  if (isBlankExtractedValue(json.catasto.categoria)) json.catasto.categoria = catastoGuess.categoria;
+  if (!Array.isArray(json.catasto_voci) || json.catasto_voci.length === 0) {
+    json.catasto_voci = catastoVociGuess.length ? catastoVociGuess : null;
+  }
 
   return json;
 }
@@ -610,7 +616,89 @@ function preExtractIban(text) {
   return m[0].replace(/\s+/g, "").toUpperCase();
 }
 
+function isBlankExtractedValue(value) {
+  if (value === null || value === undefined) return true;
+  const clean = String(value).trim().toLowerCase();
+  return !clean || clean === "-" || clean === "null" || clean === "n/a" || /^[…._\s”")/]+$/.test(clean);
+}
+
+function normalizeCategory(value) {
+  if (!value) return null;
+  const clean = String(value).replace(/\s+/g, "").toUpperCase();
+  const withSlash = clean.match(/^([A-Z]{1,2})\/?(\d{1,4})$/);
+  if (withSlash) return `${withSlash[1]}/${withSlash[2]}`;
+  return /^[A-Z]{1,2}\/\d{1,4}$/.test(clean) ? clean : null;
+}
+
+function normalizeCatastoVoce({ foglio, particella, subalterno, categoria }) {
+  const cleanFoglio = foglio ? String(foglio).trim() : null;
+  const cleanParticella = particella ? String(particella).trim() : null;
+  const cleanSubalterno = subalterno ? String(subalterno).replace(/\s*-\s*/g, "-").trim() : null;
+  const cleanCategoria = normalizeCategory(categoria);
+  if (!cleanFoglio && !cleanParticella && !cleanSubalterno && !cleanCategoria) return null;
+  return {
+    foglio: cleanFoglio,
+    particella: cleanParticella,
+    mappale: cleanParticella,
+    subalterno: cleanSubalterno,
+    categoria: cleanCategoria,
+  };
+}
+
+function preExtractPropostaIndirizzo(text) {
+  if (!text) return null;
+  const T = text.replace(/\r/g, "").replace(/[ \t]+/g, " ");
+  const patterns = [
+    /Immobile\s+sito\s+a\s+([A-ZÀ-Ý][A-Za-zÀ-ÿ'\s.-]{2,80}?)\s+in\s+((?:Via|Viale|Corso|Piazza|Piazzale|Largo|Strada|Vicolo|Vico)\s+[^\n;]+?)(?=\s+censito|\n|$)/i,
+    /Descrizione\s+Immobile[\s\S]{0,250}?((?:Via|Viale|Corso|Piazza|Piazzale|Largo|Strada|Vicolo|Vico)\s+[^\n;]+?)(?=\s+censito|\n|$)/i,
+  ];
+  for (const pattern of patterns) {
+    const match = T.match(pattern);
+    if (!match) continue;
+    const comune = match.length > 2 ? match[1].replace(/\bnull\b/gi, "").trim() : "";
+    const indirizzo = (match.length > 2 ? match[2] : match[1]).replace(/\s+/g, " ").replace(/[,.]\s*$/, "").trim();
+    if (!indirizzo || /\bnull\b/i.test(indirizzo)) continue;
+    return comune ? `${indirizzo}, ${comune}` : indirizzo;
+  }
+  return null;
+}
+
+function preExtractPropostaCatastoVoci(text) {
+  if (!text) return [];
+  const T = text
+    .replace(/\r/g, "")
+    .replace(/[_]+/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{2,}/g, "\n");
+  const idx = T.search(/(identificazione\s+catastale|catasto|censito\s+al\s+n\.c\.e\.u\.|censito\s+al\s+n\.c\.t\.)/i);
+  const scope = idx >= 0 ? T.slice(idx, idx + 1200) : T;
+  const voci = [];
+  const seen = new Set();
+  const add = (raw) => {
+    const voce = normalizeCatastoVoce(raw);
+    if (!voce) return;
+    const key = [voce.foglio, voce.particella, voce.subalterno, voce.categoria].join("|");
+    if (seen.has(key)) return;
+    seen.add(key);
+    voci.push(voce);
+  };
+
+  const compact = /foglio\s*([0-9A-Za-z\/]+)[\s,;.]{0,20}(?:part\.?|particella|mapp\.?|mappale)\s*([0-9A-Za-z\/]+)[\s,;.]{0,20}(?:sub\.?|subalterno)\s*([0-9A-Za-z\/]+(?:\s*-\s*[0-9A-Za-z\/]+)*)[\s,;.]{0,20}(?:cat\.?|categoria)\s*([A-Za-z]{1,2}\s*\/?\s*\d{1,4})/gi;
+  for (const match of scope.matchAll(compact)) {
+    add({ foglio: match[1], particella: match[2], subalterno: match[3], categoria: match[4] });
+  }
+
+  const loose = /foglio\s*([0-9A-Za-z\/]+)[\s\S]{0,80}?(?:part\.?|particella|mapp\.?|mappale)\s*([0-9A-Za-z\/]+)[\s\S]{0,80}?(?:sub\.?|subalterno)\s*([0-9A-Za-z\/]+(?:\s*-\s*[0-9A-Za-z\/]+)*)[\s\S]{0,80}?(?:cat\.?|categoria)\s*([A-Za-z]{1,2}\s*\/?\s*\d{1,4})/gi;
+  for (const match of scope.matchAll(loose)) {
+    add({ foglio: match[1], particella: match[2], subalterno: match[3], categoria: match[4] });
+  }
+
+  return voci;
+}
+
 function preExtractPropostaCatasto(text) {
+  const voci = preExtractPropostaCatastoVoci(text);
+  if (voci.length) return voci[0];
   const result = { foglio: null, particella: null, mappale: null, subalterno: null, categoria: null };
   if (!text) return result;
   const T = text
@@ -638,9 +726,9 @@ function preExtractPropostaCatasto(text) {
       .map((c) => c.replace(/\s+/g, "").toUpperCase());
     if (candidates.length) {
       categoria =
-        candidates.find((c) => /^[A-Z]{1,2}\/\d{1,4}$/.test(c)) ||
-        candidates.find((c) => /^[A-Z]{1,2}\d{1,4}$/.test(c)) ||
-        candidates[0];
+        normalizeCategory(candidates.find((c) => /^[A-Z]{1,2}\/\d{1,4}$/.test(c))) ||
+        normalizeCategory(candidates.find((c) => /^[A-Z]{1,2}\d{1,4}$/.test(c))) ||
+        normalizeCategory(candidates[0]);
     }
   }
 

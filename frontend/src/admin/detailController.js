@@ -97,6 +97,7 @@ function extractedResultView(event) {
   const result = { ...(event.result || {}) };
   delete result.notes;
   delete result.missing_fields;
+  delete result.immobiliare;
   return result;
 }
 
@@ -290,6 +291,7 @@ export function createDetailController() {
     }, "Nessun dato mailbox.");
     renderStructured(document.getElementById("stepsPane"), [], "Questa mail non ha ancora un log pipeline.");
     renderStructured(document.getElementById("filesPane"), message.filenames || [], "Nessun allegato.");
+    renderStructured(document.getElementById("immobiliarePane"), {}, "Nessun dato immobiliare acquisito.");
     renderStructured(document.getElementById("resultPane"), {}, "Nessun dato estratto.");
     renderStructured(document.getElementById("notesPane"), [
       ...(state.issue ? [state.issue] : []),
@@ -387,6 +389,7 @@ export function createDetailController() {
 
       renderPipelineSteps(ev);
       renderFileSections(ev);
+      renderStructured(document.getElementById("immobiliarePane"), ev.result?.immobiliare || {}, "Nessun dato immobiliare acquisito.");
       renderStructured(document.getElementById("resultPane"), extractedResultView(ev), "Nessun dato estratto.");
       renderFeedbackForm(ev, selectEvent);
       renderNotes(ev);

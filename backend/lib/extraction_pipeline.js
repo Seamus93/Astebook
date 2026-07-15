@@ -28,6 +28,7 @@ import {
 import { mergeAnnuncioProposta } from "./merge_json.js";
 import { parsePdfBuffer } from "./pdf.js";
 import { ocrFileUrlWithPdfApp } from "./pdf_app.js";
+import { extractImmobiliareAnnouncementUrls, scrapeImmobiliareAnnouncement } from "./immobiliare_scraper.js";
 
 export function createAiExtractionPipeline({
   autoSendMergedDocumentEmail,
@@ -329,6 +330,35 @@ export function createAiExtractionPipeline({
     result.email.original_body = String(emailText || "");
     result.email.cleaned_body = String(emailAnnouncementText || "");
     await updateProcessingEvent(event.id, { result }, { message: "Email body cleaned for AI" });
+
+    const immobiliareUrls = extractImmobiliareAnnouncementUrls(emailText);
+    if (immobiliareUrls.length) {
+      const url = immobiliareUrls[0];
+      try {
+        const scraped = await scrapeImmobiliareAnnouncement(url);
+        result.immobiliare = {
+          url,
+          ...scraped,
+        };
+        await updateProcessingEvent(event.id, { result }, {
+          message: scraped.ok ? "Immobiliare.it announcement scraped" : "Immobiliare.it announcement scrape skipped",
+          data: result.immobiliare,
+        });
+      } catch (error) {
+        result.immobiliare = {
+          url,
+          ok: false,
+          error: error.message || String(error),
+        };
+        result.notes.push(`${url}: dati Immobiliare.it non acquisiti (${result.immobiliare.error})`);
+        await updateProcessingEvent(event.id, { result }, {
+          level: "error",
+          message: "Immobiliare.it announcement scrape failed",
+          data: result.immobiliare,
+        });
+      }
+    }
+
     if (!result.codice_pratica) {
       const codiceAi = await extractCodicePraticaAiOnly({
         text: [

@@ -458,6 +458,43 @@ test("proposal merge prefers OCR PDF values over DOCX values", () => {
   assert.deepEqual(merged.source_files, ["Modello proposta.docx", "Proposta firmata.pdf"]);
 });
 
+test("proposal extraction recovers AN_ANCO address and compact cadastral rows", async () => {
+  const previousMock = process.env.ASTEBOOK_AI_MOCK;
+  process.env.ASTEBOOK_AI_MOCK = "1";
+  try {
+    const { aiExtractProposta } = await import("../lib/ai.js");
+    const extracted = await aiExtractProposta({
+      fileName: "Proposta AN_ANCO.pdf",
+      text: `
+        1. Descrizione Immobile
+        Immobile sito a Ancona in Via Lodovico Menicucci n. 1
+        censito al N.C.E.U. del medesimo Comune
+        foglio 8 part. 63 sub 16 cat. A/10
+        Via Lodovico Menicucci n. 1
+        foglio 8 part. 63 sub 8 cat. A/4
+        in comproprieta con altri condomini.
+      `,
+    });
+
+    assert.equal(extracted.indirizzo_immobile, "Via Lodovico Menicucci n. 1, Ancona");
+    assert.equal(extracted.catasto.foglio, "8");
+    assert.equal(extracted.catasto.particella, "63");
+    assert.equal(extracted.catasto.mappale, "63");
+    assert.equal(extracted.catasto.subalterno, "16");
+    assert.equal(extracted.catasto.categoria, "A/10");
+    assert.deepEqual(extracted.catasto_voci, [
+      { foglio: "8", particella: "63", mappale: "63", subalterno: "16", categoria: "A/10" },
+      { foglio: "8", particella: "63", mappale: "63", subalterno: "8", categoria: "A/4" },
+    ]);
+  } finally {
+    if (previousMock === undefined) {
+      delete process.env.ASTEBOOK_AI_MOCK;
+    } else {
+      process.env.ASTEBOOK_AI_MOCK = previousMock;
+    }
+  }
+});
+
 test("Admin login can read and update runtime settings", async () => {
   const server = app.listen(0);
   await new Promise((resolve) => server.once("listening", resolve));

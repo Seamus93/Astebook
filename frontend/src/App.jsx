@@ -79,6 +79,7 @@ const adminMarkup = String.raw`
           ["mail", "Mail e Payload", "requestPane", "data-view"],
           ["timeline", "Log Elaborazione", "stepsPane", "steps"],
           ["attach_file", "File Elaborati", "filesPane", "data-view"],
+          ["real_estate_agent", "Dati Immobiliari", "immobiliarePane", "data-view"],
           ["fact_check", "Dati Estratti", "resultPane", "data-view"],
           ["sticky_note_2", "Notes", "notesPane", "data-view"],
           ["rule", "Missing Fields", "missingFieldsPane", "data-view"],

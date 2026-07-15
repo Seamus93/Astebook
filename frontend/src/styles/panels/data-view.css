@@ -2,6 +2,15 @@
   display: none;
 }
 
+.collapsible-panel.collapsed {
+  align-self: start;
+  min-height: 0;
+}
+
+.collapsible-panel.collapsed.panel-wide {
+  grid-row: auto;
+}
+
 .collapsible-panel.collapsed .panel-toggle {
   border-bottom: 0;
 }

@@ -490,10 +490,6 @@
     line-height: 1;
   }
 
-  .detail-title .sidebar-restore-button {
-    display: none;
-  }
-
   .detail-header h1 {
     max-width: none;
     margin-top: 12px;

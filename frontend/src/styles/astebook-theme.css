@@ -200,8 +200,7 @@ body {
   gap: 18px;
 }
 
-.detail-title .icon-button,
-.sidebar-restore-button {
+.detail-title .icon-button {
   margin-top: 4px;
   border-color: #f2cfdf;
   background: var(--accent-soft);
@@ -283,7 +282,7 @@ body {
 
 .summary-grid {
   gap: 16px;
-  padding: 0 36px 22px;
+  padding: 0 36px 28px;
 }
 
 .summary-grid div {
@@ -343,7 +342,7 @@ body {
 .panes {
   grid-template-columns: minmax(0, 1.15fr) minmax(420px, 0.85fr);
   gap: 18px;
-  padding: 0 36px 36px;
+  padding: 8px 36px 36px;
 }
 
 .panel {

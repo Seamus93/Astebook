@@ -65,13 +65,72 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   let notificationItems = [];
   let initialMailboxSyncStarted = false;
   let mailboxPage = 1;
+  let searchQuery = "";
   const mailboxPageSize = 7;
   const selectedEventIds = new Set();
   const selectedMailboxIds = new Set();
 
+  function normalizedText(value) {
+    return String(value ?? "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  }
+
+  function compactSearchText(value) {
+    try {
+      return normalizedText(JSON.stringify(value || {}));
+    } catch {
+      return normalizedText(value);
+    }
+  }
+
+  function eventSearchText(event) {
+    return compactSearchText([
+      event.id,
+      event.source,
+      event.status,
+      event.metadata,
+      event.search,
+      event.error_summary,
+      event.workflow_issue,
+    ]);
+  }
+
+  function mailboxSearchText(message) {
+    const linkedEvent = message.event_id ? allEvents.find((event) => event.id === message.event_id) : null;
+    return compactSearchText([
+      message.id,
+      message.uid,
+      message.subject,
+      message.from,
+      message.to,
+      message.filenames,
+      message.sender_candidates,
+      message.interceptor,
+      linkedEvent?.metadata,
+      linkedEvent?.search,
+      linkedEvent?.error_summary,
+    ]);
+  }
+
+  function matchesSearch(text) {
+    const query = normalizedText(searchQuery).trim();
+    if (!query) return true;
+    return text.includes(query);
+  }
+
+  function filteredMailboxMessages() {
+    return mailboxMessages.filter((message) => matchesSearch(mailboxSearchText(message)));
+  }
+
+  function filteredEvents() {
+    return allEvents.filter((event) => matchesSearch(eventSearchText(event)));
+  }
+
   function visibleEvents() {
-    const mailboxEventIds = new Set(mailboxMessages.map((message) => message.event_id).filter(Boolean));
-    return allEvents.filter((event) => !mailboxEventIds.has(event.id));
+    const mailboxEventIds = new Set(filteredMailboxMessages().map((message) => message.event_id).filter(Boolean));
+    return filteredEvents().filter((event) => !mailboxEventIds.has(event.id));
   }
 
   function mailboxSelectionKey(message) {
@@ -79,10 +138,11 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   }
 
   function visibleMailboxMessages() {
-    const pageCount = Math.max(1, Math.ceil(mailboxMessages.length / mailboxPageSize));
+    const messages = filteredMailboxMessages();
+    const pageCount = Math.max(1, Math.ceil(messages.length / mailboxPageSize));
     mailboxPage = Math.min(Math.max(1, mailboxPage), pageCount);
     const start = (mailboxPage - 1) * mailboxPageSize;
-    return mailboxMessages.slice(start, start + mailboxPageSize);
+    return messages.slice(start, start + mailboxPageSize);
   }
 
   function pruneSelections() {
@@ -91,7 +151,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       if (!eventIds.has(id)) selectedEventIds.delete(id);
     });
 
-    const mailboxIds = new Set(mailboxMessages.map((message) => mailboxSelectionKey(message)));
+    const mailboxIds = new Set(filteredMailboxMessages().map((message) => mailboxSelectionKey(message)));
     selectedMailboxIds.forEach((id) => {
       if (!mailboxIds.has(id)) selectedMailboxIds.delete(id);
     });
@@ -438,7 +498,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   }
 
   function renderMailboxPagination(container) {
-    const pageCount = Math.ceil(mailboxMessages.length / mailboxPageSize);
+    const pageCount = Math.ceil(filteredMailboxMessages().length / mailboxPageSize);
     if (pageCount <= 1) return;
 
     const nav = document.createElement("nav");
@@ -627,7 +687,22 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     for (const ev of visibleEvents()) {
       renderEventItem(container, ev);
     }
+    if (searchQuery.trim() && !filteredMailboxMessages().length && !visibleEvents().length) {
+      renderMailboxStatus(container, "Nessun risultato per questa ricerca.");
+    }
     syncSelectionControls();
+  }
+
+  function initSearchControls() {
+    const input = document.getElementById("eventSearchInput");
+    if (!input) return;
+    input.addEventListener("input", () => {
+      searchQuery = input.value || "";
+      mailboxPage = 1;
+      selectedEventIds.clear();
+      selectedMailboxIds.clear();
+      renderEventList();
+    });
   }
 
   function initSelectionControls() {
@@ -651,6 +726,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
 
   return {
     initNotifications,
+    initSearchControls,
     initSelectionControls,
     loadEvents,
     renderEventList,

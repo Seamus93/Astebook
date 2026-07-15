@@ -70,6 +70,7 @@ export default function initAdminClient() {
   settings.initWatcherResetStateButton();
   settings.initWatcherScanButton();
   events.initNotifications();
+  events.initSearchControls();
   events.initSelectionControls();
   learning.initLearningControls();
   initSidebarToggle();

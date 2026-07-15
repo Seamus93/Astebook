@@ -2,7 +2,7 @@ import { qs } from "./dom.js";
 
 export function initSidebarToggle() {
   const shell = qs("appShell");
-  const buttons = [qs("sidebarToggleButton"), qs("sidebarRestoreButton")].filter(Boolean);
+  const buttons = [qs("sidebarToggleButton")].filter(Boolean);
   if (!shell || !buttons.length) return;
 
   const applyState = (collapsed) => {

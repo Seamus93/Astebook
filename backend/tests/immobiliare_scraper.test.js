@@ -95,7 +95,7 @@ test("immobiliare scraper can use Apify actor dataset output", async () => {
       if (url === "https://api.apify.test/v2/actors/user~immobiliare-scraper/run-sync-get-dataset-items?token=token") {
         assert.equal(options.method, "POST");
         assert.deepEqual(JSON.parse(options.body), {
-          startUrls: [{ url: "https://www.immobiliare.it/annunci/123456789/" }],
+          startUrls: [{ url: "https://www.immobiliare.it/annunci/123456789" }],
           maxItems: 1,
         });
         return {
@@ -146,7 +146,7 @@ test("immobiliare scraper adapts input for Azzouzana search-url actor", async ()
         "https://api.apify.test/v2/actors/azzouzana~immobiliare-it-listing-page-scraper-by-search-url/run-sync-get-dataset-items?token=token"
       );
       assert.deepEqual(JSON.parse(options.body), {
-        startUrl: "https://www.immobiliare.it/annunci/123456789/",
+        startUrl: "https://www.immobiliare.it/annunci/123456789",
         maxItems: 10,
       });
       return {

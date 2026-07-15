@@ -110,10 +110,23 @@ async function configuredProvider(provider) {
 
 async function readApifyConfig(overrides = {}) {
   const settings = await getRuntimeSettings();
+  const actorId =
+    overrides.actorId ||
+    process.env.APIFY_IMMOBILIARE_ACTOR_ID ||
+    settings.apify_immobiliare_actor_id ||
+    "";
+  const actorIdSource = overrides.actorId
+    ? "override"
+    : process.env.APIFY_IMMOBILIARE_ACTOR_ID
+      ? "env"
+      : settings.apify_immobiliare_actor_id
+        ? "runtime"
+        : "missing";
   return {
     apiBaseUrl: String(overrides.apiBaseUrl || process.env.APIFY_API_BASE_URL || "https://api.apify.com").replace(/\/$/, ""),
     token: String(overrides.token || process.env.APIFY_TOKEN || settings.apify_token || "").trim(),
-    actorId: String(overrides.actorId || process.env.APIFY_IMMOBILIARE_ACTOR_ID || settings.apify_immobiliare_actor_id || "").trim(),
+    actorId: String(actorId).trim(),
+    actorIdSource,
     inputTemplate: overrides.inputTemplate || process.env.APIFY_IMMOBILIARE_INPUT_TEMPLATE || settings.apify_immobiliare_input_template || null,
   };
 }
@@ -132,21 +145,22 @@ function replaceUrlPlaceholder(value, url) {
 }
 
 function buildApifyInput(url, config) {
+  const actorUrl = String(url || "").replace(/(\/annunci\/\d+)\/$/i, "$1");
   if (config.inputTemplate) {
     try {
-      return replaceUrlPlaceholder(JSON.parse(config.inputTemplate), url);
+      return replaceUrlPlaceholder(JSON.parse(config.inputTemplate), actorUrl);
     } catch {
-      return { startUrls: [{ url }], url };
+      return { startUrls: [{ url: actorUrl }], url: actorUrl };
     }
   }
   const actorId = String(config.actorId || "").toLowerCase();
   if (actorId.includes("immobiliare-it-listing-page-scraper-by-search-url")) {
-    return { startUrl: url, maxItems: 10 };
+    return { startUrl: actorUrl, maxItems: 10 };
   }
   if (actorId.includes("immobiliare-it-listing-page-scraper-by-items-urls")) {
-    return { startUrls: [url] };
+    return { startUrls: [actorUrl] };
   }
-  return { startUrls: [{ url }], maxItems: 1 };
+  return { startUrls: [{ url: actorUrl }], maxItems: 1 };
 }
 
 function firstValue(source, paths) {
@@ -341,6 +355,13 @@ async function scrapeWithApify(url, { fetchImpl = fetch, config } = {}) {
   if (!config.token) return { ok: false, provider: "apify", error: "APIFY_TOKEN non configurato.", url };
   if (!config.actorId) return { ok: false, provider: "apify", error: "APIFY_IMMOBILIARE_ACTOR_ID non configurato.", url };
 
+  const actorInput = buildApifyInput(url, config);
+  console.info(
+    "[immobiliare_apify] actor=%s source=%s input=%s",
+    config.actorId,
+    config.actorIdSource || "unknown",
+    JSON.stringify(actorInput)
+  );
   const endpoint = `${config.apiBaseUrl}/v2/actors/${apifyActorPath(config.actorId)}/run-sync-get-dataset-items?token=${encodeURIComponent(config.token)}`;
   const response = await fetchImpl(endpoint, {
     method: "POST",
@@ -348,12 +369,15 @@ async function scrapeWithApify(url, { fetchImpl = fetch, config } = {}) {
       accept: "application/json",
       "content-type": "application/json",
     },
-    body: JSON.stringify(buildApifyInput(url, config)),
+    body: JSON.stringify(actorInput),
   });
   if (!response.ok) {
     return {
       ok: false,
       provider: "apify",
+      actor_id: config.actorId,
+      actor_id_source: config.actorIdSource || null,
+      input: actorInput,
       error: `Apify HTTP ${response.status}`,
       http_status: response.status,
       url,
@@ -362,13 +386,24 @@ async function scrapeWithApify(url, { fetchImpl = fetch, config } = {}) {
   const items = await response.json();
   const firstItem = Array.isArray(items) ? items[0] : items?.items?.[0] || items;
   if (!firstItem) {
-    return { ok: false, provider: "apify", error: "Apify non ha restituito dati.", url };
+    return {
+      ok: false,
+      provider: "apify",
+      actor_id: config.actorId,
+      actor_id_source: config.actorIdSource || null,
+      input: actorInput,
+      error: "Apify non ha restituito dati.",
+      url,
+    };
   }
   const diagnosticError = apifyDiagnosticError(firstItem);
   if (diagnosticError) {
     return {
       ok: false,
       provider: "apify",
+      actor_id: config.actorId,
+      actor_id_source: config.actorIdSource || null,
+      input: actorInput,
       error: diagnosticError,
       reason: firstItem.reason || null,
       message: firstItem.message || null,
@@ -382,6 +417,9 @@ async function scrapeWithApify(url, { fetchImpl = fetch, config } = {}) {
     return {
       ok: false,
       provider: "apify",
+      actor_id: config.actorId,
+      actor_id_source: config.actorIdSource || null,
+      input: actorInput,
       error: "Apify ha restituito un item senza campi annuncio riconosciuti.",
       apify_keys: Object.keys(firstItem).slice(0, 30),
       url,
@@ -390,6 +428,9 @@ async function scrapeWithApify(url, { fetchImpl = fetch, config } = {}) {
   return {
     ok: true,
     provider: "apify",
+    actor_id: config.actorId,
+    actor_id_source: config.actorIdSource || null,
+    input: actorInput,
     scraped_at: new Date().toISOString(),
     data,
   };

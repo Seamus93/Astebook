@@ -37,6 +37,17 @@
   opacity: 0.5;
 }
 
+.icon-button.is-processing {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  opacity: 1;
+}
+
+.icon-button.is-processing .material-symbols-outlined {
+  animation: astebook-spin 1s linear infinite;
+}
+
 .notification-button {
   position: relative;
 }

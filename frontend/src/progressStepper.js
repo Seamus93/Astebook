@@ -192,7 +192,7 @@ function renderCircularGroup({ title, icon, docs, statusFor }) {
   const steps = docs
     .map((doc, index) => {
       const status = statusFor(doc, index);
-      const state = status.state === "error" ? "failed" : status.state === "running" ? "pending" : status.state;
+      const state = status.state === "error" ? "failed" : status.state;
       const symbol = state === "done" ? "check" : state === "failed" ? "close" : "hourglass_top";
       return `
         <div class="analysis-substep ${state}" title="${escapeHtml(doc.name)} - ${escapeHtml(status.title)}${status.detail ? ` - ${escapeHtml(status.detail)}` : ""}">

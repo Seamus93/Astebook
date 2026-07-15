@@ -24,6 +24,7 @@ function workflowStateLabel(state) {
     done: "Completato",
     failed: "Errore",
     blocked: "Bloccato",
+    running: "In corso",
     pending: "In attesa",
   }[state] || state;
 }
@@ -78,11 +79,15 @@ export function renderWorkflowStatus(event) {
   selectedStatus.setAttribute("aria-label", `Stato lavorazione: ${event.status}`);
 
   let blocked = false;
+  let runningAssigned = false;
+  const active = event.__processing === true || ["processing", "extracting"].includes(event.status);
   workflowSteps.forEach((step, index) => {
     const failed = !blocked && step.failed(event);
     const done = !blocked && !failed && step.done(event);
-    const state = failed ? "failed" : blocked ? "blocked" : done ? "done" : "pending";
+    const running = active && !runningAssigned && !blocked && !failed && !done;
+    const state = failed ? "failed" : blocked ? "blocked" : done ? "done" : running ? "running" : "pending";
     if (failed) blocked = true;
+    if (running) runningAssigned = true;
 
     const item = document.createElement("div");
     item.className = `workflow-step ${state}`;
@@ -93,7 +98,16 @@ export function renderWorkflowStatus(event) {
     const icon = document.createElement("span");
     icon.className = "material-symbols-outlined";
     icon.setAttribute("aria-hidden", "true");
-    icon.textContent = state === "done" ? "check" : state === "failed" ? "close" : state === "blocked" ? "lock" : step.icon;
+    icon.textContent =
+      state === "done"
+        ? "check"
+        : state === "failed"
+        ? "close"
+        : state === "blocked"
+        ? "lock"
+        : state === "running"
+        ? "hourglass_top"
+        : step.icon;
     circle.appendChild(icon);
 
     const label = document.createElement("span");

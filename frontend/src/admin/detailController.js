@@ -243,6 +243,14 @@ function filteredRequestPayload(event) {
   return filteredRequest;
 }
 
+function setReprocessButtonProcessing(button, processing, title = "Riprocessa") {
+  if (!button) return;
+  button.classList.toggle("is-processing", processing);
+  button.setAttribute("aria-busy", String(processing));
+  button.title = processing ? "Elaborazione in corso" : title;
+  button.disabled = processing;
+}
+
 export function createDetailController() {
   let currentEvent = null;
 
@@ -304,7 +312,16 @@ export function createDetailController() {
     reprocessButton.onclick = canProcessMailboxMessage
       ? async () => {
           try {
-            reprocessButton.disabled = true;
+            setReprocessButtonProcessing(reprocessButton, true, "Processa");
+            documentButton.disabled = true;
+            emailDocumentButton.disabled = true;
+            renderWorkflowStatus({
+              __processing: true,
+              status: "extracting",
+              received_at: message.date || new Date().toISOString(),
+              result: { attachments: (message.filenames || []).map((file_name) => ({ file_name })) },
+              steps: [],
+            });
             const resp = await apiFetch("/api/v1/admin/mailbox/messages/process", {
               method: "POST",
               headers: { "content-type": "application/json" },
@@ -332,7 +349,8 @@ export function createDetailController() {
               tone: "error",
             });
           } finally {
-            reprocessButton.disabled = false;
+            setReprocessButtonProcessing(reprocessButton, false, "Processa");
+            reprocessButton.disabled = !canProcessMailboxMessage;
           }
         }
       : null;
@@ -398,6 +416,10 @@ function wireActionButtons(id, ev, selectEvent, getCurrentEvent) {
 
   reprocessButton.onclick = async () => {
     try {
+      setReprocessButtonProcessing(reprocessButton, true);
+      documentButton.disabled = true;
+      emailDocumentButton.disabled = true;
+      renderWorkflowStatus({ ...ev, __processing: true, status: "extracting" });
       const res = await apiFetch(`/api/v1/processing-events/${id}/reprocess`, { method: "POST" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -417,6 +439,12 @@ function wireActionButtons(id, ev, selectEvent, getCurrentEvent) {
       await selectEvent(id);
     } catch (error) {
       console.error("reprocess failed", error);
+    } finally {
+      const latestEvent = getCurrentEvent?.() || ev;
+      setReprocessButtonProcessing(reprocessButton, false);
+      reprocessButton.disabled = !canReprocess;
+      documentButton.disabled = false;
+      emailDocumentButton.disabled = !latestEvent.result?.merged;
     }
   };
 

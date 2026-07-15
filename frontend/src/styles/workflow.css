@@ -68,6 +68,20 @@
   background: #fff4d6;
 }
 
+.workflow-step.running {
+  color: var(--accent);
+}
+
+.workflow-step.running .workflow-circle {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.workflow-step.running .workflow-circle .material-symbols-outlined,
+.analysis-substep.running .analysis-substep-circle .material-symbols-outlined {
+  animation: astebook-spin 1s linear infinite;
+}
+
 .workflow-connector {
   width: 18px;
   height: 2px;
@@ -189,11 +203,26 @@
   background: #fff4d6;
 }
 
+.analysis-substep.running {
+  color: var(--accent);
+}
+
+.analysis-substep.running .analysis-substep-circle {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .analysis-substep-connector {
   flex: 0 0 18px;
   height: 2px;
   margin-top: 14px;
   border-radius: 999px;
   background: var(--line-strong);
+}
+
+@keyframes astebook-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 

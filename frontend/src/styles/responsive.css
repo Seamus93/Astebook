@@ -78,6 +78,7 @@
 
   .sidebar {
     width: 100%;
+    padding-top: 62px;
     max-height: 46dvh;
     min-height: 0;
     border-right: 0;
@@ -102,6 +103,8 @@
 
   .brand {
     align-items: stretch;
+    flex-direction: row;
+    min-height: 62px;
   }
 
   .brand-title {
@@ -111,16 +114,26 @@
     gap: 10px;
   }
 
+  .brand-title > span {
+    font-size: 24px;
+  }
+
   .toolbar {
     display: grid;
     grid-template-columns: repeat(4, minmax(42px, 1fr));
     gap: 8px;
   }
 
+  .brand .toolbar {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+  }
+
   .toolbar form,
   .toolbar .icon-button,
   .toolbar form .icon-button {
-    width: 100%;
+    width: auto;
   }
 
   .icon-button {
@@ -165,6 +178,7 @@
   }
 
   .detail {
+    padding-top: 62px;
     min-height: 54dvh;
   }
 

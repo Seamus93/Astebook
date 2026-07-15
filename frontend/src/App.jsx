@@ -6,7 +6,12 @@ const adminMarkup = String.raw`
   <main id="appShell" class="shell">
     <aside class="sidebar">
       <div class="brand">
-        <span>Astebook</span>
+        <div class="brand-title">
+          <span>Astebook</span>
+          <button id="sidebarToggleButton" class="icon-button" type="button" title="Apri/chiudi elenco" aria-label="Apri o chiudi elenco" aria-expanded="true">
+            <span class="material-symbols-outlined" aria-hidden="true">menu</span>
+          </button>
+        </div>
         <div class="toolbar">
           <button id="refreshButton" class="icon-button" type="button" title="Aggiorna">
             <span class="material-symbols-outlined" aria-hidden="true">refresh</span>
@@ -46,9 +51,6 @@ const adminMarkup = String.raw`
     <section class="detail">
       <header class="detail-header">
         <div class="detail-title">
-          <button id="sidebarToggleButton" class="icon-button" type="button" title="Apri/chiudi elenco">
-            <span class="material-symbols-outlined" aria-hidden="true">menu</span>
-          </button>
           <div>
           <p id="selectedSource" class="eyebrow">Nessun evento</p>
           <h1 id="selectedTitle">Seleziona una lavorazione</h1>

@@ -64,11 +64,37 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   let mailboxMessages = [];
   let notificationItems = [];
   let initialMailboxSyncStarted = false;
+  let mailboxPage = 1;
+  const mailboxPageSize = 7;
   const selectedEventIds = new Set();
+  const selectedMailboxIds = new Set();
 
   function visibleEvents() {
     const mailboxEventIds = new Set(mailboxMessages.map((message) => message.event_id).filter(Boolean));
     return allEvents.filter((event) => !mailboxEventIds.has(event.id));
+  }
+
+  function mailboxSelectionKey(message) {
+    return `${message.mailbox || "INBOX"}:${message.uid || message.id || message.message_id || ""}`;
+  }
+
+  function visibleMailboxMessages() {
+    const pageCount = Math.max(1, Math.ceil(mailboxMessages.length / mailboxPageSize));
+    mailboxPage = Math.min(Math.max(1, mailboxPage), pageCount);
+    const start = (mailboxPage - 1) * mailboxPageSize;
+    return mailboxMessages.slice(start, start + mailboxPageSize);
+  }
+
+  function pruneSelections() {
+    const eventIds = new Set(allEvents.map((event) => event.id));
+    selectedEventIds.forEach((id) => {
+      if (!eventIds.has(id)) selectedEventIds.delete(id);
+    });
+
+    const mailboxIds = new Set(mailboxMessages.map((message) => mailboxSelectionKey(message)));
+    selectedMailboxIds.forEach((id) => {
+      if (!mailboxIds.has(id)) selectedMailboxIds.delete(id);
+    });
   }
 
   async function fetchMailboxMessages() {
@@ -252,22 +278,36 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
 
   async function deleteSelectedEvents() {
     const selectedEvents = allEvents.filter((event) => selectedEventIds.has(event.id));
-    if (!selectedEvents.length) return;
-    if (!window.confirm(`Eliminare ${selectedEvents.length} lavorazioni selezionate dalla lista?`)) return;
+    const selectedMailboxMessages = mailboxMessages.filter((message) =>
+      selectedMailboxIds.has(mailboxSelectionKey(message))
+    );
+    const selectedCount = selectedEvents.length + selectedMailboxMessages.length;
+    if (!selectedCount) return;
+    if (!window.confirm(`Applicare l'eliminazione a ${selectedCount} elementi selezionati?`)) return;
 
     try {
-      const results = await Promise.all(
+      const eventResults = await Promise.all(
         selectedEvents.map((event) =>
           apiFetch(`/api/v1/processing-events/${event.id}`, { method: "DELETE" })
         )
       );
-      const failed = results.filter((resp) => !resp.ok).length;
+      const mailboxResults = await Promise.all(
+        selectedMailboxMessages.map((message) =>
+          apiFetch("/api/v1/admin/email-watcher/state/forget", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ message_id: message.id }),
+          })
+        )
+      );
+      const failed = [...eventResults, ...mailboxResults].filter((resp) => !resp.ok).length;
       selectedEventIds.clear();
+      selectedMailboxIds.clear();
       showToast({
-        title: failed ? "Eliminazione parziale" : "Lavorazioni eliminate",
+        title: failed ? "Selezione aggiornata parzialmente" : "Selezione aggiornata",
         message: failed
-          ? `${failed} lavorazioni non sono state eliminate.`
-          : `${selectedEvents.length} lavorazioni rimosse dal log Astebook.`,
+          ? `${failed} elementi non sono stati aggiornati.`
+          : `${selectedCount} elementi aggiornati nella lista.`,
         tone: failed ? "error" : "info",
       });
       await loadEvents();
@@ -283,21 +323,34 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
   function syncSelectionControls() {
     const checkbox = document.getElementById("selectAllEventsCheckbox");
     const deleteButton = document.getElementById("deleteSelectedEventsButton");
-    const selectedCount = selectedEventIds.size;
+    const selectedCount = selectedEventIds.size + selectedMailboxIds.size;
     const selectableEvents = visibleEvents();
+    const selectableMailboxMessages = visibleMailboxMessages();
+    const visibleSelectedCount =
+      selectableEvents.filter((event) => selectedEventIds.has(event.id)).length +
+      selectableMailboxMessages.filter((message) => selectedMailboxIds.has(mailboxSelectionKey(message))).length;
+    const visibleSelectableCount = selectableEvents.length + selectableMailboxMessages.length;
     if (deleteButton) {
       deleteButton.hidden = selectedCount === 0;
       deleteButton.title = selectedCount ? `Elimina ${selectedCount} selezionate` : "Elimina selezionate";
     }
     if (checkbox) {
-      checkbox.checked = selectableEvents.length > 0 && selectedCount === selectableEvents.length;
-      checkbox.indeterminate = selectedCount > 0 && selectedCount < selectableEvents.length;
+      checkbox.checked = visibleSelectableCount > 0 && visibleSelectedCount === visibleSelectableCount;
+      checkbox.indeterminate = visibleSelectedCount > 0 && visibleSelectedCount < visibleSelectableCount;
     }
   }
 
   function toggleEventSelection(eventId, checked) {
     if (checked) selectedEventIds.add(eventId);
     else selectedEventIds.delete(eventId);
+    renderEventList();
+    syncSelectionControls();
+  }
+
+  function toggleMailboxSelection(message, checked) {
+    const key = mailboxSelectionKey(message);
+    if (checked) selectedMailboxIds.add(key);
+    else selectedMailboxIds.delete(key);
     renderEventList();
     syncSelectionControls();
   }
@@ -340,6 +393,16 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     const row = document.createElement("div");
     row.className = `event-item mailbox-item mailbox-${state.tone}`;
 
+    const selectWrap = document.createElement("label");
+    selectWrap.className = "event-select mailbox-select";
+    selectWrap.title = "Seleziona email";
+    const selectInput = document.createElement("input");
+    selectInput.type = "checkbox";
+    selectInput.checked = selectedMailboxIds.has(mailboxSelectionKey(message));
+    selectInput.addEventListener("click", (event) => event.stopPropagation());
+    selectInput.addEventListener("change", () => toggleMailboxSelection(message, selectInput.checked));
+    selectWrap.appendChild(selectInput);
+
     const button = document.createElement("button");
     button.type = "button";
     button.className = "mailbox-item-main";
@@ -370,18 +433,67 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       selectMailboxMessage(message, loadEvents);
     });
 
-    const menu = document.createElement("button");
-    menu.type = "button";
-    menu.className = "mailbox-item-menu icon-button";
-    menu.title = "Cancella state per questa email";
-    menu.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">more_vert</span>';
-    menu.addEventListener("click", (event) => {
-      event.stopPropagation();
-      forgetMailboxMessageState(message);
+    row.append(selectWrap, button);
+    container.appendChild(row);
+  }
+
+  function renderMailboxPagination(container) {
+    const pageCount = Math.ceil(mailboxMessages.length / mailboxPageSize);
+    if (pageCount <= 1) return;
+
+    const nav = document.createElement("nav");
+    nav.className = "mailbox-pagination";
+    nav.setAttribute("aria-label", "Pagine email");
+
+    const addPageButton = (page, label = String(page)) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = page === mailboxPage ? "active" : "";
+      button.textContent = label;
+      button.setAttribute("aria-label", `Pagina email ${page}`);
+      button.addEventListener("click", () => {
+        mailboxPage = page;
+        renderEventList();
+      });
+      nav.appendChild(button);
+    };
+
+    const pages = new Set([1, pageCount, mailboxPage]);
+    if (pageCount <= 5) {
+      for (let page = 1; page <= pageCount; page += 1) pages.add(page);
+    } else if (mailboxPage <= 3) {
+      [2, 3].forEach((page) => pages.add(page));
+    } else if (mailboxPage >= pageCount - 2) {
+      [pageCount - 2, pageCount - 1].forEach((page) => pages.add(page));
+    } else {
+      [mailboxPage - 1, mailboxPage + 1].forEach((page) => pages.add(page));
+    }
+
+    let previousPage = 0;
+    [...pages].sort((a, b) => a - b).forEach((page) => {
+      if (page - previousPage > 1) {
+        const ellipsis = document.createElement("span");
+        ellipsis.textContent = "...";
+        nav.appendChild(ellipsis);
+      }
+      addPageButton(page);
+      previousPage = page;
     });
 
-    row.append(button, menu);
-    container.appendChild(row);
+    if (mailboxPage < pageCount) {
+      const next = document.createElement("button");
+      next.type = "button";
+      next.className = "mailbox-pagination-next";
+      next.setAttribute("aria-label", "Pagina email successiva");
+      next.innerHTML = '<span class="material-symbols-outlined" aria-hidden="true">chevron_right</span>';
+      next.addEventListener("click", () => {
+        mailboxPage = Math.min(pageCount, mailboxPage + 1);
+        renderEventList();
+      });
+      nav.appendChild(next);
+    }
+
+    container.appendChild(nav);
   }
 
   function mailboxNotifications() {
@@ -497,6 +609,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
 
   function renderMailboxStatus(container, message) {
     if (!message) return;
+    if (/^Mailbox indicizzata:/i.test(message)) return;
     const el = document.createElement("div");
     el.className = "event-empty";
     el.textContent = message;
@@ -507,7 +620,9 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     const container = document.getElementById("eventList");
     if (!container) return;
     container.innerHTML = "";
-    mailboxMessages.forEach((message) => renderMailboxItem(container, message));
+    pruneSelections();
+    visibleMailboxMessages().forEach((message) => renderMailboxItem(container, message));
+    renderMailboxPagination(container);
     renderMailboxStatus(container, mailboxStatus);
     for (const ev of visibleEvents()) {
       renderEventItem(container, ev);
@@ -521,8 +636,10 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     if (checkbox) {
       checkbox.addEventListener("change", () => {
         selectedEventIds.clear();
+        selectedMailboxIds.clear();
         if (checkbox.checked) {
           visibleEvents().forEach((event) => selectedEventIds.add(event.id));
+          visibleMailboxMessages().forEach((message) => selectedMailboxIds.add(mailboxSelectionKey(message)));
         }
         renderEventList();
       });

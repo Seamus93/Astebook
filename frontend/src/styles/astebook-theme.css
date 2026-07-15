@@ -287,6 +287,12 @@ body {
 }
 
 .summary-grid div {
+  position: relative;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: 16px;
+  align-items: center;
   min-height: 92px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
@@ -295,13 +301,39 @@ body {
   padding: 22px 24px;
 }
 
+.summary-grid div::before {
+  grid-row: 1 / span 2;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-family: "Material Symbols Outlined";
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1;
+}
+
+.summary-grid div:nth-child(1)::before,
+.summary-grid div:nth-child(2)::before {
+  content: "calendar_month";
+}
+
+.summary-grid div:nth-child(3)::before {
+  content: "description";
+}
+
 .summary-grid span {
+  grid-column: 2;
   color: #767680;
   font-size: 12px;
   font-weight: 750;
 }
 
 .summary-grid strong {
+  grid-column: 2;
   margin-top: 8px;
   color: #111111;
   font-size: 16px;
@@ -443,6 +475,41 @@ body {
   border-radius: var(--radius);
   background: #ffffff;
   box-shadow: var(--shadow-soft);
+}
+
+.toast.notice,
+.toast.error {
+  border-color: var(--line);
+}
+
+.toast-icon,
+.toast.notice .toast-icon,
+.toast.error .toast-icon {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mailbox-pagination {
+  background: #ffffff;
+}
+
+.mailbox-pagination button {
+  border-color: #dedee4;
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+}
+
+.mailbox-pagination button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.mailbox-pagination button.active,
+.mailbox-pagination button.active:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .modal-backdrop {

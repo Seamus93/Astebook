@@ -1,3 +1,8 @@
+ .mobile-detail-bar,
+ .mobile-bottom-nav {
+   display: none;
+ }
+
 @media (max-width: 1000px) {
   .shell,
   .panes,
@@ -324,6 +329,438 @@
   .settings-page-actions .secondary-button {
     justify-content: center;
     width: 100%;
+  }
+
+  body {
+    background: #ffffff;
+  }
+
+  .shell {
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 86px;
+  }
+
+  .shell.sidebar-collapsed .sidebar {
+    display: flex;
+  }
+
+  .brand {
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    min-height: 72px;
+    padding: 14px 18px;
+    background: #030303;
+  }
+
+  .brand-title > span {
+    width: 42px;
+    height: 42px;
+    overflow: hidden;
+    color: transparent;
+    font-size: 0;
+  }
+
+  .brand-title > span::before {
+    content: "A";
+    display: block;
+    color: #ffffff;
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 44px;
+    line-height: 42px;
+  }
+
+  .brand-title > span::after {
+    left: 16px;
+    bottom: 7px;
+    width: 7px;
+    height: 7px;
+    border-left-width: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    transform: none;
+  }
+
+  .brand .toolbar {
+    align-items: center;
+    margin-left: auto;
+  }
+
+  .brand .toolbar #refreshButton,
+  .brand .toolbar #settingsButton,
+  .brand .toolbar form {
+    display: none;
+  }
+
+  .brand .toolbar #notificationsButton,
+  .brand #sidebarToggleButton {
+    display: grid;
+    min-width: 46px;
+    min-height: 46px;
+    border: 0;
+    background: transparent;
+    color: #ffffff;
+  }
+
+  .brand #sidebarToggleButton {
+    order: 2;
+  }
+
+  .notification-count {
+    top: 3px;
+    right: 1px;
+    border-color: #030303;
+    background: var(--accent);
+    color: #ffffff;
+  }
+
+  .detail {
+    order: 1;
+    min-height: 0;
+    padding-top: 72px;
+    background: #ffffff;
+  }
+
+  .mobile-detail-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 16px 34px;
+    min-height: 80px;
+    border-bottom: 1px solid var(--line);
+    background: #ffffff;
+  }
+
+  .mobile-back-button,
+  .mobile-actions-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: var(--accent);
+    font: inherit;
+    font-size: 18px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+
+  .mobile-back-button {
+    gap: 8px;
+  }
+
+  .mobile-actions-button {
+    width: 58px;
+    height: 52px;
+    border-radius: 8px;
+    background: var(--accent);
+    color: #ffffff;
+    box-shadow: 0 18px 38px rgba(196, 0, 90, 0.22);
+  }
+
+  .detail-header {
+    position: static;
+    display: grid;
+    gap: 22px;
+    min-height: 0;
+    padding: 28px 34px 18px;
+    border-bottom: 0;
+    background: #ffffff;
+  }
+
+  .detail-title {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 18px;
+  }
+
+  .detail-title::before {
+    content: "mail";
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 44px;
+    color: var(--accent);
+    font-family: "Material Symbols Outlined";
+    font-size: 36px;
+    line-height: 1;
+  }
+
+  .detail-title .sidebar-restore-button {
+    display: none;
+  }
+
+  .detail-header h1 {
+    max-width: none;
+    margin-top: 12px;
+    font-size: clamp(25px, 7vw, 36px);
+    line-height: 1.2;
+    letter-spacing: 0;
+  }
+
+  .eyebrow,
+  #selectedSource {
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .detail-actions {
+    display: block;
+    padding: 0;
+  }
+
+  .detail-actions > .icon-button {
+    display: none;
+  }
+
+  .workflow-status {
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 108px;
+    padding: 18px 16px;
+    overflow: auto hidden;
+    border-radius: 9px;
+    box-shadow: none;
+  }
+
+  .workflow-step {
+    min-width: 58px;
+    gap: 8px;
+  }
+
+  .workflow-circle {
+    width: 52px;
+    height: 52px;
+    border-width: 2px;
+  }
+
+  .workflow-circle .material-symbols-outlined {
+    font-size: 31px;
+  }
+
+  .workflow-label {
+    display: block;
+    font-size: 13px;
+    font-weight: 900;
+  }
+
+  .workflow-connector {
+    width: 54px;
+    height: 2px;
+  }
+
+  .summary-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+    margin: 0 34px 16px;
+    padding: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #ffffff;
+  }
+
+  .summary-grid div {
+    min-height: 116px;
+    padding: 24px 18px;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+
+  .summary-grid div + div {
+    border-left: 1px solid var(--line);
+  }
+
+  .summary-grid div::before {
+    width: 32px;
+    height: 32px;
+    background: transparent;
+    font-size: 31px;
+  }
+
+  .summary-grid span {
+    font-size: 14px;
+    font-weight: 700;
+  }
+
+  .summary-grid strong {
+    font-size: 18px;
+    line-height: 1.25;
+  }
+
+  .panes {
+    display: grid;
+    gap: 14px;
+    padding: 0 34px 24px;
+  }
+
+  .panel {
+    border-radius: 9px;
+    box-shadow: none;
+  }
+
+  .panel-toggle {
+    min-height: 82px;
+    padding: 20px 26px;
+    font-size: 20px;
+  }
+
+  .panel-toggle > .material-symbols-outlined:first-child {
+    color: #111111;
+    font-size: 32px;
+  }
+
+  .panel-chevron {
+    color: #111111;
+  }
+
+  .collapsible-panel.collapsed .panel-body {
+    display: none;
+  }
+
+  .data-view,
+  .steps {
+    max-height: 64dvh;
+  }
+
+  .sidebar {
+    order: 2;
+    display: flex;
+    width: auto;
+    max-height: none;
+    min-height: 0;
+    padding: 0 34px 18px;
+    overflow: visible;
+    border: 0;
+    background: #ffffff;
+  }
+
+  .sidebar::before {
+    content: "Mailbox IMAP";
+    display: block;
+    margin: 0 0 16px;
+    color: #111111;
+    font-size: 24px;
+    font-weight: 900;
+  }
+
+  .search-bar {
+    grid-template-columns: 28px minmax(0, 1fr) 48px 48px;
+    gap: 10px;
+    padding: 0 0 12px;
+    border-bottom: 0;
+  }
+
+  .search-field {
+    min-height: 48px;
+  }
+
+  .event-list {
+    overflow: visible;
+    border: 1px solid var(--line);
+    border-radius: 9px;
+    background: #ffffff;
+  }
+
+  .mailbox-item,
+  .event-item-row {
+    grid-template-columns: 40px minmax(0, 1fr);
+  }
+
+  .event-select {
+    align-items: flex-start;
+    padding-top: 24px;
+  }
+
+  .selection-toggle input,
+  .event-select input {
+    width: 22px;
+    height: 22px;
+  }
+
+  .event-item-main,
+  .mailbox-item-main {
+    padding: 22px 18px 20px 10px;
+  }
+
+  .event-item strong,
+  .mailbox-item-main strong {
+    font-size: 18px;
+    line-height: 1.25;
+  }
+
+  .mailbox-state-badge {
+    margin-top: 10px !important;
+    padding: 5px 12px;
+    font-size: 14px;
+  }
+
+  .event-item span,
+  .mailbox-item-main span {
+    margin-top: 9px;
+    font-size: 14px;
+  }
+
+  .mailbox-pagination {
+    border-bottom: 0;
+  }
+
+  .mobile-bottom-nav {
+    position: fixed;
+    inset: auto 0 0 0;
+    z-index: 45;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    align-items: center;
+    min-height: 78px;
+    padding: 8px 14px 10px;
+    border-top: 1px solid var(--line);
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 -12px 36px rgba(17, 17, 17, 0.08);
+    backdrop-filter: blur(14px);
+  }
+
+  .mobile-nav-button,
+  .mobile-nav-primary {
+    display: grid;
+    place-items: center;
+    gap: 3px;
+    border: 0;
+    background: transparent;
+    color: #111111;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .mobile-nav-button .material-symbols-outlined {
+    font-size: 29px;
+  }
+
+  .mobile-nav-button.active,
+  .mobile-nav-button:hover {
+    color: var(--accent);
+  }
+
+  .mobile-nav-primary {
+    justify-self: center;
+    width: 64px;
+    height: 64px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: #ffffff;
+    box-shadow: 0 18px 38px rgba(196, 0, 90, 0.25);
+  }
+
+  .mobile-nav-primary .material-symbols-outlined {
+    font-size: 34px;
   }
 }
 

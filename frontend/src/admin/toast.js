@@ -8,14 +8,15 @@ export function showToast({ title = "", message = "", items = [], tone = "error"
     host.className = "toast-host";
     document.body.appendChild(host);
   }
+  host.innerHTML = "";
 
   const toast = document.createElement("div");
-  toast.className = `toast ${tone}`;
+  toast.className = `toast ${tone === "error" ? "notice" : tone}`;
   const itemList = items.length
     ? `<ul>${items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>`
     : "";
   toast.innerHTML = `
-    <div class="toast-icon"><span class="material-symbols-outlined" aria-hidden="true">${tone === "error" ? "error" : "info"}</span></div>
+    <div class="toast-icon"><span class="material-symbols-outlined" aria-hidden="true">${tone === "error" ? "info" : "info"}</span></div>
     <div class="toast-body">
       ${title ? `<strong>${escapeHtml(title)}</strong>` : ""}
       ${message ? `<p>${escapeHtml(message)}</p>` : ""}

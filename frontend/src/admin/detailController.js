@@ -390,7 +390,9 @@ export function createDetailController() {
       renderPipelineSteps(ev);
       renderFileSections(ev);
       renderStructured(document.getElementById("immobiliarePane"), ev.result?.immobiliare || {}, "Nessun dato immobiliare acquisito.");
-      renderStructured(document.getElementById("resultPane"), extractedResultView(ev), "Nessun dato estratto.");
+      renderStructured(document.getElementById("resultPane"), extractedResultView(ev), "Nessun dato estratto.", {
+        feedbackEventId: ev.id,
+      });
       renderFeedbackForm(ev, selectEvent);
       renderNotes(ev);
       renderMissingFields(ev);

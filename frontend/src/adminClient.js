@@ -27,6 +27,37 @@ export default function initAdminClient() {
     renderRoute();
   }
 
+  function initPanelToggles() {
+    const mobile = window.matchMedia("(max-width: 560px)");
+    document.querySelectorAll(".collapsible-panel").forEach((panel) => {
+      const button = panel.querySelector(".panel-toggle");
+      const chevron = panel.querySelector(".panel-chevron");
+      if (!button) return;
+
+      const setCollapsed = (collapsed) => {
+        panel.classList.toggle("collapsed", collapsed);
+        button.setAttribute("aria-expanded", String(!collapsed));
+        if (chevron) chevron.textContent = collapsed ? "expand_more" : "expand_less";
+      };
+
+      if (mobile.matches) setCollapsed(true);
+      button.addEventListener("click", () => setCollapsed(!panel.classList.contains("collapsed")));
+    });
+  }
+
+  function initMobileNavigation() {
+    const scrollTo = (selector) => {
+      document.querySelector(selector)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    };
+    document.querySelector(".mobile-nav-mailbox")?.addEventListener("click", () => scrollTo(".sidebar"));
+    document.querySelector(".mobile-nav-detail")?.addEventListener("click", () => scrollTo(".detail-header"));
+    document.querySelector(".mobile-nav-events")?.addEventListener("click", () => scrollTo(".panes"));
+    document.querySelector(".mobile-nav-settings")?.addEventListener("click", () => navigate("/admin/settings"));
+    document.querySelector(".mobile-nav-primary")?.addEventListener("click", () => qs("reprocessButton")?.click());
+    qs("mobileBackButton")?.addEventListener("click", () => scrollTo(".sidebar"));
+    qs("mobileActionsButton")?.addEventListener("click", () => qs("reprocessButton")?.click());
+  }
+
   document.getElementById("settingsButton").addEventListener("click", () => navigate("/admin/settings"));
   document.getElementById("closeSettingsButton").addEventListener("click", () => navigate("/admin/"));
   document.getElementById("refreshButton").addEventListener("click", events.scanWatcherThenReload);
@@ -43,6 +74,8 @@ export default function initAdminClient() {
   events.initSelectionControls();
   learning.initLearningControls();
   initSidebarToggle();
+  initPanelToggles();
+  initMobileNavigation();
   qs("settingsForm").addEventListener("submit", settings.saveSettings);
 
   const baseInput = qs("aiBaseUrl");

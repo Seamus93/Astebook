@@ -49,6 +49,15 @@ const adminMarkup = String.raw`
     </aside>
 
     <section class="detail">
+      <div class="mobile-detail-bar">
+        <button id="mobileBackButton" class="mobile-back-button" type="button">
+          <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
+          Indietro
+        </button>
+        <button id="mobileActionsButton" class="mobile-actions-button" type="button" title="Azioni">
+          <span class="material-symbols-outlined" aria-hidden="true">more_horiz</span>
+        </button>
+      </div>
       <header class="detail-header">
         <div class="detail-title">
           <button id="sidebarRestoreButton" class="icon-button sidebar-restore-button" type="button" title="Apri/chiudi elenco" aria-label="Apri o chiudi elenco" aria-expanded="true">
@@ -106,6 +115,28 @@ const adminMarkup = String.raw`
           .join("")}
       </section>
     </section>
+
+    <nav class="mobile-bottom-nav" aria-label="Navigazione mobile">
+      <button class="mobile-nav-button mobile-nav-mailbox active" type="button">
+        <span class="material-symbols-outlined" aria-hidden="true">mail</span>
+        Mailbox
+      </button>
+      <button class="mobile-nav-button mobile-nav-detail" type="button">
+        <span class="material-symbols-outlined" aria-hidden="true">description</span>
+        Procedure
+      </button>
+      <button class="mobile-nav-primary" type="button" title="Processa">
+        <span class="material-symbols-outlined" aria-hidden="true">add</span>
+      </button>
+      <button class="mobile-nav-button mobile-nav-events" type="button">
+        <span class="material-symbols-outlined" aria-hidden="true">schedule</span>
+        Eventi
+      </button>
+      <button class="mobile-nav-button mobile-nav-settings" type="button">
+        <span class="material-symbols-outlined" aria-hidden="true">settings</span>
+        Impostazioni
+      </button>
+    </nav>
   </main>
 
   <div id="notificationsModal" class="modal-backdrop" hidden>

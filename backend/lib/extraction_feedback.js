@@ -64,6 +64,7 @@ function normalizeFeedback({ event, feedback }) {
     field_path: fieldPath,
     ai_value: aiValue === undefined ? null : aiValue,
     corrected_value: correctedValue,
+    rating: feedback.rating || feedback.feedback_rating || null,
     source_file: sourceFile,
     source_text_excerpt: feedback.source_text_excerpt || sourceTextExcerpt(event, sourceFile),
     reason: feedback.reason || feedback.note || "",
@@ -135,6 +136,22 @@ export async function buildExtractionFeedbackContext({ scope, limit = 8 } = {}) 
   const examples = entries.map((entry, index) => {
     const source = entry.source_file ? ` file=${entry.source_file};` : "";
     const reason = entry.reason ? ` nota=${compactValue(entry.reason)};` : "";
+    if (entry.rating === "positive") {
+      return [
+        `Esempio ${index + 1}:`,
+        `campo=${entry.field_path};${source}`,
+        `feedback=valore confermato corretto;`,
+        `valore_ai=${compactValue(entry.ai_value)};${reason}`,
+      ].join(" ");
+    }
+    if (entry.rating === "negative") {
+      return [
+        `Esempio ${index + 1}:`,
+        `campo=${entry.field_path};${source}`,
+        `feedback=valore AI rifiutato da controllo umano;`,
+        `valore_ai_da_non_usare=${compactValue(entry.ai_value)};${reason}`,
+      ].join(" ");
+    }
     return [
       `Esempio ${index + 1}:`,
       `campo=${entry.field_path};${source}`,

@@ -105,7 +105,7 @@
 
 .mailbox-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
   padding: 0;
   cursor: default;
@@ -131,10 +131,6 @@
   text-align: left;
   padding: 14px 8px 14px 16px;
   cursor: pointer;
-}
-
-.mailbox-item-menu {
-  margin-right: 8px;
 }
 
 .mailbox-state-badge {
@@ -205,6 +201,43 @@
   padding: 18px 16px;
   background: var(--panel);
   color: var(--muted);
+}
+
+.mailbox-pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 12px 18px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.mailbox-pagination button {
+  display: inline-grid;
+  place-items: center;
+  min-width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.mailbox-pagination button.active {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.mailbox-pagination span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .detail {

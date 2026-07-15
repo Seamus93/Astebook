@@ -303,9 +303,9 @@ export function createEmailWatcher({ getSettings, onAcceptedMail }) {
   let consecutiveTransientFailures = 0;
   let suspendedUntil = 0;
 
-  async function runOnce({ reschedule = false } = {}) {
+  async function runOnce({ force = false, reschedule = false } = {}) {
     const now = Date.now();
-    if (now < suspendedUntil) {
+    if (!force && now < suspendedUntil) {
       const remainingSeconds = Math.ceil((suspendedUntil - now) / 1000);
       if (reschedule) schedule(remainingSeconds);
       return {
@@ -360,7 +360,7 @@ export function createEmailWatcher({ getSettings, onAcceptedMail }) {
       tick();
     },
     scanNow() {
-      return runOnce({ reschedule: false });
+      return runOnce({ force: true, reschedule: false });
     },
     stop() {
       if (timer) clearTimeout(timer);

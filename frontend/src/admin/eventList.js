@@ -154,6 +154,9 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     const refreshButton = document.getElementById("refreshButton");
     if (refreshButton) refreshButton.disabled = true;
     try {
+      await syncMailboxIndex().catch((syncError) => {
+        console.warn("Mailbox sync could not be started from refresh", syncError);
+      });
       const resp = await apiFetch("/api/v1/admin/email-watcher/scan", { method: "POST" });
       const payload = await resp.json().catch(() => ({}));
       if (payload.busy) {
@@ -182,6 +185,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
         tone: "error",
       });
     } finally {
+      await wait(3000);
       await loadEvents();
       if (refreshButton) refreshButton.disabled = false;
     }

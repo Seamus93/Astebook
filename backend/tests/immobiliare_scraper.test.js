@@ -160,3 +160,50 @@ test("immobiliare scraper adapts input for Azzouzana search-url actor", async ()
   assert.equal(result.ok, true);
   assert.equal(result.data.title, "Da search actor");
 });
+
+test("immobiliare scraper normalizes nested Azzouzana-like listing fields", async () => {
+  const result = await scrapeImmobiliareAnnouncement("https://www.immobiliare.it/annunci/123456789/", {
+    provider: "apify",
+    apifyConfig: {
+      apiBaseUrl: "https://api.apify.test",
+      token: "token",
+      actorId: "azzouzana/immobiliare-it-listing-page-scraper-by-search-url",
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ([{
+        realEstate: {
+          url: "https://www.immobiliare.it/annunci/123456789/",
+          title: "Ufficio in Piazza Roma",
+          description: "Uffici siti al quinto piano.",
+          price: { value: 200000, formattedValue: "€ 200.000" },
+          state: { name: "Libero" },
+          typology: { name: "Ufficio" },
+          location: {
+            address: "Piazza Roma",
+            streetNumber: "1",
+            city: { name: "Ancona" },
+            province: { name: "AN" },
+          },
+          properties: [{
+            mainFeatures: [
+              { label: "superficie", value: "285 m²" },
+              { label: "locali", value: "9" },
+            ],
+          }],
+        },
+      }]),
+    }),
+  });
+
+  assert.equal(result.data.title, "Ufficio in Piazza Roma");
+  assert.equal(result.data.description, "Uffici siti al quinto piano.");
+  assert.equal(result.data.prezzo, 200000);
+  assert.equal(result.data.prezzo_raw, "200000");
+  assert.equal(result.data.disponibilita, "Libero");
+  assert.equal(result.data.indirizzo, "Piazza Roma 1 Ancona AN");
+  assert.equal(result.data.superficie_mq, "285 m²");
+  assert.equal(result.data.rooms, "9");
+  assert.equal(result.data.property_type, "Ufficio");
+});

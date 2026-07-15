@@ -157,41 +157,158 @@ function firstValue(source, paths) {
   return null;
 }
 
+function scalarFromValue(value) {
+  if (value === undefined || value === null || value === "") return null;
+  if (["string", "number", "boolean"].includes(typeof value)) return value;
+  if (typeof value === "object") {
+    return firstValue(value, [
+      "value",
+      "formattedValue",
+      "label",
+      "name",
+      "text",
+      "amount",
+      "price",
+    ]);
+  }
+  return null;
+}
+
+function deepFirstValue(source, names, maxDepth = 5) {
+  const seen = new Set();
+  const queue = [{ node: source, depth: 0 }];
+  const wanted = new Set(names.map((name) => String(name).toLowerCase()));
+  while (queue.length) {
+    const { node, depth } = queue.shift();
+    if (!node || typeof node !== "object" || seen.has(node) || depth > maxDepth) continue;
+    seen.add(node);
+    if (!Array.isArray(node)) {
+      for (const [key, value] of Object.entries(node)) {
+        if (wanted.has(key.toLowerCase())) {
+          const scalar = scalarFromValue(value);
+          if (scalar !== null) return scalar;
+        }
+      }
+    }
+    for (const value of Object.values(node)) {
+      if (value && typeof value === "object") queue.push({ node: value, depth: depth + 1 });
+    }
+  }
+  return null;
+}
+
+function collectFeatureValues(source, keys) {
+  const values = [];
+  const seen = new Set();
+  const wanted = keys.map((key) => String(key).toLowerCase());
+  const visit = (node, depth = 0) => {
+    if (!node || typeof node !== "object" || seen.has(node) || depth > 5) return;
+    seen.add(node);
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item, depth + 1);
+      return;
+    }
+    const label = String(node.label || node.name || node.title || node.type || node.key || "").toLowerCase();
+    if (wanted.some((key) => label.includes(key))) {
+      const value = scalarFromValue(node.value) ?? scalarFromValue(node.text) ?? scalarFromValue(node.name);
+      if (value !== null) values.push(value);
+    }
+    for (const value of Object.values(node)) visit(value, depth + 1);
+  };
+  visit(source);
+  return values;
+}
+
 function normalizeAddress(value) {
   if (!value) return { raw: null, text: null };
   if (typeof value === "string") return { raw: value, text: cleanText(value) || null };
   const parts = [
-    value.street || value.streetAddress || value.address || value.route,
-    value.streetNumber || value.houseNumber || value.number,
-    value.city || value.locality || value.municipality || value.addressLocality,
-    value.province || value.region || value.addressRegion,
+    scalarFromValue(value.street || value.streetAddress || value.address || value.route),
+    scalarFromValue(value.streetNumber || value.houseNumber || value.number),
+    scalarFromValue(value.city || value.locality || value.municipality || value.addressLocality),
+    scalarFromValue(value.town || value.macrozone),
+    scalarFromValue(value.province || value.region || value.addressRegion),
   ];
   return { raw: value, text: parts.filter(Boolean).join(" ").replace(/\s+,/g, ",").trim() || null };
 }
 
 function normalizeApifyItem(item, url) {
-  const address = normalizeAddress(firstValue(item, ["address", "location", "property.address"]));
+  const address = normalizeAddress(firstValue(item, [
+    "address",
+    "location",
+    "property.address",
+    "realEstate.location",
+  ]));
   const priceRaw = firstValue(item, [
     "price",
     "prezzo",
     "priceRaw",
     "price.raw",
+    "price.value",
+    "price.formattedValue",
     "details.price",
     "property.price",
-  ]);
+    "realEstate.price.value",
+    "realEstate.price.formattedValue",
+  ]) ?? deepFirstValue(item, ["price", "prezzo", "formattedValue"]);
+  const featureSurface = collectFeatureValues(item, ["superficie", "surface", "mq", "m²"])[0] || null;
+  const featureRooms = collectFeatureValues(item, ["locali", "rooms", "stanze"])[0] || null;
   return {
     source: "apify",
-    url: firstValue(item, ["url", "listingUrl", "link"]) || url,
-    title: firstValue(item, ["title", "name", "headline", "property.title"]) || null,
-    description: firstValue(item, ["description", "descrizione", "text", "property.description"]) || null,
+    url: firstValue(item, ["url", "listingUrl", "link", "realEstate.url"]) || url,
+    title: firstValue(item, [
+      "title",
+      "name",
+      "headline",
+      "caption",
+      "property.title",
+      "realEstate.title",
+      "realEstate.properties.0.title",
+      "realEstate.properties.0.caption",
+    ]) || deepFirstValue(item, ["title", "caption", "headline", "name"]),
+    description: firstValue(item, [
+      "description",
+      "descrizione",
+      "defaultDescription",
+      "text",
+      "property.description",
+      "realEstate.description",
+      "realEstate.defaultDescription",
+      "realEstate.properties.0.description",
+      "realEstate.properties.0.defaultDescription",
+    ]) || deepFirstValue(item, ["description", "defaultDescription", "descrizione"]),
     prezzo: typeof priceRaw === "number" ? priceRaw : numberFromText(priceRaw),
     prezzo_raw: priceRaw != null ? String(priceRaw) : null,
-    disponibilita: firstValue(item, ["availability", "disponibilita", "status", "property.availability"]) || null,
+    disponibilita: firstValue(item, [
+      "availability",
+      "disponibilita",
+      "status",
+      "state.name",
+      "property.availability",
+      "realEstate.state.name",
+      "realEstate.properties.0.state.name",
+    ]) || deepFirstValue(item, ["availability", "disponibilita", "status"]),
     indirizzo: address.text,
     address: address.raw,
-    superficie_mq: firstValue(item, ["surface", "surfaceMq", "area", "details.surface"]) || null,
-    rooms: firstValue(item, ["rooms", "locali", "details.rooms"]) || null,
-    property_type: firstValue(item, ["propertyType", "typology", "type"]) || null,
+    superficie_mq: firstValue(item, [
+      "surface",
+      "surfaceMq",
+      "area",
+      "details.surface",
+      "realEstate.properties.0.surface",
+    ]) || featureSurface,
+    rooms: firstValue(item, ["rooms", "locali", "details.rooms", "realEstate.properties.0.rooms"]) || featureRooms,
+    property_type: firstValue(item, [
+      "propertyType",
+      "typology",
+      "type",
+      "typology.name",
+      "category.name",
+      "realEstate.typology.name",
+      "realEstate.properties.0.typology.name",
+      "realEstate.properties.0.category.name",
+    ]) || deepFirstValue(item, ["propertyType", "typology", "category"]),
+    apify_keys: Object.keys(item).slice(0, 30),
   };
 }
 

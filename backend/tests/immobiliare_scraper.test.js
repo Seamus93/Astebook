@@ -207,3 +207,29 @@ test("immobiliare scraper normalizes nested Azzouzana-like listing fields", asyn
   assert.equal(result.data.rooms, "9");
   assert.equal(result.data.property_type, "Ufficio");
 });
+
+test("immobiliare scraper reports Apify diagnostic items as errors", async () => {
+  const result = await scrapeImmobiliareAnnouncement("https://www.immobiliare.it/annunci/123456789/", {
+    provider: "apify",
+    apifyConfig: {
+      apiBaseUrl: "https://api.apify.test",
+      token: "token",
+      actorId: "azzouzana/immobiliare-it-listing-page-scraper-by-search-url",
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ([{
+        success: false,
+        reason: "NO_RESULTS",
+        message: "No listings found for startUrl",
+        startUrl: "https://www.immobiliare.it/annunci/123456789/",
+      }]),
+    }),
+  });
+
+  assert.equal(result.ok, false);
+  assert.equal(result.provider, "apify");
+  assert.equal(result.error, "No listings found for startUrl");
+  assert.equal(result.reason, "NO_RESULTS");
+});

@@ -312,6 +312,31 @@ function normalizeApifyItem(item, url) {
   };
 }
 
+function apifyDiagnosticError(item) {
+  if (!item || typeof item !== "object" || Array.isArray(item)) return null;
+  const keys = Object.keys(item);
+  const hasDiagnosticShape = keys.length > 0 && keys.every((key) =>
+    ["success", "reason", "message", "startUrl", "url", "error"].includes(key)
+  );
+  if (item.success === false || item.error || (hasDiagnosticShape && (item.reason || item.message))) {
+    return item.message || item.reason || item.error || "Apify non ha restituito un annuncio.";
+  }
+  return null;
+}
+
+function hasNormalizedApifyData(data) {
+  return Boolean(
+    data?.title ||
+      data?.description ||
+      data?.prezzo != null ||
+      data?.disponibilita ||
+      data?.indirizzo ||
+      data?.superficie_mq ||
+      data?.rooms ||
+      data?.property_type
+  );
+}
+
 async function scrapeWithApify(url, { fetchImpl = fetch, config } = {}) {
   if (!config.token) return { ok: false, provider: "apify", error: "APIFY_TOKEN non configurato.", url };
   if (!config.actorId) return { ok: false, provider: "apify", error: "APIFY_IMMOBILIARE_ACTOR_ID non configurato.", url };
@@ -339,11 +364,34 @@ async function scrapeWithApify(url, { fetchImpl = fetch, config } = {}) {
   if (!firstItem) {
     return { ok: false, provider: "apify", error: "Apify non ha restituito dati.", url };
   }
+  const diagnosticError = apifyDiagnosticError(firstItem);
+  if (diagnosticError) {
+    return {
+      ok: false,
+      provider: "apify",
+      error: diagnosticError,
+      reason: firstItem.reason || null,
+      message: firstItem.message || null,
+      start_url: firstItem.startUrl || null,
+      apify_keys: Object.keys(firstItem).slice(0, 30),
+      url,
+    };
+  }
+  const data = normalizeApifyItem(firstItem, url);
+  if (!hasNormalizedApifyData(data)) {
+    return {
+      ok: false,
+      provider: "apify",
+      error: "Apify ha restituito un item senza campi annuncio riconosciuti.",
+      apify_keys: Object.keys(firstItem).slice(0, 30),
+      url,
+    };
+  }
   return {
     ok: true,
     provider: "apify",
     scraped_at: new Date().toISOString(),
-    data: normalizeApifyItem(firstItem, url),
+    data,
   };
 }
 

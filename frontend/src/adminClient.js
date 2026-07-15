@@ -28,7 +28,6 @@ export default function initAdminClient() {
   }
 
   function initPanelToggles() {
-    const mobile = window.matchMedia("(max-width: 560px)");
     document.querySelectorAll(".collapsible-panel").forEach((panel) => {
       const button = panel.querySelector(".panel-toggle");
       const chevron = panel.querySelector(".panel-chevron");
@@ -40,7 +39,7 @@ export default function initAdminClient() {
         if (chevron) chevron.textContent = collapsed ? "expand_more" : "expand_less";
       };
 
-      if (mobile.matches) setCollapsed(true);
+      setCollapsed(panel.classList.contains("collapsed"));
       button.addEventListener("click", () => setCollapsed(!panel.classList.contains("collapsed")));
     });
   }

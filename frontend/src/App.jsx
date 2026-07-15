@@ -101,11 +101,11 @@ const adminMarkup = String.raw`
         ]
           .map(
             ([icon, title, id, className], index) => `
-          <article class="panel${index === 0 ? " panel-wide" : ""} collapsible-panel">
-            <button class="panel-toggle" type="button" aria-expanded="true">
+          <article class="panel${index === 0 ? " panel-wide" : ""} collapsible-panel collapsed">
+            <button class="panel-toggle" type="button" aria-expanded="false">
               <span class="material-symbols-outlined" aria-hidden="true">${icon}</span>
               ${title}
-              <span class="material-symbols-outlined panel-chevron" aria-hidden="true">expand_less</span>
+              <span class="material-symbols-outlined panel-chevron" aria-hidden="true">expand_more</span>
             </button>
             <div class="panel-body">
               <pre id="${id}" class="${className}"></pre>

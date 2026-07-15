@@ -228,6 +228,7 @@ export function registerProcessingEventRoutes(app, {
           status: "sent",
           recipients: delivery.recipients,
           attachment: delivery.attachment,
+          attachments: delivery.attachments,
           sent_at: new Date().toISOString(),
           manual: true,
         },
@@ -241,6 +242,7 @@ export function registerProcessingEventRoutes(app, {
           data: {
             recipients: delivery.recipients,
             attachment: delivery.attachment,
+            attachments: delivery.attachments,
             report_issues: delivery.report.issues.length,
           },
         }
@@ -250,6 +252,7 @@ export function registerProcessingEventRoutes(app, {
         ok: true,
         recipients: delivery.recipients,
         attachment: delivery.attachment,
+        attachments: delivery.attachments,
         report: delivery.report,
       });
     } catch (error) {

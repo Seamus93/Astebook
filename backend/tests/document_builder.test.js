@@ -60,6 +60,54 @@ test("document fields do not use technical email message id as practice code", (
   assert.equal(fields.codice_pratica, " ");
 });
 
+test("document fields use admissible minimum offer increased by one thousand", () => {
+  const fields = buildDocumentFields({
+    result: {
+      merged: {
+        gara: {
+          offerta_minima: "150.000,00",
+          offerta_minima_ammissibile: "151.000,00",
+          rilancio_minimo: "1.000,00",
+        },
+      },
+      extracted: {
+        annuncio: {
+          offerta_minima: 150000,
+        },
+      },
+    },
+  });
+
+  assert.equal(fields.prezzo_base_eur, "150.000,00");
+  assert.equal(fields.offerta_minima_eur, "151.000,00");
+});
+
+test("document fields format dates consistently as dd month yy", () => {
+  const fields = buildDocumentFields({
+    result: {
+      data_apertura_pubblicazione: "15 luglio 2026",
+      merged: {
+        gara: {
+          data_gara: "20 luglio 2026",
+        },
+        deposito: {
+          data_termine_deposito: "17/07/2026",
+        },
+      },
+      extracted: {
+        annuncio: {
+          termine_richieste_visite_data: "2026-07-16",
+        },
+      },
+    },
+  });
+
+  assert.equal(fields.data_apertura_pubblicazione, "15 luglio 26");
+  assert.equal(fields.data_termine_deposito, "17 luglio 26");
+  assert.equal(fields.data_gara, "20 luglio 26");
+  assert.equal(fields.termine_richieste_visite_data, "16 luglio 26");
+});
+
 test("document naming uses AI Intrum disciplinary title and procedure code", () => {
   const event = {
     result: {

@@ -103,6 +103,21 @@ export function toItalianTextDate(val) {
   return str;
 }
 
+export function toItalianNumericDate(val) {
+  if (!val) return val ?? null;
+  const iso = toISOFromITDate(val);
+  if (!iso) return String(val).trim();
+  const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : String(val).trim();
+}
+
+export function toItalianShortTextDate(val) {
+  const full = toItalianTextDate(val);
+  const m = String(full || "").trim().match(/^(\d{1,2})\s+([a-zà]+)\s+(\d{4})$/i);
+  if (!m) return full;
+  return `${m[1]} ${m[2].toLowerCase()} ${m[3].slice(-2)}`;
+}
+
 export function formatMoneyIT(val) {
   const normalized = () => {
     if (typeof val === "number") return val;

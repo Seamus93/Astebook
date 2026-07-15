@@ -17,7 +17,7 @@ import { registerAdminSettingsRoutes } from "./routes/admin_settings.js";
 import { registerCallAiRoute } from "./routes/call_ai.js";
 import { createEmailIntakeHandlers, registerEmailIntakeRoutes } from "./routes/email_intake.js";
 import { registerProcessingEventRoutes } from "./routes/processing_events.js";
-import { buildDocumentPdf } from "./lib/document_builder.js";
+import { buildDocumentDocx, buildDocumentPdf } from "./lib/document_builder.js";
 import { createDocumentEmailService } from "./lib/document_email.js";
 import {
   createEmailWatcher,
@@ -66,6 +66,7 @@ const astebookLogoPath = join(mediaDir, "astebook-logo.png");
 const iresalesLogoPath = join(mediaDir, "iresales-logo.png");
 
 const documentEmailService = createDocumentEmailService({
+  buildDocumentDocx,
   buildDocumentPdf,
   createSmtpTransporter,
   getEffectiveSetting,

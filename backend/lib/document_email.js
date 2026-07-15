@@ -97,7 +97,7 @@ function buildDocumentEmailHtml(event, report) {
             </tr>
             <tr>
               <td style="padding:0 36px 28px;">
-                <p style="margin:0 0 12px;font-size:15px;line-height:1.55;">In allegato il documento PDF generato per la procedura <strong>${escapeHtml(code)}</strong>.</p>
+                <p style="margin:0 0 12px;font-size:15px;line-height:1.55;">In allegato il documento PDF e Word generato per la procedura <strong>${escapeHtml(code)}</strong>.</p>
                 <p style="margin:0 0 20px;font-size:14px;color:#4b5563;">${escapeHtml(address || "Immobile non indicato")}</p>
                 <h2 style="margin:0 0 10px;font-size:16px;">Report elaborazione automatica</h2>
                 <table width="100%" cellpadding="8" cellspacing="0" style="border-collapse:collapse;font-size:13px;">
@@ -124,7 +124,7 @@ function buildDocumentEmailHtml(event, report) {
 function buildDocumentEmailText(event, report) {
   const result = event?.result || {};
   const code = documentProcedureCode(event);
-  const lines = [`Documento PDF Astebook per procedura ${code}.`, "", "Report elaborazione automatica:"];
+  const lines = [`Documento PDF e Word Astebook per procedura ${code}.`, "", "Report elaborazione automatica:"];
   if (!report.issues.length) {
     lines.push("- Nessuna criticita rilevata dalla pipeline automatica.");
   } else {
@@ -168,11 +168,27 @@ export function createDocumentEmailService(deps) {
     }
     validateEmailRecipients(recipients);
 
+    const docx = deps.buildDocumentDocx ? await deps.buildDocumentDocx(event) : null;
     const pdf = await deps.buildDocumentPdf(event);
     const report = buildDocumentQualityReport(event);
-    const fileName = documentFileName(event, "pdf");
+    const pdfFileName = documentFileName(event, "pdf");
+    const docxFileName = documentFileName(event, "docx");
     const smtp = await deps.getSmtpSettings();
     const transporter = await deps.createSmtpTransporter();
+    const documentAttachments = [
+      {
+        filename: pdfFileName,
+        content: pdf,
+        contentType: "application/pdf",
+      },
+      docx
+        ? {
+            filename: docxFileName,
+            content: docx,
+            contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          }
+        : null,
+    ].filter(Boolean);
 
     await transporter.sendMail({
       from: smtp.from,
@@ -181,11 +197,7 @@ export function createDocumentEmailService(deps) {
       text: buildDocumentEmailText(event, report),
       html: buildDocumentEmailHtml(event, report),
       attachments: [
-        {
-          filename: fileName,
-          content: pdf,
-          contentType: "application/pdf",
-        },
+        ...documentAttachments,
         ...inlineLogoAttachments(deps.logoPaths),
       ],
     });
@@ -193,7 +205,8 @@ export function createDocumentEmailService(deps) {
     return {
       status: "sent",
       recipients,
-      attachment: fileName,
+      attachment: pdfFileName,
+      attachments: documentAttachments.map((attachment) => attachment.filename),
       report,
     };
   }
@@ -237,6 +250,7 @@ export function createDocumentEmailService(deps) {
           status: "sent",
           recipients: delivery.recipients,
           attachment: delivery.attachment,
+          attachments: delivery.attachments,
           report_issues: delivery.report.issues.length,
         },
         {
@@ -244,6 +258,7 @@ export function createDocumentEmailService(deps) {
           data: {
             recipients: delivery.recipients,
             attachment: delivery.attachment,
+            attachments: delivery.attachments,
             report_issues: delivery.report.issues.length,
           },
         }

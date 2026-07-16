@@ -1,7 +1,5 @@
 # VPS Infrastructure Standard
 
-Updated: 2026-07-10
-
 Sources:
 
 - `.skills/VPS_INFRASTRUCTURE.md`
@@ -124,11 +122,12 @@ The script must:
 
 - Each project is a dedicated Docker Compose stack.
 - Stack name: `<project-name>`.
-- Container naming convention: `project-service`, for example `<project-name>-api`.
+- Container naming convention: `<project-name>-<service>`.
 - Use multi-stage builds.
 - Prefer Alpine images.
 - Use distroless where practical.
 - Every service should use `restart: unless-stopped`.
+- HTTP services must expose `GET /health`.
 - HTTP services need a healthcheck:
 
 ```yaml
@@ -138,6 +137,8 @@ healthcheck:
   timeout: 10s
   retries: 3
 ```
+
+The healthcheck URL must match the real internal port.
 
 ## Docker Labels
 
@@ -159,6 +160,12 @@ Reusable variable names:
 - `VPS_APP_DIR`
 - `PROJECT_URL`
 - `HEALTH_URL`
+
+Expected value shapes:
+
+- `VPS_APP_DIR=/opt/projects/<project-name>`
+- `PROJECT_URL=<public-project-url>`
+- `HEALTH_URL=<public-project-url>/health`
 
 Project-specific expected values belong in root `AGENTS.md` or project deployment docs, not in reusable `.skills` files.
 

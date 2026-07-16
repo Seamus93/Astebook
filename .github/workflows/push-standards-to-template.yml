@@ -1,0 +1,81 @@
+name: Push Standards To Template
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - ".skills/**"
+      - ".rag/standards-*.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync-to-template:
+    name: Push project standards to Template
+    if: github.repository != 'Seamus93/Template'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check sync source
+        id: source
+        shell: bash
+        env:
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message || '' }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$HEAD_COMMIT_MESSAGE" == *"[from-template-sync]"* ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Skipping reverse sync for Template-originated commit."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout source project
+        if: steps.source.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          path: source-project
+
+      - name: Checkout Template
+        if: steps.source.outputs.skip != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Seamus93/Template
+          token: ${{ secrets.STANDARDS_SYNC_TOKEN }}
+          ref: main
+          path: template
+
+      - name: Copy standards into Template
+        if: steps.source.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          rm -rf template/.skills
+          cp -R source-project/.skills template/.skills
+
+          mkdir -p template/.rag
+          find template/.rag -maxdepth 1 -type f -name 'standards-*.md' -delete
+          cp source-project/.rag/standards-*.md template/.rag/
+
+      - name: Push direct update to Template
+        if: steps.source.outputs.skip != 'true'
+        shell: bash
+        working-directory: template
+        run: |
+          set -euo pipefail
+
+          if git diff --quiet; then
+            echo "No standards changes to push to Template."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .skills .rag/standards-*.md
+          git commit -m "Sync shared standards from ${{ github.repository }} [from-project-sync]"
+          git push origin HEAD:main

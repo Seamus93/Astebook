@@ -1,11 +1,12 @@
 # Project Delivery Standard
 
-Updated: 2026-07-10
-
 Sources:
 
 - `.skills/AGENTS.md`
 - `.skills/PROJECT_STANDARD.md`
+- `.skills/DATABASE_API_STANDARD.md`
+- `.skills/FRONTEND_STANDARD.md`
+- `.skills/MEDIA_STANDARD.md`
 
 ## Mission
 
@@ -49,11 +50,11 @@ Every project should identify its tier before implementation.
 - Frontend: React, Vite, TypeScript, Tailwind, Shadcn UI, TanStack Query.
 - Backend: Node.js, TypeScript, Fastify.
 - Database: PostgreSQL.
-- ORM: Prisma.
+- ORM: Prisma, alternative Drizzle.
 - Cache/Queue: Redis/BullMQ.
-- Auth: Better Auth.
+- Auth: Better Auth, alternatives Auth.js or Keycloak.
 - AI: OpenRouter; supports OpenAI, Anthropic, Gemini, DeepSeek.
-- Email: Resend; alternatives Postmark.
+- Email: Resend; alternative Postmark.
 - Payments: Stripe.
 - Storage: S3-compatible, Cloudflare R2, MinIO, AWS S3.
 
@@ -83,8 +84,7 @@ Before implementation, refactor, debugging, deployment or documentation work:
 1. Ensure `.rag/` exists.
 2. Index or incrementally update:
    - `AGENTS.md`
-   - `.skills/AGENTS.md`
-   - `.skills/**/*.md` when relevant
+   - `.skills/**/*.md`
    - `docs/**/*.md`
    - `docs/adr/**/*.md`
    - `README.md`
@@ -119,6 +119,29 @@ Visual docs expected where applicable:
 - Deployment Flow
 
 Use Mermaid or DBML.
+
+## Database and API
+
+- PostgreSQL and Prisma are the defaults; Drizzle is the standard alternative.
+- Each table should have `id`, `created_at` and `updated_at`.
+- Relationships need foreign keys, appropriate indexes and constraints.
+- Schema changes require migrations plus updates to `docs/DB_SCHEMA.md`, ERD and related docs.
+- REST is the default API style; public APIs should be versioned as `/api/v1/*`, `/api/v2/*`.
+- Public or complex backoffice APIs should have OpenAPI/Swagger documentation.
+
+## Frontend
+
+- Operational tools should prioritize dense, organized interfaces, predictable navigation and repeated-action efficiency.
+- Avoid marketing-style layouts for admin, CRM, SaaS and backoffice workflows.
+- Use familiar controls: icons for tools, toggles for booleans, inputs for numbers, menus for option sets and tabs for related views.
+- Layout must avoid overlapping text or controls and must hold up on mobile and desktop.
+
+## Media
+
+- Binary media should not live loose in the repo root.
+- Site media should default to Cloudinary or the project-approved asset flow.
+- Local `/media` is optional and should only contain temporary working material pending migration.
+- Migration reports and exports should not dirty the deployed worktree.
 
 ## Code Documentation
 

@@ -41,16 +41,16 @@ function labelFor(key) {
   return labels[key] || key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
-async function sendExtractionFeedback({ eventId, fieldPath, value, rating }) {
+async function sendExtractionFeedback({ eventId, fieldPath, value, rating, correctedValue, reason }) {
   if (!eventId || !fieldPath) return;
   const positive = rating === "positive";
   const payload = {
     field_path: fieldPath,
     ai_value: value,
-    corrected_value: positive ? value : null,
-    reason: positive
+    corrected_value: correctedValue !== undefined ? correctedValue : positive ? value : null,
+    reason: reason || (positive
       ? "Dato estratto confermato manualmente dalla UI."
-      : "Dato estratto segnalato come non corretto dalla UI.",
+      : "Dato estratto segnalato come non corretto dalla UI."),
     rating,
     apply: false,
   };
@@ -63,6 +63,90 @@ async function sendExtractionFeedback({ eventId, fieldPath, value, rating }) {
   if (!response.ok || body.ok === false) {
     throw new Error(body.error || `HTTP ${response.status}`);
   }
+}
+
+function removeCorrectionForms(row) {
+  row.querySelectorAll(".field-feedback-correction").forEach((form) => form.remove());
+}
+
+function showCorrectionForm({ button, group, eventId, path, value }) {
+  const row = group.closest(".kv-row");
+  if (!row) return;
+  removeCorrectionForms(row);
+
+  const form = document.createElement("form");
+  form.className = "field-feedback-correction";
+  form.innerHTML = `
+    <label>
+      <span>Quale e il valore corretto?</span>
+      <input name="corrected_value" type="text" required />
+    </label>
+    <label>
+      <span>Aiuta l'AI a riconoscerlo</span>
+      <textarea name="reason" rows="2" placeholder="Es. si trova nella sezione Identificazione catastale, vicino a foglio/particella..."></textarea>
+    </label>
+    <div class="field-feedback-correction-actions">
+      <button class="secondary-button" type="button" data-cancel>Annulla</button>
+      <button class="primary-button" type="submit">Salva</button>
+    </div>
+  `;
+
+  form.querySelector("[data-cancel]")?.addEventListener("click", () => {
+    button.classList.remove("active");
+    form.remove();
+  });
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const data = new FormData(form);
+    const correctedValue = String(data.get("corrected_value") || "").trim();
+    const hint = String(data.get("reason") || "").trim();
+    if (!correctedValue) return;
+
+    group.querySelectorAll("button").forEach((item) => {
+      item.disabled = true;
+    });
+    form.querySelectorAll("button, input, textarea").forEach((item) => {
+      item.disabled = true;
+    });
+
+    try {
+      await sendExtractionFeedback({
+        eventId,
+        fieldPath: path,
+        value,
+        rating: "negative",
+        correctedValue,
+        reason: [
+          "Dato estratto corretto manualmente dalla UI.",
+          hint ? `Indicazione per AI: ${hint}` : "",
+        ].filter(Boolean).join(" "),
+      });
+      showToast({
+        title: "Correzione salvata",
+        message: "Il valore corretto e la nota saranno usati come memoria per l'AI.",
+        tone: "info",
+      });
+      form.remove();
+    } catch (error) {
+      button.classList.remove("active");
+      showToast({
+        title: "Feedback non salvato",
+        message: error.message || String(error),
+        tone: "error",
+      });
+      form.querySelectorAll("button, input, textarea").forEach((item) => {
+        item.disabled = false;
+      });
+    } finally {
+      group.querySelectorAll("button").forEach((item) => {
+        item.disabled = false;
+      });
+    }
+  });
+
+  row.appendChild(form);
+  form.querySelector("input")?.focus();
 }
 
 function feedbackActions({ eventId, path, value }) {
@@ -84,6 +168,12 @@ function feedbackActions({ eventId, path, value }) {
     button.addEventListener("click", async (event) => {
       event.preventDefault();
       event.stopPropagation();
+      if (rating === "negative") {
+        group.querySelectorAll("button").forEach((item) => item.classList.remove("active"));
+        button.classList.add("active");
+        showCorrectionForm({ button, group, eventId, path, value });
+        return;
+      }
       group.querySelectorAll("button").forEach((item) => {
         item.disabled = true;
         item.classList.remove("active");

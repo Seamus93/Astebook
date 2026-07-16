@@ -33,6 +33,7 @@ Updated: 2026-07-10
 - `frontend/src/styles/settings.css`: settings page, settings forms, feedback form and recipient chips.
 - `frontend/src/styles/settings/*.css`: settings submodules for page, forms, summary, feedback and recipients.
 - `frontend/src/styles/responsive.css`: responsive layout rules.
+- `backend/routes/admin_auth.js`: server-rendered login/setup/recovery page shown before the protected React admin shell.
 
 ## Current Admin Client Responsibilities
 
@@ -74,6 +75,12 @@ Current modules:
 - Clicking a recipient chip X posts `{ document_send_to: nextValue }` to `/api/v1/admin/settings`, reloads settings, and updates the input.
 - Non-secret settings fields should be rendered as text fields, not password fields.
 - Secret fields still use reveal buttons.
+
+## Login Page
+
+- `/login` and `/setup` are rendered by Express before the protected SPA is served.
+- The login page uses the Astebook admin visual language: black brand bar, serif wordmark, white surfaces, magenta accent and compact operational copy.
+- Keep authentication behavior in `backend/routes/admin_auth.js`; do not move login into the React admin shell unless the server-side protection model changes.
 
 ## Frontend Verification
 

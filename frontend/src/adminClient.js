@@ -20,11 +20,13 @@ export default function initAdminClient() {
     const settingsPage = qs("settingsPage");
     if (shell) shell.hidden = onSettings;
     if (settingsPage) settingsPage.hidden = !onSettings;
+    document.body.classList.toggle("settings-route", onSettings);
   }
 
   function navigate(path) {
     window.history.pushState({}, "", path);
     renderRoute();
+    window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   }
 
   function initPanelToggles() {
@@ -53,8 +55,6 @@ export default function initAdminClient() {
     document.querySelector(".mobile-nav-events")?.addEventListener("click", () => scrollTo(".panes"));
     document.querySelector(".mobile-nav-settings")?.addEventListener("click", () => navigate("/admin/settings"));
     document.querySelector(".mobile-nav-primary")?.addEventListener("click", () => qs("reprocessButton")?.click());
-    qs("mobileBackButton")?.addEventListener("click", () => scrollTo(".sidebar"));
-    qs("mobileActionsButton")?.addEventListener("click", () => qs("reprocessButton")?.click());
   }
 
   document.getElementById("settingsButton").addEventListener("click", () => navigate("/admin/settings"));

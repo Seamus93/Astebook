@@ -49,15 +49,6 @@ const adminMarkup = String.raw`
     </aside>
 
     <section class="detail">
-      <div class="mobile-detail-bar">
-        <button id="mobileBackButton" class="mobile-back-button" type="button">
-          <span class="material-symbols-outlined" aria-hidden="true">chevron_left</span>
-          Indietro
-        </button>
-        <button id="mobileActionsButton" class="mobile-actions-button" type="button" title="Azioni">
-          <span class="material-symbols-outlined" aria-hidden="true">more_horiz</span>
-        </button>
-      </div>
       <header class="detail-header">
         <div class="detail-title">
           <div>

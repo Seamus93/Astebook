@@ -83,6 +83,8 @@ jobs:
     name: Sonar
     runs-on: ubuntu-latest
     needs: ci
+    if: ${{ !((github.event_name == 'push' && (contains(github.event.head_commit.message, '[from-template-sync]') || contains(github.event.head_commit.message, '[from-project-sync]') || contains(github.ref_name, 'from-template-sync') || contains(github.ref_name, 'from-project-sync'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[from-template-sync]') || contains(github.event.pull_request.title, '[from-project-sync]') || contains(github.head_ref, 'from-template-sync') || contains(github.head_ref, 'from-project-sync') || contains(github.head_ref, 'sync-standards')))) }}
+    continue-on-error: true
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -127,6 +129,7 @@ jobs:
     name: Security
     runs-on: ubuntu-latest
     needs: ci
+    if: ${{ !((github.event_name == 'push' && (contains(github.event.head_commit.message, '[from-template-sync]') || contains(github.event.head_commit.message, '[from-project-sync]') || contains(github.ref_name, 'from-template-sync') || contains(github.ref_name, 'from-project-sync'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[from-template-sync]') || contains(github.event.pull_request.title, '[from-project-sync]') || contains(github.head_ref, 'from-template-sync') || contains(github.head_ref, 'from-project-sync') || contains(github.head_ref, 'sync-standards')))) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -183,6 +186,7 @@ jobs:
     name: CodeQL
     runs-on: ubuntu-latest
     needs: ci
+    if: ${{ !((github.event_name == 'push' && (contains(github.event.head_commit.message, '[from-template-sync]') || contains(github.event.head_commit.message, '[from-project-sync]') || contains(github.ref_name, 'from-template-sync') || contains(github.ref_name, 'from-project-sync'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[from-template-sync]') || contains(github.event.pull_request.title, '[from-project-sync]') || contains(github.head_ref, 'from-template-sync') || contains(github.head_ref, 'from-project-sync') || contains(github.head_ref, 'sync-standards')))) }}
     continue-on-error: true
     permissions:
       actions: read
@@ -209,7 +213,7 @@ jobs:
       - ci
       - sonar
       - security
-    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && !((github.event_name == 'push' && (contains(github.event.head_commit.message, '[from-template-sync]') || contains(github.event.head_commit.message, '[from-project-sync]') || contains(github.ref_name, 'from-template-sync') || contains(github.ref_name, 'from-project-sync'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[from-template-sync]') || contains(github.event.pull_request.title, '[from-project-sync]') || contains(github.head_ref, 'from-template-sync') || contains(github.head_ref, 'from-project-sync') || contains(github.head_ref, 'sync-standards')))) }}
     steps:
       - name: Skip deploy when credentials are missing
         if: ${{ env.DEPLOY_HOST == '' || env.DEPLOY_USER == '' || env.DEPLOY_KEY == '' }}

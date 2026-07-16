@@ -94,8 +94,21 @@ function firstJsonLdListing(blocks) {
 function numberFromText(value) {
   const match = String(value || "").match(/(\d[\d.\s]*)(?:,\d{1,2})?/);
   if (!match) return null;
-  const parsed = Number(match[0].replace(/\./g, "").replace(/\s+/g, "").replace(",", "."));
+  let token = match[0].replace(/\s+/g, "");
+  if (token.includes(",")) {
+    token = token.replace(/\./g, "").replace(",", ".");
+  } else if (/^\d{1,3}(?:\.\d{3})+\.\d{2}$/.test(token)) {
+    const lastDot = token.lastIndexOf(".");
+    token = `${token.slice(0, lastDot).replace(/\./g, "")}.${token.slice(lastDot + 1)}`;
+  } else {
+    token = token.replace(/\./g, "");
+  }
+  const parsed = Number(token);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function isPlaceholder(value) {
+  return /^[-–—]$|^(n\.?d\.?|non disponibile)$/i.test(cleanText(value));
 }
 
 async function configuredProvider(provider) {
@@ -166,24 +179,46 @@ function buildApifyInput(url, config) {
 function firstValue(source, paths) {
   for (const path of paths) {
     const value = path.split(".").reduce((current, key) => current?.[key], source);
-    if (value !== undefined && value !== null && value !== "") return value;
+    if (value !== undefined && value !== null && value !== "" && !isPlaceholder(value)) return value;
   }
   return null;
 }
 
 function scalarFromValue(value) {
-  if (value === undefined || value === null || value === "") return null;
+  if (value === undefined || value === null || value === "" || isPlaceholder(value)) return null;
   if (["string", "number", "boolean"].includes(typeof value)) return value;
   if (typeof value === "object") {
     return firstValue(value, [
       "value",
       "formattedValue",
+      "formatted",
       "label",
       "name",
       "text",
       "amount",
       "price",
     ]);
+  }
+  return null;
+}
+
+function cleanScalarValue(value) {
+  const scalar = scalarFromValue(value);
+  if (scalar === null) return null;
+  if (typeof scalar !== "string") return scalar;
+  return cleanText(scalar.replace(/^"+|"+$/g, "")) || null;
+}
+
+function cleanScalarText(value) {
+  const scalar = cleanScalarValue(value);
+  return scalar === null ? null : cleanText(scalar);
+}
+
+function firstScalarValue(source, paths) {
+  for (const path of paths) {
+    const value = path.split(".").reduce((current, key) => current?.[key], source);
+    const scalar = cleanScalarValue(value);
+    if (scalar !== null) return scalar;
   }
   return null;
 }
@@ -222,9 +257,10 @@ function collectFeatureValues(source, keys) {
       for (const item of node) visit(item, depth + 1);
       return;
     }
-    const label = String(node.label || node.name || node.title || node.type || node.key || "").toLowerCase();
+    const explicitLabel = node.label || node.title || node.type || node.key || "";
+    const label = String(explicitLabel || node.name || "").toLowerCase();
     if (wanted.some((key) => label.includes(key))) {
-      const value = scalarFromValue(node.value) ?? scalarFromValue(node.text) ?? scalarFromValue(node.name);
+      const value = scalarFromValue(node.value) ?? scalarFromValue(node.text) ?? (explicitLabel ? scalarFromValue(node.name) : null);
       if (value !== null) values.push(value);
     }
     for (const value of Object.values(node)) visit(value, depth + 1);
@@ -236,40 +272,81 @@ function collectFeatureValues(source, keys) {
 function normalizeAddress(value) {
   if (!value) return { raw: null, text: null };
   if (typeof value === "string") return { raw: value, text: cleanText(value) || null };
-  const parts = [
+  const fullAddress = scalarFromValue(
+    value.fullAddress ||
+      value.formattedAddress ||
+      value.displayAddress ||
+      value.displayName ||
+      value.label ||
+      value.text
+  );
+  if (fullAddress) return { raw: value, text: cleanText(fullAddress) || null };
+  const city = cleanScalarText(value.city || value.locality || value.municipality || value.addressLocality);
+  const province = cleanScalarText(value.provinceId || value.province || value.region || value.addressRegion);
+  const zone = cleanScalarText(value.microzone || value.zone || value.area || value.neighborhood || value.district || value.macrozone);
+  const street = [
     scalarFromValue(value.street || value.streetAddress || value.address || value.route),
     scalarFromValue(value.streetNumber || value.houseNumber || value.number),
-    scalarFromValue(value.city || value.locality || value.municipality || value.addressLocality),
-    scalarFromValue(value.town || value.macrozone),
-    scalarFromValue(value.province || value.region || value.addressRegion),
-  ];
-  return { raw: value, text: parts.filter(Boolean).join(" ").replace(/\s+,/g, ",").trim() || null };
+  ].map((part) => cleanScalarText(part)).filter(Boolean).join(" ");
+  const parts = [
+    street,
+    city,
+    zone,
+    province && province !== city ? province : null,
+  ].map((part) => cleanScalarText(part));
+  return { raw: value, text: parts.filter(Boolean).join(", ").replace(/\s+,/g, ",").trim() || null };
 }
 
 function normalizeApifyItem(item, url) {
+  const description = firstScalarValue(item, [
+    "description",
+    "descrizione",
+    "defaultDescription",
+    "text",
+    "properties.0.description",
+    "properties.0.defaultDescription",
+    "property.description",
+    "realEstate.description",
+    "realEstate.defaultDescription",
+    "realEstate.properties.0.description",
+    "realEstate.properties.0.defaultDescription",
+  ]) || deepFirstValue(item, ["description", "defaultDescription", "descrizione"]);
   const address = normalizeAddress(firstValue(item, [
     "address",
     "location",
+    "properties.0.address",
+    "properties.0.location",
     "property.address",
     "realEstate.location",
+    "realEstate.properties.0.address",
+    "realEstate.properties.0.location",
   ]));
-  const priceRaw = firstValue(item, [
-    "price",
-    "prezzo",
-    "priceRaw",
-    "price.raw",
+  const priceRaw = firstScalarValue(item, [
     "price.value",
     "price.formattedValue",
+    "price.formatted",
+    "price.amount",
+    "price.price",
+    "price.minPrice",
+    "price.maxPrice",
+    "price.raw",
+    "prezzo.value",
+    "prezzo.formattedValue",
+    "prezzo",
+    "priceRaw",
+    "price",
     "details.price",
     "property.price",
     "realEstate.price.value",
     "realEstate.price.formattedValue",
-  ]) ?? deepFirstValue(item, ["price", "prezzo", "formattedValue"]);
+    "realEstate.price",
+  ]) ?? deepFirstValue(item, ["price", "prezzo", "formattedValue"]) ?? description?.match(/prezzo\s*base\s*:?\s*(?:euro|€)?\s*[\d.\s,]+/i)?.[0] ?? null;
   const featureSurface = collectFeatureValues(item, ["superficie", "surface", "mq", "m²"])[0] || null;
   const featureRooms = collectFeatureValues(item, ["locali", "rooms", "stanze"])[0] || null;
   return {
     source: "apify",
-    url: firstValue(item, ["url", "listingUrl", "link", "realEstate.url"]) || url,
+    id: firstScalarValue(item, ["id", "uuid", "realEstate.id"]),
+    url: firstScalarValue(item, ["url", "input_url", "listingUrl", "link", "realEstate.url"]) || url,
     title: firstValue(item, [
       "title",
       "name",
@@ -280,23 +357,15 @@ function normalizeApifyItem(item, url) {
       "realEstate.properties.0.title",
       "realEstate.properties.0.caption",
     ]) || deepFirstValue(item, ["title", "caption", "headline", "name"]),
-    description: firstValue(item, [
-      "description",
-      "descrizione",
-      "defaultDescription",
-      "text",
-      "property.description",
-      "realEstate.description",
-      "realEstate.defaultDescription",
-      "realEstate.properties.0.description",
-      "realEstate.properties.0.defaultDescription",
-    ]) || deepFirstValue(item, ["description", "defaultDescription", "descrizione"]),
+    description,
     prezzo: typeof priceRaw === "number" ? priceRaw : numberFromText(priceRaw),
     prezzo_raw: priceRaw != null ? String(priceRaw) : null,
     disponibilita: firstValue(item, [
       "availability",
       "disponibilita",
       "status",
+      "state.value",
+      "state.label",
       "state.name",
       "property.availability",
       "realEstate.state.name",
@@ -304,24 +373,51 @@ function normalizeApifyItem(item, url) {
     ]) || deepFirstValue(item, ["availability", "disponibilita", "status"]),
     indirizzo: address.text,
     address: address.raw,
-    superficie_mq: firstValue(item, [
+    superficie_mq: firstScalarValue(item, [
       "surface",
       "surfaceMq",
       "area",
       "details.surface",
+      "properties.0.surface",
+      "properties.0.surfaceValue",
       "realEstate.properties.0.surface",
     ]) || featureSurface,
-    rooms: firstValue(item, ["rooms", "locali", "details.rooms", "realEstate.properties.0.rooms"]) || featureRooms,
-    property_type: firstValue(item, [
+    rooms: firstScalarValue(item, [
+      "rooms",
+      "locali",
+      "details.rooms",
+      "properties.0.rooms",
+      "properties.0.roomNumber",
+      "realEstate.properties.0.rooms",
+    ]) || featureRooms,
+    property_type: firstScalarValue(item, [
+      "propertyType.name",
+      "propertyType.label",
       "propertyType",
-      "typology",
-      "type",
       "typology.name",
+      "typology.label",
+      "typology.value",
+      "typology",
+      "type.name",
+      "type.label",
+      "type.value",
+      "type",
       "category.name",
+      "category.label",
+      "category",
       "realEstate.typology.name",
       "realEstate.properties.0.typology.name",
       "realEstate.properties.0.category.name",
     ]) || deepFirstValue(item, ["propertyType", "typology", "category"]),
+    contract: firstScalarValue(item, ["contractValue", "contract.value", "contract.label", "contract"]),
+    reference: firstScalarValue(item, [
+      "reference.code",
+      "reference.value",
+      "properties.0.reference.code",
+      "properties.0.reference.value",
+      "reference.label",
+      "reference",
+    ]),
     apify_keys: Object.keys(item).slice(0, 30),
   };
 }
@@ -445,15 +541,24 @@ function dataAttribute(html, names) {
   return null;
 }
 
+function addressFromTitle(title) {
+  const normalized = cleanText(title)
+    .replace(/\s+-\s+Immobiliare\.it$/i, "")
+    .replace(/,\s*Rif\..*$/i, "");
+  const streetMatch = normalized.match(/\b(?:via|viale|piazza|piazzale|corso|largo|vicolo|strada|localit[àa]|contrada|frazione|scali)\b\s+.+$/i);
+  return streetMatch ? cleanText(streetMatch[0]) : null;
+}
+
 export function parseImmobiliareHtml(html, url) {
   const blocks = jsonLdBlocks(html);
   const listing = firstJsonLdListing(blocks) || {};
   const offers = Array.isArray(listing.offers) ? listing.offers[0] : listing.offers || {};
   const address = listing.address || {};
+  const htmlTitle = titleFromHtml(html);
   const title = cleanText(
     listing.name ||
       metaContent(html, ["og:title", "twitter:title"]) ||
-      titleFromHtml(html)
+      htmlTitle
   ) || null;
   const description = stripTags(
     listing.description ||
@@ -474,7 +579,7 @@ export function parseImmobiliareHtml(html, url) {
       address.addressLocality && address.streetAddress
   ) || null;
   const locality = cleanText(address.addressLocality || address.addressRegion || "") || null;
-  const extractedAddress = [streetAddress, locality].filter(Boolean).join(", ") || null;
+  const extractedAddress = [streetAddress, locality].filter(Boolean).join(", ") || addressFromTitle(htmlTitle) || null;
 
   return {
     source: "immobiliare.it",

@@ -52,6 +52,15 @@ test("immobiliare scraper parses listing metadata without using it for merge", (
   assert.equal(parsed.indirizzo, "Piazza Roma 1, Ancona");
 });
 
+test("immobiliare scraper recovers address from Immobiliare page title", () => {
+  const parsed = parseImmobiliareHtml(
+    `<!doctype html><title>Locale commerciale Scali Manzoni 13-25, Livorno, Rif. 122237772 - Immobiliare.it</title>`,
+    "https://www.immobiliare.it/annunci/122237772/"
+  );
+
+  assert.equal(parsed.indirizzo, "Scali Manzoni 13-25, Livorno");
+});
+
 test("immobiliare scraper fetches one supported announcement url", async () => {
   const result = await scrapeImmobiliareAnnouncement("https://www.immobiliare.it/annunci/123456789/", {
     fetchImpl: async () => ({
@@ -129,7 +138,7 @@ test("immobiliare scraper can use Apify actor dataset output", async () => {
   assert.equal(result.data.title, "Ufficio in vendita");
   assert.equal(result.data.prezzo, 151000);
   assert.equal(result.data.disponibilita, "libero");
-  assert.equal(result.data.indirizzo, "Piazza Roma 1 Ancona AN");
+  assert.equal(result.data.indirizzo, "Piazza Roma 1, Ancona, AN");
 });
 
 test("immobiliare scraper adapts input for Azzouzana search-url actor", async () => {
@@ -202,10 +211,126 @@ test("immobiliare scraper normalizes nested Azzouzana-like listing fields", asyn
   assert.equal(result.data.prezzo, 200000);
   assert.equal(result.data.prezzo_raw, "200000");
   assert.equal(result.data.disponibilita, "Libero");
-  assert.equal(result.data.indirizzo, "Piazza Roma 1 Ancona AN");
+  assert.equal(result.data.indirizzo, "Piazza Roma 1, Ancona, AN");
   assert.equal(result.data.superficie_mq, "285 m²");
   assert.equal(result.data.rooms, "9");
   assert.equal(result.data.property_type, "Ufficio");
+});
+
+test("immobiliare scraper recovers Azzouzana partial listing values", async () => {
+  const result = await scrapeImmobiliareAnnouncement("https://www.immobiliare.it/annunci/122237772/", {
+    provider: "apify",
+    apifyConfig: {
+      apiBaseUrl: "https://api.apify.test",
+      token: "token",
+      actorId: "azzouzana/immobiliare-it-listing-page-scraper-by-items-urls",
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ([{
+        url: "https://www.immobiliare.it/annunci/122237772/",
+        title: "Locale commerciale in Vendita",
+        description: "Immobile libero. Prezzo Base : Euro 220.000.00 oltre imposte di legge",
+        price: { value: "-", formattedValue: "-" },
+        availability: "attivo",
+        address: "-",
+        propertyType: { id: 110, name: "Negozio - Locale commerciale" },
+        features: [
+          { label: "Superficie", value: "402 m²" },
+          { name: "Negozi - Locali commerciali" },
+        ],
+      }]),
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.prezzo, 220000);
+  assert.equal(result.data.prezzo_raw, "Prezzo Base : Euro 220.000.00 ");
+  assert.equal(result.data.indirizzo, null);
+  assert.equal(result.data.superficie_mq, "402 m²");
+  assert.equal(result.data.rooms, null);
+  assert.equal(result.data.property_type, "Negozio - Locale commerciale");
+});
+
+test("immobiliare scraper reads address only when Apify returns it", async () => {
+  const result = await scrapeImmobiliareAnnouncement("https://www.immobiliare.it/annunci/122237772/", {
+    provider: "apify",
+    apifyConfig: {
+      apiBaseUrl: "https://api.apify.test",
+      token: "token",
+      actorId: "azzouzana/immobiliare-it-listing-page-scraper-by-items-urls",
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ([{
+        url: "https://www.immobiliare.it/annunci/122237772/",
+        title: "Locale commerciale in Vendita",
+        location: {
+          street: "Scali Manzoni",
+          streetNumber: "13-25",
+          city: "Livorno",
+          zone: "Cavour - San Carlo",
+        },
+      }]),
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.indirizzo, "Scali Manzoni 13-25, Livorno, Cavour - San Carlo");
+});
+
+test("immobiliare scraper maps Azzouzana table output fields", async () => {
+  const result = await scrapeImmobiliareAnnouncement("https://www.immobiliare.it/annunci/122237772/", {
+    provider: "apify",
+    apifyConfig: {
+      apiBaseUrl: "https://api.apify.test",
+      token: "token",
+      actorId: "azzouzana/immobiliare-it-listing-page-scraper-by-items-urls",
+    },
+    fetchImpl: async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ([{
+        contract: "sale",
+        contractValue: "Vendita",
+        dataType: "real-estate",
+        id: 122237772,
+        input_url: "\"https://www.immobiliare.it/annunci/122237772\"",
+        price: { value: 220000, formattedValue: "€ 220.000", pricePerSquareMeter: "547 €/m²" },
+        properties: [{
+          surface: "402 m²",
+          description: "Rif: LI_LIVO_NEB_R0035904 - Invito ad offrire tramite asta telematica",
+          location: {
+            provinceId: "LI",
+            city: "Livorno",
+            macrozone: "Centro",
+            microzone: "Cavour - San Carlo",
+            address: "Scali Manzoni  13-25",
+          },
+          reference: { label: "riferimento", code: "LI_LIVO_NEB_R0035904" },
+        }],
+        reference: { label: "riferimento", code: "LI_LIVO_NEB_R0035904" },
+        state: { id: 1, name: "attivo" },
+        title: "Locale commerciale in Vendita",
+        typology: { id: 110, name: "Negozio - Locale commerciale" },
+      }]),
+    }),
+  });
+
+  assert.equal(result.ok, true);
+  assert.equal(result.data.id, 122237772);
+  assert.equal(result.data.url, "https://www.immobiliare.it/annunci/122237772");
+  assert.equal(result.data.prezzo, 220000);
+  assert.equal(result.data.prezzo_raw, "220000");
+  assert.equal(result.data.description, "Rif: LI_LIVO_NEB_R0035904 - Invito ad offrire tramite asta telematica");
+  assert.equal(result.data.indirizzo, "Scali Manzoni 13-25, Livorno, Cavour - San Carlo, LI");
+  assert.equal(result.data.superficie_mq, "402 m²");
+  assert.equal(result.data.disponibilita, "attivo");
+  assert.equal(result.data.property_type, "Negozio - Locale commerciale");
+  assert.equal(result.data.contract, "Vendita");
+  assert.equal(result.data.reference, "LI_LIVO_NEB_R0035904");
 });
 
 test("immobiliare scraper reports Apify diagnostic items as errors", async () => {

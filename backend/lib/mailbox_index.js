@@ -39,8 +39,6 @@ function dbDataFromMailboxMessage(message) {
     senderAllowed: message.sender_allowed ?? message.senderAllowed ?? null,
     allowedFrom: arrayOrEmpty(message.allowed_from || message.allowedFrom),
     processed: Boolean(message.processed),
-    beforeBaseline: Boolean(message.before_baseline || message.beforeBaseline),
-    ignoreBefore: dateOrNull(message.ignore_before || message.ignoreBefore),
     requiredFilenameMatch: message.required_filename_match ?? message.requiredFilenameMatch ?? null,
     requiredFilename: message.required_filename || message.requiredFilename || null,
     filenames: arrayOrEmpty(message.filenames),
@@ -68,8 +66,6 @@ function mailboxMessageFromDb(row) {
     sender_allowed: row.senderAllowed,
     allowed_from: arrayOrEmpty(row.allowedFrom),
     processed: Boolean(row.processed),
-    before_baseline: Boolean(row.beforeBaseline),
-    ignore_before: row.ignoreBefore?.toISOString?.() || null,
     required_filename_match: row.requiredFilenameMatch,
     required_filename: row.requiredFilename || null,
     filenames: arrayOrEmpty(row.filenames),
@@ -97,10 +93,6 @@ function dbPatchFromMailboxPatch(patch = {}) {
   if ("sender_allowed" in patch || "senderAllowed" in patch) data.senderAllowed = patch.sender_allowed ?? patch.senderAllowed ?? null;
   if ("allowed_from" in patch || "allowedFrom" in patch) data.allowedFrom = arrayOrEmpty(patch.allowed_from || patch.allowedFrom);
   if ("processed" in patch) data.processed = Boolean(patch.processed);
-  if ("before_baseline" in patch || "beforeBaseline" in patch) {
-    data.beforeBaseline = Boolean(patch.before_baseline || patch.beforeBaseline);
-  }
-  if ("ignore_before" in patch || "ignoreBefore" in patch) data.ignoreBefore = dateOrNull(patch.ignore_before || patch.ignoreBefore);
   if ("required_filename_match" in patch || "requiredFilenameMatch" in patch) {
     data.requiredFilenameMatch = patch.required_filename_match ?? patch.requiredFilenameMatch ?? null;
   }
@@ -178,11 +170,15 @@ export async function upsertMailboxMessages(messages) {
     if (!entries.length) return [];
     await prisma.$transaction(
       entries.map((data) => {
-        const { id, ...update } = data;
+        const { id, processed, ...update } = data;
+        const updateData = {
+          ...update,
+          ...(processed ? { processed: true } : {}),
+        };
         return prisma.mailboxMessage.upsert({
           where: { id },
           create: data,
-          update,
+          update: updateData,
         });
       })
     );
@@ -196,12 +192,46 @@ export async function upsertMailboxMessages(messages) {
     byKey.set(key, {
       ...(byKey.get(key) || {}),
       ...message,
+      processed: Boolean(byKey.get(key)?.processed || message.processed),
       last_synced_at: new Date().toISOString(),
     });
   });
   const nextMessages = Array.from(byKey.values());
   await writeMailboxIndex({ messages: nextMessages });
   return nextMessages;
+}
+
+export async function findMailboxIndexMessage(match = {}) {
+  if (useMailboxDb()) {
+    const prisma = getPrismaClient();
+    const mailbox = match.mailbox || "INBOX";
+    const uid = Number.parseInt(String(match.uid || ""), 10);
+    const byUid = Number.isFinite(uid)
+      ? await prisma.mailboxMessage.findUnique({ where: { mailbox_uid: { mailbox, uid } } })
+      : null;
+    if (byUid) return mailboxMessageFromDb(byUid);
+    const messageId = String(match.message_id || match.messageId || match.id || "").trim();
+    if (!messageId) return null;
+    const byMessageId = await prisma.mailboxMessage.findFirst({
+      where: {
+        OR: [
+          { id: messageId },
+          { messageId },
+        ],
+      },
+    });
+    return mailboxMessageFromDb(byMessageId);
+  }
+
+  const index = await readMailboxIndex();
+  const mailbox = match.mailbox || "INBOX";
+  const uid = String(match.uid || "");
+  const messageId = String(match.message_id || match.messageId || match.id || "").trim();
+  return index.messages.find((message) => {
+    const matchesUid = uid && String(message.uid || "") === uid && (!mailbox || message.mailbox === mailbox);
+    const matchesId = messageId && String(message.id || message.message_id || "") === messageId;
+    return matchesUid || matchesId;
+  }) || null;
 }
 
 export async function updateMailboxMessage(match, patch) {

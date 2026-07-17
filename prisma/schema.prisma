@@ -53,8 +53,6 @@ model MailboxMessage {
   senderAllowed         Boolean?  @map("sender_allowed")
   allowedFrom           Json?     @map("allowed_from")
   processed             Boolean   @default(false)
-  beforeBaseline        Boolean   @default(false) @map("before_baseline")
-  ignoreBefore          DateTime? @map("ignore_before")
   requiredFilenameMatch Boolean?  @map("required_filename_match")
   requiredFilename      String?   @map("required_filename")
   filenames             Json?
@@ -74,7 +72,6 @@ model MailboxMessage {
 model EmailWatcherState {
   id           Int       @id @default(1)
   processedIds Json      @default("[]") @map("processed_ids")
-  ignoreBefore DateTime? @map("ignore_before")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@map("email_watcher_state")

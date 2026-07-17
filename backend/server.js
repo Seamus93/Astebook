@@ -23,7 +23,6 @@ import {
   createEmailWatcher,
   forgetEmailWatcherMessageState,
   resetEmailWatcherState,
-  setEmailWatcherIgnoreBefore,
 } from "./lib/email_watcher.js";
 import { listMailboxMessages, processMailboxMessage, syncMailboxMessages } from "./lib/mailbox_browser.js";
 import {
@@ -283,24 +282,6 @@ app.post("/api/v1/admin/email-watcher/scan", requireAdminSession, async (_req, r
 app.post("/api/v1/admin/email-watcher/state/reset", requireAdminSession, async (_req, res) => {
   const result = await resetEmailWatcherState();
   res.json({ ok: true, ...result });
-});
-
-app.post("/api/v1/admin/email-watcher/state/ignore-before", requireAdminSession, async (req, res) => {
-  try {
-    const result = await setEmailWatcherIgnoreBefore(req.body?.ignore_before);
-    res.json({ ok: true, ...result });
-  } catch (error) {
-    res.status(400).json({ ok: false, error: error.message || String(error) });
-  }
-});
-
-app.post("/api/v1/admin/email-watcher/state/ignore-before-now", requireAdminSession, async (_req, res) => {
-  try {
-    const result = await setEmailWatcherIgnoreBefore();
-    res.json({ ok: true, ...result });
-  } catch (error) {
-    res.status(400).json({ ok: false, error: error.message || String(error) });
-  }
 });
 
 async function handleMailboxMessages(req, res) {

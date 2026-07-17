@@ -140,20 +140,11 @@ export function evaluateEmailInterceptorDecision({
     attachmentFilenameMatchesRequired(filename, requiredFilename)
   );
 
-  const messageDate = message.date instanceof Date ? message.date : message.date ? new Date(message.date) : null;
-  const ignoreBeforeDate = state.ignore_before ? new Date(state.ignore_before) : null;
-  const beforeBaseline =
-    messageDate &&
-    ignoreBeforeDate &&
-    Number.isFinite(messageDate.getTime()) &&
-    Number.isFinite(ignoreBeforeDate.getTime()) &&
-    messageDate.getTime() < ignoreBeforeDate.getTime();
   const processed = Array.isArray(state.processed)
     ? state.processed.some((item) => String(item || "").trim() === String(messageKey || "").trim())
     : false;
 
   const reasons = [];
-  if (beforeBaseline) reasons.push("before_baseline");
   if (processed) reasons.push("already_processed");
   if (!senderAllowed) reasons.push("sender_not_allowed");
   if (!requiredFilenameMatch) reasons.push("required_attachment_missing");
@@ -165,7 +156,6 @@ export function evaluateEmailInterceptorDecision({
     reasons,
     sender_allowed: senderAllowed,
     required_filename_match: requiredFilenameMatch,
-    before_baseline: Boolean(beforeBaseline),
     processed,
     allowed_from: allowlist,
     sender_candidates: candidates,

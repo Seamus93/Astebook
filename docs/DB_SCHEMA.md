@@ -70,7 +70,6 @@ erDiagram
   EMAIL_WATCHER_STATE {
     int id PK
     json processed_ids
-    datetime ignore_before
     datetime updated_at
   }
 

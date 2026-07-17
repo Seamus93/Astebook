@@ -9,7 +9,7 @@ import {
   evaluateEmailInterceptorDecision,
 } from "../ai_agents/Interceptor.js";
 import { isTransientImapError, withImapRetries } from "./imap_operation_lock.js";
-import { updateMailboxMessage, upsertMailboxMessages } from "./mailbox_index.js";
+import { findMailboxIndexMessage, updateMailboxMessage, upsertMailboxMessages } from "./mailbox_index.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -52,7 +52,6 @@ async function readState() {
   const parsed = raw.trim() ? JSON.parse(raw) : {};
   return {
     processed: Array.isArray(parsed.processed) ? parsed.processed : [],
-    ignore_before: parsed.ignore_before || null,
   };
 }
 
@@ -61,18 +60,15 @@ async function writeState(state) {
   const processed = Array.from(new Set(state.processed || [])).slice(-1000);
   const nextState = {
     processed,
-    ...(state.ignore_before ? { ignore_before: state.ignore_before } : {}),
   };
   await writeFile(watcherStateFile, `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
 }
 
 export async function resetEmailWatcherState() {
-  const state = await readState();
-  await writeState({ processed: [], ignore_before: state.ignore_before });
+  await writeState({ processed: [] });
   return {
     file: watcherStateFile,
     processed: 0,
-    ignore_before: state.ignore_before,
   };
 }
 
@@ -85,27 +81,11 @@ export async function forgetEmailWatcherMessageState(messageId) {
   const state = await readState();
   const before = state.processed.length;
   const processed = state.processed.filter((item) => String(item || "").trim() !== normalizedMessageId);
-  await writeState({ processed, ignore_before: state.ignore_before });
+  await writeState({ processed });
   return {
     file: watcherStateFile,
     removed: before - processed.length,
     processed: processed.length,
-    ignore_before: state.ignore_before,
-  };
-}
-
-export async function setEmailWatcherIgnoreBefore(date = new Date()) {
-  const state = await readState();
-  const parsedDate = date instanceof Date ? date : new Date(date);
-  if (!Number.isFinite(parsedDate.getTime())) {
-    throw new Error("ignore_before non valido.");
-  }
-  const ignoreBefore = parsedDate.toISOString();
-  await writeState({ processed: state.processed, ignore_before: ignoreBefore });
-  return {
-    file: watcherStateFile,
-    ignore_before: ignoreBefore,
-    processed: state.processed.length,
   };
 }
 
@@ -142,8 +122,6 @@ function mailboxIndexMessageFromWatcher({ parsed, message, messageKey, settings,
     sender_allowed: decision.sender_allowed,
     allowed_from: decision.allowed_from,
     processed: decision.processed,
-    before_baseline: decision.before_baseline,
-    ignore_before: state.ignore_before || null,
     required_filename_match: decision.required_filename_match,
     required_filename: decision.required_filename,
     filenames: decision.filenames,
@@ -211,8 +189,6 @@ async function pollMailbox(settings, onAcceptedMail) {
     duplicates: 0,
     skipped_sender: 0,
     skipped_filename: 0,
-    skipped_before_baseline: 0,
-    ignore_before: state.ignore_before,
     diagnostics: [],
   };
   if (!settings.enabled) return stats;
@@ -249,7 +225,15 @@ async function pollMailbox(settings, onAcceptedMail) {
             stats.scanned += 1;
             const parsed = await simpleParser(message.source);
             const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
-            const decision = interceptorDecision(parsed, settings, state, messageKey);
+            const indexedMessage = await findMailboxIndexMessage({
+              uid: message.uid,
+              mailbox: settings.mailbox,
+              message_id: messageKey,
+            });
+            const effectiveState = indexedMessage?.processed
+              ? { processed: [...state.processed, messageKey] }
+              : state;
+            const decision = interceptorDecision(parsed, settings, effectiveState, messageKey);
             await upsertMailboxMessages(mailboxIndexMessageFromWatcher({
               parsed,
               message,
@@ -258,21 +242,6 @@ async function pollMailbox(settings, onAcceptedMail) {
               state,
               decision,
             }));
-            if (decision.before_baseline) {
-              stats.skipped_before_baseline += 1;
-              addDiagnostic(stats, {
-                reason: "before_baseline",
-                subject: parsed.subject || null,
-                from: decision.sender_candidates.from,
-                sender_candidates: decision.sender_candidates,
-                date: parsed.date?.toISOString?.() || null,
-                ignore_before: state.ignore_before,
-                filenames: decision.filenames,
-              });
-              processed.add(messageKey);
-              continue;
-            }
-
             if (decision.processed) {
               stats.duplicates += 1;
               addDiagnostic(stats, {
@@ -337,7 +306,7 @@ async function pollMailbox(settings, onAcceptedMail) {
       }
     }, { timeoutMs: 60_000 });
   } finally {
-    await writeState({ processed: Array.from(processed), ignore_before: state.ignore_before });
+    await writeState({ processed: Array.from(processed) });
   }
 
   for (const job of acceptedJobs) {

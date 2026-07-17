@@ -11,14 +11,6 @@ function mailboxState(message) {
       issue: null,
     };
   }
-  if (message.before_baseline) {
-    return {
-      key: "before-baseline",
-      label: "Vecchia ignorata",
-      tone: "done",
-      issue: null,
-    };
-  }
   if (message.sender_allowed === false) {
     return {
       key: "skipped-sender",
@@ -512,7 +504,6 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       message.seen ? "letta" : "non letta",
       message.processed ? "state" : "no state",
       message.event_id ? "evento" : "no evento",
-      message.before_baseline ? "prima baseline" : "dopo baseline",
       message.sender_allowed === false ? "mittente escluso" : "mittente ok",
     ].join(" · ");
     metaEl.textContent = `Mailbox ${formatEventTimestamp(message.date)} · ${status}`;
@@ -601,7 +592,6 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
         at: message.date,
         details: [
         state.issue,
-        message.before_baseline ? `Baseline watcher: ${formatEventTimestamp(message.ignore_before)}` : "",
         `Mittente: ${(message.from || []).join(", ") || "-"}`,
         message.sender_allowed === false ? `Allowlist: ${(message.allowed_from || []).join(", ") || "vuota"}` : "",
         `Allegati: ${(message.filenames || []).join(", ") || "nessun allegato"}`,

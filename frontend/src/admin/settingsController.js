@@ -113,7 +113,6 @@ function watcherScanSummary(result) {
     `duplicate ${result.duplicates || 0}`,
     `mittente escluso ${result.skipped_sender || 0}`,
     `file escluso ${result.skipped_filename || 0}`,
-    `vecchie ignorate ${result.skipped_before_baseline || 0}`,
   ].join(" · ");
   const diagnostics = (result.diagnostics || []).slice(-3).map((item) => {
     const from = (item.from || []).join(", ") || "-";
@@ -173,27 +172,6 @@ function errorMessageFromPayload(payload, fallback) {
     ? payload.missing_configuration.map((item) => `${item.label}: ${item.detail}`).join(" · ")
     : "";
   return missing || payload.detail || payload.error || fallback;
-}
-
-function localDateTimeInputValue(date) {
-  const pad = (value) => String(value).padStart(2, "0");
-  return [
-    date.getFullYear(),
-    "-",
-    pad(date.getMonth() + 1),
-    "-",
-    pad(date.getDate()),
-    "T",
-    pad(date.getHours()),
-    ":",
-    pad(date.getMinutes()),
-  ].join("");
-}
-
-function startOfTodayInputValue() {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  return localDateTimeInputValue(date);
 }
 
 function compactElapsed(value) {
@@ -476,49 +454,6 @@ export function createSettingsController() {
     });
   }
 
-  function initWatcherIgnoreBeforeButton() {
-    const input = qs("manualWatcherIgnoreBeforeInput");
-    const button = qs("manualWatcherIgnoreBeforeButton");
-    const status = qs("manualWatcherScanStatus");
-    if (!input || !button || !status) return;
-
-    if (!input.value) input.value = startOfTodayInputValue();
-
-    button.addEventListener("click", async () => {
-      if (!input.value) {
-        status.textContent = "Seleziona giorno e ora della baseline.";
-        return;
-      }
-
-      button.disabled = true;
-      status.textContent = "Imposto la baseline del watcher...";
-      try {
-        const ignoreBefore = new Date(input.value).toISOString();
-        const resp = await apiFetch("/api/v1/admin/email-watcher/state/ignore-before", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ ignore_before: ignoreBefore }),
-        });
-        const payload = await resp.json().catch(() => ({}));
-        if (!resp.ok || payload.ok === false) {
-          const message = payload.error || `HTTP ${resp.status}`;
-          status.textContent = `Baseline non impostata: ${message}`;
-          showToast({ title: "Baseline non impostata", message, tone: "error" });
-          return;
-        }
-
-        status.textContent = `Baseline impostata: le mail prima di ${payload.ignore_before} saranno ignorate.`;
-        showToast({ title: "Vecchie mail ignorate", message: status.textContent, tone: "info" });
-      } catch (error) {
-        const message = error.message || String(error);
-        status.textContent = `Baseline non impostata: ${message}`;
-        showToast({ title: "Baseline non impostata", message, tone: "error" });
-      } finally {
-        button.disabled = false;
-      }
-    });
-  }
-
   function initManualSendLatestDocumentButton() {
     const button = qs("manualSendLatestDocumentButton");
     const status = qs("manualSendLatestDocumentStatus");
@@ -650,7 +585,6 @@ export function createSettingsController() {
     initRevealButtons,
     initManualAnalyzeLatestEmailButton,
     initManualSendLatestDocumentButton,
-    initWatcherIgnoreBeforeButton,
     initWatcherResetStateButton,
     initWatcherScanButton,
     initDiagnosticsLogger,

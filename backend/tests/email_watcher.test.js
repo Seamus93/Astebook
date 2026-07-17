@@ -43,7 +43,7 @@ test("email interceptor accepts direct allowed sender with required attachment",
       fromAllowlist: ["lc@astebook.com"],
       requiredFilename: "proposta",
     },
-    state: { processed: [], ignore_before: "2026-07-14T00:00:00.000Z" },
+    state: { processed: [] },
     messageKey: "mail-1",
   });
 
@@ -102,13 +102,12 @@ test("email interceptor explains why a mail is skipped", () => {
       fromAllowlist: ["lc@astebook.com"],
       requiredFilename: "proposta",
     },
-    state: { processed: [], ignore_before: "2026-07-14T00:00:00.000Z" },
+    state: { processed: [] },
     messageKey: "mail-3",
   });
 
   assert.equal(decision.processable, false);
   assert.deepEqual(decision.reasons, [
-    "before_baseline",
     "sender_not_allowed",
     "required_attachment_missing",
   ]);

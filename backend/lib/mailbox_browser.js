@@ -14,6 +14,7 @@ import {
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
+const legacyWatcherCutoff = new Date("2026-07-16T22:01:00.000Z");
 
 function boolValue(value, fallback = false) {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -50,6 +51,15 @@ function deriveImapHost({ imapHost, smtpHost }) {
   return host;
 }
 
+function isLegacyMailboxMessage(date) {
+  const parsedDate = date instanceof Date ? date : date ? new Date(date) : null;
+  return Boolean(
+    parsedDate &&
+      Number.isFinite(parsedDate.getTime()) &&
+      parsedDate.getTime() < legacyWatcherCutoff.getTime()
+  );
+}
+
 async function readWatcherState() {
   await mkdir(runtimeDir, { recursive: true });
   if (!existsSync(watcherStateFile)) {
@@ -59,7 +69,6 @@ async function readWatcherState() {
   const parsed = raw.trim() ? JSON.parse(raw) : {};
   return {
     processed: Array.isArray(parsed.processed) ? parsed.processed : [],
-    ignore_before: parsed.ignore_before || null,
   };
 }
 
@@ -297,6 +306,7 @@ export async function syncMailboxMessages({
               source: "imap.email_activation",
               emailId: messageKey,
             });
+            const archivedBeforeWatcherCutoff = isLegacyMailboxMessage(parsed.date);
             messages.push({
               id: messageKey,
               message_id: messageKey,
@@ -310,16 +320,14 @@ export async function syncMailboxMessages({
               seen: Array.from(message.flags || []).includes("\\Seen"),
               sender_allowed: decision.sender_allowed,
               allowed_from: decision.allowed_from,
-              processed: decision.processed,
-              before_baseline: decision.before_baseline,
-              ignore_before: state.ignore_before,
+              processed: Boolean(decision.processed || archivedBeforeWatcherCutoff),
               required_filename_match: decision.required_filename_match,
               required_filename: decision.required_filename,
               filenames: decision.filenames,
               interceptor: decision,
               event_id: matchingEvent?.id || null,
-              status: matchingEvent?.status || null,
-              processing_status: matchingEvent?.status || null,
+              status: matchingEvent?.status || (archivedBeforeWatcherCutoff ? "archived_before_watcher_cutoff" : null),
+              processing_status: matchingEvent?.status || (archivedBeforeWatcherCutoff ? "archived_before_watcher_cutoff" : null),
             });
           }
         }
@@ -430,7 +438,7 @@ export async function processMailboxMessage({
         const decision = evaluateEmailInterceptorDecision({
           message: parsed,
           settings,
-          state: force ? { processed: [], ignore_before: null } : await readWatcherState(),
+          state: force ? { processed: [] } : await readWatcherState(),
           messageKey,
         });
         if (!decision.sender_allowed || !decision.required_filename_match) {

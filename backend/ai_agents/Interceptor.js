@@ -81,8 +81,20 @@ export function attachmentFilenameMatchesRequired(fileName, requiredFilename) {
   const filename = searchableText(fileName);
   if (filename.includes(keyword)) return true;
 
-  const keywordTokens = keyword.split(/\s+/).filter(Boolean);
-  return keywordTokens.length > 0 && keywordTokens.every((token) => filename.includes(token));
+  const keywordAliases =
+    keyword === "proposta"
+      ? [
+          "proposta irrevocabile",
+          "offerta irrevocabile",
+          "offerta acquisto",
+          "offerta d acquisto",
+        ]
+      : [];
+  const acceptedKeywords = [keyword, ...keywordAliases];
+  return acceptedKeywords.some((acceptedKeyword) => {
+    const keywordTokens = acceptedKeyword.split(/\s+/).filter(Boolean);
+    return keywordTokens.length > 0 && keywordTokens.every((token) => filename.includes(token));
+  });
 }
 
 export function collectEmailAddressCandidates(message = {}) {

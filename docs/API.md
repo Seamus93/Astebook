@@ -167,7 +167,7 @@ Updates runtime settings for:
 - `email_watcher_enabled`: `true` enables the VPS email watcher.
 - `email_watcher_imap_host`, `email_watcher_imap_port`, `email_watcher_imap_secure`: IMAP connection settings. If the host is empty, Astebook derives it from `smtp_host` where possible, for example `smtp.gmail.com` -> `imap.gmail.com`.
 - `email_watcher_from_allowlist`: comma, semicolon or newline separated sender allowlist.
-- `email_watcher_required_filename`: required substring in at least one attachment filename, for example `proposta`.
+- `email_watcher_required_filename`: required substring in at least one attachment filename, for example `proposta`. The default `proposta` also accepts proposal-equivalent filenames such as `offerta irrevocabile` and `offerta d'acquisto`.
 - `email_watcher_poll_seconds`: polling interval, minimum runtime value is 30 seconds.
 - `admin_password`
 

@@ -25,6 +25,13 @@ test("email watcher required filename matching still rejects unrelated attachmen
   );
 });
 
+test("email watcher treats irrevocable purchase offer as proposal attachment", () => {
+  assert.equal(
+    attachmentFilenameMatchesRequired("PI-SAN-1121295_Offerta Irrevocabile d'Acquisto.pdf", "proposta"),
+    true
+  );
+});
+
 test("email interceptor accepts direct allowed sender with required attachment", () => {
   const decision = evaluateEmailInterceptorDecision({
     message: {
@@ -42,6 +49,25 @@ test("email interceptor accepts direct allowed sender with required attachment",
 
   assert.equal(decision.processable, true);
   assert.equal(decision.sender_allowed, true);
+  assert.equal(decision.required_filename_match, true);
+});
+
+test("email interceptor accepts irrevocable offer when proposal file is required", () => {
+  const decision = evaluateEmailInterceptorDecision({
+    message: {
+      from: { value: [{ address: "lc@astebook.com" }] },
+      date: new Date("2026-07-17T09:45:00.000Z"),
+      attachments: [{ filename: "PI-SAN-1121295_Offerta Irrevocabile d'Acquisto.pdf" }],
+    },
+    settings: {
+      fromAllowlist: ["lc@astebook.com"],
+      requiredFilename: "proposta",
+    },
+    state: { processed: [] },
+    messageKey: "mail-offerta-irrevocabile",
+  });
+
+  assert.equal(decision.processable, true);
   assert.equal(decision.required_filename_match, true);
 });
 

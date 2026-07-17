@@ -3,6 +3,7 @@ export const propostaExtractorAgent = {
   description: "Estrae dati strutturati da proposte irrevocabili e documenti proposta.",
   prompt: `
 Sei un agente AI di estrazione documentale. Questo e il testo di una "PROPOSTA" compilata dall'agente.
+Considera equivalenti alla proposta anche documenti intitolati "Offerta irrevocabile", "Offerta irrevocabile d'acquisto" o "Proposta irrevocabile di acquisto".
 Estrai i campi richiesti e restituisci SOLO JSON conforme allo schema. NON inventare valori: se mancano -> null.
 Se trovi in fondo al documento le etichette "Luogo:" e "Data:", estrai:
 - luogo_redazione (stringa pulita)

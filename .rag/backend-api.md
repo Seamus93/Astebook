@@ -121,7 +121,7 @@ Current behavior:
 - First automatic scan is delayed by `EMAIL_WATCHER_START_DELAY_SECONDS`, default `30`, and mailbox sync pauses the watcher before resuming it after the same delay.
 - IMAP credentials reuse SMTP user/password unless `EMAIL_WATCHER_IMAP_USER` and `EMAIL_WATCHER_IMAP_PASSWORD` are set.
 - IMAP host can be configured or derived from SMTP host, for example `smtp.gmail.com` -> `imap.gmail.com`.
-- Filters: sender allowlist plus required attachment filename substring, default `proposta`.
+- Filters: sender allowlist plus required attachment filename substring, default `proposta`; proposal-equivalent names such as `offerta irrevocabile` and `offerta d'acquisto` are accepted.
 - Accepted emails become `imap.email_activation` processing events and use the same AI/OCR/document pipeline as Zapier.
 - Immobiliare.it/Apify data, when available, replaces overlapping `extracted.annuncio` fields and keeps the AI/email/PDF result in `fallback_annuncio`.
 - Deduplication state is persisted in `runtime/email-watcher-state.json`.

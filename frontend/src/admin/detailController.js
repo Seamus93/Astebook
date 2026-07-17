@@ -326,6 +326,15 @@ export function createDetailController() {
     emailDocumentButton.disabled = true;
     reprocessButton.onclick = canProcessMailboxMessage
       ? async () => {
+          const resetMailboxWorkflow = (errorMessage = null) => {
+            renderWorkflowStatus({
+              status: errorMessage ? "failed" : message.processed ? "received" : "mailbox",
+              received_at: message.date || new Date().toISOString(),
+              error: errorMessage ? { message: errorMessage } : null,
+              result: { attachments: (message.filenames || []).map((file_name) => ({ file_name })) },
+              steps: [],
+            });
+          };
           try {
             setReprocessButtonProcessing(reprocessButton, true, "Processa");
             documentButton.disabled = true;
@@ -344,9 +353,11 @@ export function createDetailController() {
             });
             const payload = await resp.json().catch(() => ({}));
             if (!resp.ok || payload.ok === false) {
+              const messageText = payload.error || `HTTP ${resp.status}`;
+              resetMailboxWorkflow(messageText);
               showToast({
                 title: "Processo mail non avviato",
-                message: payload.error || `HTTP ${resp.status}`,
+                message: messageText,
                 tone: "error",
               });
               return;
@@ -358,6 +369,7 @@ export function createDetailController() {
             });
             if (payload.event_id) await selectEvent(payload.event_id);
           } catch (error) {
+            resetMailboxWorkflow(error.message || String(error));
             showToast({
               title: "Processo mail non avviato",
               message: error.message || String(error),

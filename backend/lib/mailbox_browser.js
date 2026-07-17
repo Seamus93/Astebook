@@ -27,6 +27,10 @@ function intValue(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function timeoutMsFromEnv(name, fallbackSeconds) {
+  return intValue(process.env[name], fallbackSeconds) * 1000;
+}
+
 function batchItems(items, size) {
   const batches = [];
   for (let index = 0; index < items.length; index += size) {
@@ -380,91 +384,111 @@ export async function processMailboxMessage({
     };
   }
 
-  const imapResult = await withImapRetries(async () => {
-    const client = new ImapFlow({
-      host: settings.host,
-      port: settings.port,
-      secure: settings.secure,
-      auth: {
-        user: settings.user,
-        pass: settings.password,
-      },
-      logger: false,
-    });
-    client.on("error", (error) => {
-      console.warn("[mailbox_browser] IMAP client error", error.message || String(error));
-    });
+  let imapResult;
+  try {
+    imapResult = await withImapRetries(async () => {
+      const client = new ImapFlow({
+        host: settings.host,
+        port: settings.port,
+        secure: settings.secure,
+        auth: {
+          user: settings.user,
+          pass: settings.password,
+        },
+        logger: false,
+      });
+      client.on("error", (error) => {
+        console.warn("[mailbox_browser] IMAP client error", error.message || String(error));
+      });
 
-    try {
-      await client.connect();
-      const lock = await client.getMailboxLock(settings.mailbox);
       try {
-        let found = null;
-        for await (const message of client.fetch([uidNumber], { uid: true, source: true }, { uid: true })) {
-          found = message;
-          break;
-        }
-        if (!found?.source) {
-          return {
-            ok: false,
-            error: "Email IMAP non trovata.",
-          };
-        }
+        await client.connect();
+        const lock = await client.getMailboxLock(settings.mailbox);
+        try {
+          let found = null;
+          for await (const message of client.fetch([uidNumber], { uid: true, source: true }, { uid: true })) {
+            found = message;
+            break;
+          }
+          if (!found?.source) {
+            return {
+              ok: false,
+              error: "Email IMAP non trovata.",
+            };
+          }
 
-        const parsed = await simpleParser(found.source);
-        const messageKey = parsed.messageId || messageId || `${settings.mailbox}:${uidNumber}`;
-        const duplicateEvent = await findProcessingEventByExternalEmailId?.({
-          source: "imap.email_activation",
-          emailId: messageKey,
-        });
-        if (duplicateEvent) {
-          await updateMailboxMessage(
-            { uid: uidNumber, mailbox: settings.mailbox, message_id: messageKey },
-            {
+          const parsed = await simpleParser(found.source);
+          const messageKey = parsed.messageId || messageId || `${settings.mailbox}:${uidNumber}`;
+          const duplicateEvent = await findProcessingEventByExternalEmailId?.({
+            source: "imap.email_activation",
+            emailId: messageKey,
+          });
+          if (duplicateEvent) {
+            await updateMailboxMessage(
+              { uid: uidNumber, mailbox: settings.mailbox, message_id: messageKey },
+              {
+                event_id: duplicateEvent.id,
+                status: duplicateEvent.status,
+                processing_status: duplicateEvent.status,
+                processed: true,
+              }
+            );
+            return {
+              ok: true,
+              duplicate: true,
+              event: duplicateEvent,
               event_id: duplicateEvent.id,
-              status: duplicateEvent.status,
-              processing_status: duplicateEvent.status,
-              processed: true,
-            }
-          );
+            };
+          }
+
+          const decision = evaluateEmailInterceptorDecision({
+            message: parsed,
+            settings,
+            state: force ? { processed: [] } : await readWatcherState(),
+            messageKey,
+          });
           return {
             ok: true,
-            duplicate: true,
-            event: duplicateEvent,
-            event_id: duplicateEvent.id,
-          };
-        }
-
-        const decision = evaluateEmailInterceptorDecision({
-          message: parsed,
-          settings,
-          state: force ? { processed: [] } : await readWatcherState(),
-          messageKey,
-        });
-        return {
-          ok: true,
-          job: {
-            uid: uidNumber,
-            mailbox: settings.mailbox,
-            message_id: messageKey,
-            body: bodyFromMail(parsed, messageKey, settings),
-            files: filesFromMail(parsed),
-            metadata: {
-              subject: parsed.subject || null,
-              from: collectEmailSenderAddresses(parsed).join(", ") || null,
-              email_id: messageKey,
-              manual_mailbox_process: true,
+            job: {
+              uid: uidNumber,
+              mailbox: settings.mailbox,
+              message_id: messageKey,
+              body: bodyFromMail(parsed, messageKey, settings),
+              files: filesFromMail(parsed),
+              metadata: {
+                subject: parsed.subject || null,
+                from: collectEmailSenderAddresses(parsed).join(", ") || null,
+                email_id: messageKey,
+                manual_mailbox_process: true,
+              },
             },
-          },
-          interceptor: decision,
-        };
+            interceptor: decision,
+          };
+        } finally {
+          lock.release();
+        }
       } finally {
-        lock.release();
+        await client.logout().catch(() => {});
       }
-    } finally {
-      await client.logout().catch(() => {});
-    }
-  }, { timeoutMs: 60_000 });
+    }, { timeoutMs: timeoutMsFromEnv("MAILBOX_PROCESS_TIMEOUT_SECONDS", 180) });
+  } catch (error) {
+    const message = error.message || String(error);
+    await updateMailboxMessage(
+      { uid: uidNumber, mailbox: settings.mailbox, message_id: messageId },
+      {
+        status: "process_failed",
+        processing_status: "process_failed",
+        interceptor: {
+          error: message,
+          failed_at: new Date().toISOString(),
+        },
+      }
+    );
+    return {
+      ok: false,
+      error: message,
+    };
+  }
 
   if (!imapResult?.job) return imapResult;
 

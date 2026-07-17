@@ -24,6 +24,10 @@ function intValue(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function timeoutMsFromEnv(name, fallbackSeconds) {
+  return intValue(process.env[name], fallbackSeconds) * 1000;
+}
+
 function parseList(value) {
   return String(value || "")
     .split(/[,;\n]+/)
@@ -260,7 +264,7 @@ async function pollMailbox(settings) {
       } finally {
         await client.logout().catch(() => {});
       }
-    }, { timeoutMs: 60_000 });
+    }, { timeoutMs: timeoutMsFromEnv("EMAIL_WATCHER_IMAP_TIMEOUT_SECONDS", 180) });
   } finally {
     await writeState({ processed: Array.from(processed) });
   }

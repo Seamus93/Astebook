@@ -40,10 +40,18 @@ function mailboxState(message) {
       key: "state-only",
       label: "State senza evento",
       tone: "bad",
-      issue: "La mail risulta nello state, ma non esiste un evento collegato.",
+      issue: "La mail risulta nello state, ma non esiste un evento collegato. Puoi processarla manualmente.",
     };
   }
   if (message.seen) {
+    if (message.sender_allowed !== false && message.required_filename_match === true) {
+      return {
+        key: "seen-processable",
+        label: "Letta processabile",
+        tone: "warn",
+        issue: "La mail e letta: il watcher automatico la ignora, ma puoi processarla manualmente.",
+      };
+    }
     return {
       key: "seen-unprocessed",
       label: "Letta non processata",

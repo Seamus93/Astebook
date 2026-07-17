@@ -5,6 +5,13 @@ import { renderStructured } from "./structuredView.js";
 import { showToast } from "./toast.js";
 import { renderWorkflowStatus } from "./workflowView.js";
 
+function canManuallyProcessMailboxMessage(message) {
+  const hasFiltersOk =
+    message.interceptor?.processable ||
+    (message.sender_allowed !== false && message.required_filename_match === true);
+  return Boolean(message.uid && !message.event_id && hasFiltersOk);
+}
+
 function mailboxState(message) {
   if (message.event_id) {
     return {
@@ -44,13 +51,13 @@ function mailboxState(message) {
     return {
       label: "State senza evento",
       issue: "La mail risulta nello state, ma non esiste un evento collegato.",
-      notes: ["Cancella lo state della singola mail dal menu a tre puntini per permettere un nuovo tentativo."],
+      notes: ["Puoi processarla manualmente dalla toolbar oppure cancellare lo state dal menu a tre puntini."],
     };
   }
-  if (message.interceptor?.processable) {
+  if (canManuallyProcessMailboxMessage(message)) {
     return {
       label: message.seen ? "Letta processabile" : "Da processare",
-      issue: null,
+      issue: message.seen ? "La mail e letta: il watcher automatico la ignora." : null,
       notes: ["La mail e valida: puoi processarla manualmente dalla toolbar."],
     };
   }
@@ -58,7 +65,7 @@ function mailboxState(message) {
     return {
       label: "Letta non processata",
       issue: "La mail e letta: il watcher automatico la ignora finche non viene marcata non letta.",
-      notes: ["Marca la mail come non letta nella casella e avvia una scansione watcher."],
+      notes: ["Se mittente e file richiesto sono validi, usa Processa dalla toolbar."],
     };
   }
   return {
@@ -306,7 +313,7 @@ export function createDetailController() {
     const reprocessButton = document.getElementById("reprocessButton");
     const documentButton = document.getElementById("documentButton");
     const emailDocumentButton = document.getElementById("emailDocumentButton");
-    const canProcessMailboxMessage = Boolean(message.interceptor?.processable && message.uid);
+    const canProcessMailboxMessage = canManuallyProcessMailboxMessage(message);
     reprocessButton.disabled = !canProcessMailboxMessage;
     reprocessButton.title = "Processa";
     documentButton.disabled = true;

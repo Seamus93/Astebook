@@ -69,6 +69,7 @@ export default function initAdminClient() {
   settings.initWatcherIgnoreBeforeButton();
   settings.initWatcherResetStateButton();
   settings.initWatcherScanButton();
+  settings.initDiagnosticsLogger();
   events.initNotifications();
   events.initSearchControls();
   events.initSelectionControls();

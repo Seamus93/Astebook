@@ -64,7 +64,7 @@ Current modules:
 
 - Settings are displayed as a dedicated protected page at `/admin/settings`, not as a modal.
 - The dashboard button navigates to `/admin/settings`; the page's Dashboard button navigates back to `/admin/`.
-- Settings are grouped in a searchable section view: SMTP, Watcher Email, Documenti e Invio, AI e OCR, Sicurezza e Utenti, Memoria AI.
+- Settings are grouped in a searchable section view: SMTP, Watcher Email, Documenti e Invio, AI e OCR, Immobiliare.it, Sicurezza e Utenti, Memoria AI, Diagnostica.
 - Settings API is loaded with `GET /api/v1/admin/settings?reveal=1`.
 - `Send to` (`document_send_to`) is shown as recipient chips in the saved-values panel.
 - The Memoria AI section includes memory settings plus an Autoapprendimento AI panel with correction totals, scopes, top fields and recent feedback.
@@ -72,6 +72,7 @@ Current modules:
 - The Documenti e Invio section includes a manual "Invia ultimo documento" action.
 - The API AI e OCR section is split into AI, Geocoding and OCR subsections. Geocoding includes provider selection (`nominatim`, `google`, `none`) plus Nominatim endpoint/User-Agent settings.
 - The API AI e OCR section includes a manual "Analizza ultima mail" action using reprocess with `skip_auto_send`.
+- The Diagnostica section includes an operational logger with mailbox sync status, processable mailbox messages without pipeline events, recent event steps, errors, missing fields and last-update age. It refreshes on demand and every 3 seconds while visible, and highlights the current long operation such as OCR, AI extraction or Immobiliare.it acquisition.
 - Clicking a recipient chip X posts `{ document_send_to: nextValue }` to `/api/v1/admin/settings`, reloads settings, and updates the input.
 - Non-secret settings fields should be rendered as text fields, not password fields.
 - Secret fields still use reveal buttons.

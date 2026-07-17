@@ -150,6 +150,14 @@ const settingsSections = [
     ],
     panel: "learning",
   },
+  {
+    id: "diagnostica",
+    title: "Diagnostica",
+    tag: "Log operativo",
+    icon: "monitoring",
+    panel: "diagnostics",
+    fields: [],
+  },
 ];
 
 export default function ConsoleAdmin() {
@@ -342,6 +350,23 @@ export default function ConsoleAdmin() {
                         </button>
                       </div>
                       <div id="learningPane" className="learning-pane"></div>
+                    </div>
+                  ) : null}
+                  {section.panel === "diagnostics" ? (
+                    <div className="settings-section-panel diagnostics-panel">
+                      <div className="settings-panel-header">
+                        <div>
+                          <p className="eyebrow">Stato live</p>
+                          <h3>Logger processi</h3>
+                        </div>
+                        <button id="refreshDiagnosticsButton" className="icon-button" type="button" title="Aggiorna log processi">
+                          <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
+                        </button>
+                      </div>
+                      <p id="diagnosticsStatus" className="settings-help-text">
+                        Carica sync mailbox, mail senza evento e ultimi step pipeline.
+                      </p>
+                      <div id="diagnosticsPane" className="diagnostics-pane"></div>
                     </div>
                   ) : null}
                 </section>

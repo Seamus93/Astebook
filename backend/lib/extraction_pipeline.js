@@ -37,11 +37,39 @@ export function createAiExtractionPipeline({
 }) {
   async function extractAttachmentText(resolvedAttachment, eventId, result) {
     if (resolvedAttachment.format === "docx") {
-      return (await parseDocxBuffer(resolvedAttachment.buffer)).text;
+      if (eventId) {
+        await updateProcessingEvent(eventId, {}, {
+          message: "DOCX text extraction started",
+          data: {
+            file_name: resolvedAttachment.file_name,
+            format: resolvedAttachment.format,
+          },
+        });
+      }
+      const parsed = await parseDocxBuffer(resolvedAttachment.buffer);
+      if (eventId) {
+        await updateProcessingEvent(eventId, {}, {
+          message: "DOCX text extraction completed",
+          data: {
+            file_name: resolvedAttachment.file_name,
+            text_length: parsed.text?.length || 0,
+          },
+        });
+      }
+      return parsed.text;
     }
     if (["pdf", "image"].includes(resolvedAttachment.format)) {
       if (resolvedAttachment.url) {
         try {
+          if (eventId) {
+            await updateProcessingEvent(eventId, {}, {
+              message: "PDF-app OCR started",
+              data: {
+                file_name: resolvedAttachment.file_name,
+                format: resolvedAttachment.format,
+              },
+            });
+          }
           const ocrResult = await ocrFileUrlWithPdfApp({
             fileUrl: resolvedAttachment.url,
             fileName: resolvedAttachment.file_name,
@@ -92,7 +120,26 @@ export function createAiExtractionPipeline({
       }
 
       if (resolvedAttachment.format === "pdf") {
-        return (await parsePdfBuffer(resolvedAttachment.buffer)).text;
+        if (eventId) {
+          await updateProcessingEvent(eventId, {}, {
+            message: "Local PDF text extraction started",
+            data: {
+              file_name: resolvedAttachment.file_name,
+              format: resolvedAttachment.format,
+            },
+          });
+        }
+        const parsed = await parsePdfBuffer(resolvedAttachment.buffer);
+        if (eventId) {
+          await updateProcessingEvent(eventId, {}, {
+            message: "Local PDF text extraction completed",
+            data: {
+              file_name: resolvedAttachment.file_name,
+              text_length: parsed.text?.length || 0,
+            },
+          });
+        }
+        return parsed.text;
       }
     }
     return "";
@@ -100,7 +147,16 @@ export function createAiExtractionPipeline({
 
   async function extractAnnuncioAiFirst({ text, fileName, eventId, result }) {
     try {
-      return await aiExtractAnnuncio({ text, fileName });
+      await updateProcessingEvent(eventId, {}, {
+        message: "Announcement AI extraction started",
+        data: { file_name: fileName, text_length: String(text || "").length },
+      });
+      const extracted = await aiExtractAnnuncio({ text, fileName });
+      await updateProcessingEvent(eventId, {}, {
+        message: "Announcement AI extraction completed",
+        data: { file_name: fileName },
+      });
+      return extracted;
     } catch (error) {
       await updateProcessingEvent(eventId, {}, {
         level: "error",
@@ -117,7 +173,16 @@ export function createAiExtractionPipeline({
 
   async function extractPropostaAiFirst({ text, fileName, eventId, result }) {
     try {
-      return await aiExtractProposta({ text, fileName });
+      await updateProcessingEvent(eventId, {}, {
+        message: "Proposal AI extraction started",
+        data: { file_name: fileName, text_length: String(text || "").length },
+      });
+      const extracted = await aiExtractProposta({ text, fileName });
+      await updateProcessingEvent(eventId, {}, {
+        message: "Proposal AI extraction completed",
+        data: { file_name: fileName },
+      });
+      return extracted;
     } catch (error) {
       await updateProcessingEvent(eventId, {}, {
         level: "error",
@@ -134,7 +199,15 @@ export function createAiExtractionPipeline({
 
   async function extractProvvigioneAiFirst({ text, fileName, eventId, result }) {
     try {
+      await updateProcessingEvent(eventId, {}, {
+        message: "Commission AI extraction started",
+        data: { file_name: fileName, text_length: String(text || "").length },
+      });
       const ai = await aiExtractProvvigionePercentuale({ text, fileName });
+      await updateProcessingEvent(eventId, {}, {
+        message: "Commission AI extraction completed",
+        data: { file_name: fileName },
+      });
       return typeof ai?.provvigione_percentuale === "number" ? ai.provvigione_percentuale : null;
     } catch (error) {
       await updateProcessingEvent(eventId, {}, {
@@ -414,6 +487,10 @@ export function createAiExtractionPipeline({
     if (immobiliareUrls.length) {
       const url = immobiliareUrls[0];
       try {
+        await updateProcessingEvent(event.id, { result }, {
+          message: "Immobiliare.it announcement scrape started",
+          data: { url },
+        });
         const scraped = await scrapeImmobiliareAnnouncement(url);
         result.immobiliare = {
           url,

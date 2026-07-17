@@ -2,9 +2,14 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { join } from "node:path";
+import { getPrismaClient } from "./db.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const configFile = process.env.APP_CONFIG_FILE || join(runtimeDir, "app-config.json");
+
+function useRuntimeSettingsDb() {
+  return Boolean(process.env.DATABASE_URL) && !process.env.APP_CONFIG_FILE;
+}
 
 const defaultConfig = {
   admin: null,
@@ -82,6 +87,29 @@ export async function readConfig() {
   };
 }
 
+async function readRuntimeSettingsFromDb() {
+  const rows = await getPrismaClient().runtimeSetting.findMany();
+  return {
+    ...defaultConfig.settings,
+    ...Object.fromEntries(rows.map((row) => [row.key, row.value || ""])),
+  };
+}
+
+async function writeRuntimeSettingsToDb(settings) {
+  const entries = Object.entries(settings || {}).filter(([, value]) => value !== undefined);
+  if (!entries.length) return;
+  const prisma = getPrismaClient();
+  await prisma.$transaction(
+    entries.map(([key, value]) =>
+      prisma.runtimeSetting.upsert({
+        where: { key },
+        create: { key, value: String(value ?? "") },
+        update: { value: String(value ?? "") },
+      })
+    )
+  );
+}
+
 export async function writeConfig(config) {
   await mkdir(runtimeDir, { recursive: true });
   await writeFile(configFile, `${JSON.stringify(config, null, 2)}\n`, "utf8");
@@ -112,6 +140,9 @@ export async function createRuntimeAdmin({ username, password }) {
   }
 
   await writeConfig(config);
+  if (useRuntimeSettingsDb()) {
+    await writeRuntimeSettingsToDb({ admin_session_secret: config.settings.admin_session_secret });
+  }
   return config.admin;
 }
 
@@ -122,6 +153,9 @@ export async function verifyRuntimeAdmin({ username, password }) {
 }
 
 export async function getRuntimeSettings() {
+  if (useRuntimeSettingsDb()) {
+    return readRuntimeSettingsFromDb();
+  }
   const config = await readConfig();
   return config.settings;
 }
@@ -138,11 +172,12 @@ export async function getRuntimeAdminPlainPassword() {
 
 export async function updateRuntimeSettings(input) {
   const config = await readConfig();
+  const nextSettings = Object.fromEntries(
+    Object.entries(input.settings || {}).filter(([, value]) => value !== undefined)
+  );
   config.settings = {
     ...config.settings,
-    ...Object.fromEntries(
-      Object.entries(input.settings || {}).filter(([, value]) => value !== undefined)
-    ),
+    ...nextSettings,
   };
 
   if (input.admin_password) {
@@ -155,6 +190,9 @@ export async function updateRuntimeSettings(input) {
   }
 
   await writeConfig(config);
+  if (useRuntimeSettingsDb()) {
+    await writeRuntimeSettingsToDb(nextSettings);
+  }
   return config;
 }
 

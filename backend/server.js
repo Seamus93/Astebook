@@ -359,6 +359,8 @@ function startMailboxSync({ from, includeAllSenders = true, limit = 30, query = 
           count: Array.isArray(result.messages) ? result.messages.length : 0,
           mailbox: result.mailbox || null,
           since: result.since || null,
+          days_back: result.days_back || null,
+          diagnostics: result.diagnostics || null,
         },
       };
     })

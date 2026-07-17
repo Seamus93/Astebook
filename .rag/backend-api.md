@@ -6,7 +6,7 @@ Updated: 2026-07-10
 
 - `backend/server.js`: Express app composition, Zapier/IMAP intake, extraction orchestration and legacy `/callAI`.
 - `backend/lib/db.js`: Prisma client singleton for PostgreSQL-backed persistence.
-- `backend/lib/app_config.js`: runtime config in `runtime/app-config.json`, first admin, effective setting lookup.
+- `backend/lib/app_config.js`: runtime settings via PostgreSQL `runtime_settings` in production, JSON fallback/admin bootstrap in `runtime/app-config.json`, effective setting lookup.
 - `backend/routes/admin_auth.js`: admin setup/login/recovery/logout routes plus session cookie verification middleware.
 - `backend/routes/admin_settings.js`: admin settings read/update API, runtime config persistence and session refresh after admin secret changes.
 - `backend/routes/call_ai.js`: legacy `/callAI` route wired to the current extraction pipeline.
@@ -94,6 +94,10 @@ Updated: 2026-07-10
 
 Key settings include:
 
+- In production with `DATABASE_URL`, admin UI settings persist in PostgreSQL table `runtime_settings`.
+- Env vars override DB values.
+- Local/dev runs without `DATABASE_URL` keep using `runtime/app-config.json`.
+
 - `processing_ui_token`
 - `zapier_webhook_token`
 - `admin_session_secret`
@@ -129,7 +133,8 @@ Current behavior:
 
 - IMAP watcher starts with the server and stays idle unless `email_watcher_enabled=true`.
 - First automatic scan is delayed by `EMAIL_WATCHER_START_DELAY_SECONDS`, default `30`. Mailbox listing reads from the database; the IMAP sync endpoint is kept as a bounded historical import/backfill and pauses the watcher before resuming it after the same delay.
-- IMAP operations are serialized with a timeout; mailbox sync is capped at 60 seconds and email processing runs OCR/AI after releasing the IMAP lock.
+- Historical mailbox import searches IMAP by date window first, then fetches UID batches. Tune with `MAILBOX_INITIAL_BACKFILL_DAYS`, `MAILBOX_BACKFILL_SCAN_LIMIT` and `MAILBOX_SYNC_TIMEOUT_SECONDS`.
+- IMAP operations are serialized with a timeout; mailbox sync defaults to `MAILBOX_SYNC_TIMEOUT_SECONDS=180` and email processing runs OCR/AI after releasing the IMAP lock.
 - IMAP credentials reuse SMTP user/password unless `EMAIL_WATCHER_IMAP_USER` and `EMAIL_WATCHER_IMAP_PASSWORD` are set.
 - IMAP host can be configured or derived from SMTP host, for example `smtp.gmail.com` -> `imap.gmail.com`.
 - Filters: sender allowlist plus required attachment filename substring, default `proposta`; proposal-equivalent names such as `offerta irrevocabile` and `offerta d'acquisto` are accepted.

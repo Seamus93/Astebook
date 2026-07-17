@@ -27,4 +27,9 @@ seamus93
 Seamus93_Astebook
 ```
 
+## Source And Test Scopes
+
+`sonar.sources=.` scans the repository, but `backend/tests/**` is excluded from sources and added through `sonar.tests=backend/tests`.
+This keeps test files from being indexed twice.
+
 If the SonarCloud project key differs, update `sonar-project.properties` and this document together.

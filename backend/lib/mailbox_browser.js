@@ -26,6 +26,14 @@ function intValue(value, fallback) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function batchItems(items, size) {
+  const batches = [];
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size));
+  }
+  return batches;
+}
+
 function parseList(value) {
   return String(value || "")
     .split(/[,;\n]+/)
@@ -212,6 +220,14 @@ export async function syncMailboxMessages({
   const historyDays = Math.max(1, Number.parseInt(String(daysBack || "21"), 10) || 21);
   const sinceDate = new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000);
   const state = await readWatcherState();
+  const diagnostics = {
+    scanned: 0,
+    fetched: 0,
+    indexed: 0,
+    skipped_before_since: 0,
+    skipped_query: 0,
+    skipped_sender: 0,
+  };
   const { messages, scanned } = await withImapRetries(async () => {
     const client = new ImapFlow({
       host: settings.host,
@@ -233,60 +249,79 @@ export async function syncMailboxMessages({
       await client.connect();
       const lock = await client.getMailboxLock(settings.mailbox);
       try {
-        const uids = await client.search({ all: true }, { uid: true });
-        const configuredBackfillLimit = intValue(process.env.MAILBOX_BACKFILL_SCAN_LIMIT, 2000);
+        let uids;
+        try {
+          uids = await client.search({ since: sinceDate }, { uid: true });
+        } catch (error) {
+          console.warn("[mailbox_browser] IMAP since search failed, falling back to recent UID scan", error.message || String(error));
+          uids = await client.search({ all: true }, { uid: true });
+        }
+        const configuredBackfillLimit = intValue(process.env.MAILBOX_BACKFILL_SCAN_LIMIT, 500);
         const scanLimit = normalizedQuery
-          ? Math.max(Number(limit) * 50, 5000)
+          ? Math.max(Number(limit) * 20, configuredBackfillLimit)
           : filterSenders.length
           ? Math.max(Number(limit) * 20, configuredBackfillLimit)
           : Math.max(1, Number(limit) * 3);
-        const selectedUids = uids.slice(-scanLimit);
+        const selectedUids = uids.slice(-scanLimit).reverse();
         scanned = selectedUids.length;
-        for await (const message of client.fetch(
-          selectedUids,
-          { uid: true, flags: true, envelope: true, internalDate: true, bodyStructure: true },
-          { uid: true }
-        )) {
-          const parsed = parsedSummaryFromImapMessage(message);
-          if (parsed.date && parsed.date < sinceDate) continue;
-          const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
-          const decision = evaluateEmailInterceptorDecision({
-            message: parsed,
-            settings: { ...settings, fromAllowlist: decisionAllowlist },
-            state,
-            messageKey,
-          });
-          if (normalizedQuery && !messageSearchText(parsed, decision).includes(normalizedQuery)) continue;
-          if (!includeAllSenders && !decision.sender_allowed) continue;
+        diagnostics.scanned = selectedUids.length;
+        for (const uidBatch of batchItems(selectedUids, 100)) {
+          for await (const message of client.fetch(
+            uidBatch,
+            { uid: true, flags: true, envelope: true, internalDate: true, bodyStructure: true },
+            { uid: true }
+          )) {
+            diagnostics.fetched += 1;
+            const parsed = parsedSummaryFromImapMessage(message);
+            if (parsed.date && parsed.date < sinceDate) {
+              diagnostics.skipped_before_since += 1;
+              continue;
+            }
+            const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
+            const decision = evaluateEmailInterceptorDecision({
+              message: parsed,
+              settings: { ...settings, fromAllowlist: decisionAllowlist },
+              state,
+              messageKey,
+            });
+            if (normalizedQuery && !messageSearchText(parsed, decision).includes(normalizedQuery)) {
+              diagnostics.skipped_query += 1;
+              continue;
+            }
+            if (!includeAllSenders && !decision.sender_allowed) {
+              diagnostics.skipped_sender += 1;
+              continue;
+            }
 
-          const matchingEvent = await findProcessingEventByExternalEmailId?.({
-            source: "imap.email_activation",
-            emailId: messageKey,
-          });
-          messages.push({
-            id: messageKey,
-            message_id: messageKey,
-            mailbox: settings.mailbox,
-            uid: message.uid,
-            subject: parsed.subject || "(senza oggetto)",
-            from: decision.sender_candidates.from,
-            sender_candidates: decision.sender_candidates,
-            to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean),
-            date: parsed.date?.toISOString?.() || null,
-            seen: Array.from(message.flags || []).includes("\\Seen"),
-            sender_allowed: decision.sender_allowed,
-            allowed_from: decision.allowed_from,
-            processed: decision.processed,
-            before_baseline: decision.before_baseline,
-            ignore_before: state.ignore_before,
-            required_filename_match: decision.required_filename_match,
-            required_filename: decision.required_filename,
-            filenames: decision.filenames,
-            interceptor: decision,
-            event_id: matchingEvent?.id || null,
-            status: matchingEvent?.status || null,
-            processing_status: matchingEvent?.status || null,
-          });
+            const matchingEvent = await findProcessingEventByExternalEmailId?.({
+              source: "imap.email_activation",
+              emailId: messageKey,
+            });
+            messages.push({
+              id: messageKey,
+              message_id: messageKey,
+              mailbox: settings.mailbox,
+              uid: message.uid,
+              subject: parsed.subject || "(senza oggetto)",
+              from: decision.sender_candidates.from,
+              sender_candidates: decision.sender_candidates,
+              to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean),
+              date: parsed.date?.toISOString?.() || null,
+              seen: Array.from(message.flags || []).includes("\\Seen"),
+              sender_allowed: decision.sender_allowed,
+              allowed_from: decision.allowed_from,
+              processed: decision.processed,
+              before_baseline: decision.before_baseline,
+              ignore_before: state.ignore_before,
+              required_filename_match: decision.required_filename_match,
+              required_filename: decision.required_filename,
+              filenames: decision.filenames,
+              interceptor: decision,
+              event_id: matchingEvent?.id || null,
+              status: matchingEvent?.status || null,
+              processing_status: matchingEvent?.status || null,
+            });
+          }
         }
       } finally {
         lock.release();
@@ -295,9 +330,10 @@ export async function syncMailboxMessages({
       await client.logout().catch(() => {});
     }
     return { messages, scanned };
-  }, { timeoutMs: 60_000 });
+  }, { timeoutMs: intValue(process.env.MAILBOX_SYNC_TIMEOUT_SECONDS, 180) * 1000 });
 
   await upsertMailboxMessages(messages);
+  diagnostics.indexed = messages.length;
   messages.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
   return {
     ok: true,
@@ -307,6 +343,7 @@ export async function syncMailboxMessages({
     since: sinceDate.toISOString(),
     days_back: historyDays,
     scanned,
+    diagnostics,
     messages: messages.slice(0, limit),
   };
 }

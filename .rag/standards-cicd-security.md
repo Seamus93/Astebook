@@ -45,6 +45,7 @@ Rules:
   - Sonar
   - Security
   - Deploy
+- Dependabot pull requests should run CI only. Skip Sonar, CodeQL and heavier security jobs for `github.actor == 'dependabot[bot]'`; dependency risk is handled by Dependabot metadata and the CI install/test/build gate.
 - Deploy only from `main`.
 - Use current supported versions of critical actions such as checkout, setup-node, Sonar and Trivy.
 - Use `fetch-depth: 0` or sufficient history for scanners that inspect commit ranges.
@@ -100,6 +101,8 @@ Expected tools:
 Critical and high findings block merge/deploy unless project docs explicitly define a justified exception.
 
 If Code Scanning or GitHub Advanced Security is unavailable, CodeQL may remain informational. The blocking gate should still rely on Sonar, Trivy, Gitleaks and dependency audits.
+
+For Dependabot PRs, run the normal CI job only. Do not require Sonar, CodeQL, Trivy or Gitleaks on those PRs unless a project explicitly documents a stricter policy.
 
 ## Sonar Policy
 

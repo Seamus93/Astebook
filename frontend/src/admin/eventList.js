@@ -187,6 +187,31 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     return payload;
   }
 
+  async function fetchMailboxSyncStatus() {
+    const resp = await apiFetch("/api/v1/admin/mailbox/sync/status");
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok || payload.ok === false) {
+      throw new Error(payload.error || `HTTP ${resp.status}`);
+    }
+    return payload.sync || {};
+  }
+
+  function emptyMailboxSyncStatus(sync) {
+    if (sync?.running) return "Import storico IMAP ancora in corso...";
+    if (sync?.last_error) return `Indice mailbox vuoto. Import storico non completato: ${sync.last_error}.`;
+    const result = sync?.last_result;
+    if (!result) return "Indice mailbox vuoto. Nessun import storico registrato.";
+    const diagnostics = result.diagnostics || {};
+    const details = [
+      `${result.scanned || diagnostics.scanned || 0} UID scansionati`,
+      `${diagnostics.fetched || 0} mail lette`,
+      diagnostics.skipped_before_since ? `${diagnostics.skipped_before_since} fuori finestra ${result.days_back || ""} giorni` : "",
+      diagnostics.skipped_sender ? `${diagnostics.skipped_sender} mittente non autorizzato` : "",
+      diagnostics.skipped_query ? `${diagnostics.skipped_query} fuori ricerca` : "",
+    ].filter(Boolean);
+    return `Import storico completato: 0 email indicizzate${details.length ? ` (${details.join(", ")})` : ""}.`;
+  }
+
   async function refreshMailboxIndexFromCache(status = "") {
     try {
       const mailboxPayload = await fetchMailboxMessages();
@@ -207,13 +232,13 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     initialMailboxSyncStarted = true;
     syncMailboxIndex()
       .then(() => wait(3000))
-      .then(fetchMailboxMessages)
-      .then((freshPayload) => {
+      .then(() => Promise.all([fetchMailboxMessages(), fetchMailboxSyncStatus().catch(() => null)]))
+      .then(([freshPayload, syncStatus]) => {
         mailboxMessages = freshPayload.messages || [];
         renderEventList(
           mailboxMessages.length
             ? `Mailbox indicizzata: ${mailboxMessages.length} email.`
-            : "Sync mailbox completato. Indice ancora vuoto."
+            : emptyMailboxSyncStatus(syncStatus)
         );
         updateNotificationCenter();
       })

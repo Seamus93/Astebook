@@ -21,6 +21,8 @@ Astebook uses a single stage-based workflow:
 - `codeql`: CodeQL JavaScript analysis, informational.
 - `deploy`: VPS deployment, only on push to `main`.
 
+Dependabot pull requests run `ci` only. Sonar, security scans and CodeQL are skipped for `github.actor == 'dependabot[bot]'`.
+
 ## Action Versions
 
 - `actions/checkout@v5`

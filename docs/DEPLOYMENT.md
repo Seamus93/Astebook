@@ -73,4 +73,4 @@ ZAPIER_WEBHOOK_TOKEN=<random webhook token>
 PROCESSING_UI_TOKEN=<random UI token>
 ```
 
-The UI stores these values in `runtime/app-config.json`. Env variables still override runtime values.
+With PostgreSQL enabled, the UI stores these values in the `runtime_settings` table. Env variables still override runtime values. Local/dev runs without `DATABASE_URL` keep using `runtime/app-config.json` as a fallback.

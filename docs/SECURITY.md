@@ -24,11 +24,13 @@ If `ADMIN_PASSWORD` is configured, env-managed auth is used:
 - `ADMIN_PASSWORD`
 - `ADMIN_SESSION_SECRET`
 
-If `ADMIN_PASSWORD` is not configured, the first visit to `/admin/setup` creates the runtime admin and logs it in automatically. The runtime settings are stored in:
+If `ADMIN_PASSWORD` is not configured, the first visit to `/admin/setup` creates the runtime admin and logs it in automatically. With PostgreSQL enabled, UI runtime settings are stored in:
 
 ```text
-runtime/app-config.json
+runtime_settings
 ```
+
+Local/dev runs without `DATABASE_URL` use `runtime/app-config.json` as a fallback.
 
 Environment variables override runtime settings when both are present.
 

@@ -322,6 +322,9 @@ function renderDiagnostics({ sync, mailboxMessages, events }) {
       sync.last_result
         ? `Ultimo risultato: ${sync.last_result.scanned || 0} scansionate, ${sync.last_result.count || 0} indicizzate.`
         : "Nessun risultato sync registrato.",
+      sync.last_result?.diagnostics
+        ? `Dettaglio: ${sync.last_result.diagnostics.fetched || 0} lette, ${sync.last_result.diagnostics.skipped_before_since || 0} fuori finestra, ${sync.last_result.diagnostics.skipped_sender || 0} mittente non autorizzato, ${sync.last_result.diagnostics.skipped_query || 0} fuori ricerca.`
+        : null,
     ],
   });
 

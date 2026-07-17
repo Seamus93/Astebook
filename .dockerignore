@@ -3,6 +3,8 @@ npm-debug.log
 .git
 .gitignore
 .env
+runtime
+runtime/**
 converted_pdf_*
 *.docx
 docs/**/*.tmp

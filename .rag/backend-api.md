@@ -34,7 +34,7 @@ Updated: 2026-07-10
 ## Database
 
 - PostgreSQL is provisioned by `docker-compose.yml` as service `db`.
-- Data persists in `./runtime/postgres`.
+- Data persists in Docker named volume `postgres_data_v17`, matching the Astesmart-style database model instead of a bind-mounted repo directory.
 - Prisma schema lives in `prisma/schema.prisma`; migrations live in `prisma/migrations`.
 - The Docker app command runs `prisma migrate deploy` before `backend/server.js`.
 - CI starts a PostgreSQL service and runs `npm run db:migrate` before lint/build/tests.

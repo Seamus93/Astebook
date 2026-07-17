@@ -1,15 +1,16 @@
 services:
   db:
-    image: postgres:16-alpine
+    image: postgres:17-alpine
     container_name: astebook-db
+    command: -p ${POSTGRES_PORT:-5432}
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-astebook}
-      POSTGRES_USER: ${POSTGRES_USER:-astebook}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astebook}
+      POSTGRES_DB: ${PGDATABASE:-${POSTGRES_DB:-astebook}}
+      POSTGRES_USER: ${PGUSER:-${POSTGRES_USER:-astebook}}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-${POSTGRES_PASSWORD:-astebook}}
     volumes:
-      - ./runtime/postgres:/var/lib/postgresql/data
+      - postgres_data_v17:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB} -p ${POSTGRES_PORT:-5432}"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -24,6 +25,11 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      PGHOST: db
+      PGPORT: ${POSTGRES_PORT:-5432}
+      PGUSER: ${PGUSER:-${POSTGRES_USER:-astebook}}
+      PGPASSWORD: ${PGPASSWORD:-${POSTGRES_PASSWORD:-astebook}}
+      PGDATABASE: ${PGDATABASE:-${POSTGRES_DB:-astebook}}
       DATABASE_URL: ${DATABASE_URL:-postgresql://astebook:astebook@db:5432/astebook?schema=public}
     depends_on:
       db:
@@ -44,3 +50,6 @@ services:
       monitoring.enabled: "true"
       homepage.group: "Projects"
       kuma.group: "Livello 2 - Applicazioni"
+
+volumes:
+  postgres_data_v17:

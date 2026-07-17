@@ -4,7 +4,7 @@ Astebook uses PostgreSQL with Prisma migrations.
 
 Runtime deployment is managed by `docker-compose.yml`:
 
-- `db`: PostgreSQL 16 with persistent data in `./runtime/postgres`.
+- `db`: PostgreSQL 17 with persistent data in Docker named volume `postgres_data_v17`.
 - `app`: runs `prisma migrate deploy` before starting the Node server.
 
 The initial database prepares durable tables for operational state. Mailbox listing is DB-backed in production: the IMAP watcher inserts or updates `mailbox_messages`, and the admin listing reads that table instead of opening a live IMAP listing.

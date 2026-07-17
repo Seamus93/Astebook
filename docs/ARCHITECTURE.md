@@ -5,6 +5,7 @@ Astebook uses a minimal frontend/backend split.
 ```mermaid
 flowchart LR
   Client[Automation trigger] --> API[Express API]
+  API --> DB[PostgreSQL via Prisma]
   API --> Log[Processing log JSONL]
   API --> AI[OpenAI extraction]
   API --> Maps[Google Maps optional]
@@ -15,7 +16,8 @@ flowchart LR
 ## Components
 
 - `backend/server.js`: HTTP API, upload handling, orchestration and response formatting.
-- `backend/lib/app_config.js`: persisted first-admin bootstrap and runtime settings.
+- `backend/lib/app_config.js`: first-admin bootstrap plus DB-backed runtime settings in production.
+- `backend/lib/db.js`: Prisma client for PostgreSQL-backed state.
 - `backend/lib/processing_log.js`: JSONL runtime log for received and processed events.
 - `backend/lib/ai.js`: AI extraction prompts and provider integration.
 - `backend/lib/pdf.js`: PDF parsing support.
@@ -40,7 +42,7 @@ flowchart TD
 ## Current Intentional Deviations
 
 - No `/apps` or `/packages` layer yet because the project is still one deployable service.
-- No PostgreSQL/Prisma yet; runtime state is limited to JSON files under `runtime/`.
+- Processing event logs still use JSONL while mailbox listing, runtime settings and related operational tables are being moved to PostgreSQL/Prisma.
 - The frontend is static admin UI, not a separate SPA build pipeline.
 
 These deviations are recorded in `docs/adr/ADR-001-compact-node-service.md`.

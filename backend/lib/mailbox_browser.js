@@ -194,6 +194,7 @@ export async function syncMailboxMessages({
   includeAllSenders = true,
   limit = 50,
   query = "",
+  daysBack = 21,
 } = {}) {
   const settings = resolveMailboxSettings(await getSettings());
   if (!settings.host || !settings.user || !settings.password) {
@@ -208,6 +209,8 @@ export async function syncMailboxMessages({
   const filterSenders = includeAllSenders ? [] : selectedFrom ? [selectedFrom] : settings.fromAllowlist;
   const decisionAllowlist = selectedFrom ? [selectedFrom] : settings.fromAllowlist;
   const normalizedQuery = String(query || "").trim().toLowerCase();
+  const historyDays = Math.max(1, Number.parseInt(String(daysBack || "21"), 10) || 21);
+  const sinceDate = new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000);
   const state = await readWatcherState();
   const { messages, scanned } = await withImapRetries(async () => {
     const client = new ImapFlow({
@@ -231,10 +234,11 @@ export async function syncMailboxMessages({
       const lock = await client.getMailboxLock(settings.mailbox);
       try {
         const uids = await client.search({ all: true }, { uid: true });
+        const configuredBackfillLimit = intValue(process.env.MAILBOX_BACKFILL_SCAN_LIMIT, 2000);
         const scanLimit = normalizedQuery
           ? Math.max(Number(limit) * 50, 5000)
           : filterSenders.length
-          ? Math.max(Number(limit) * 20, 1000)
+          ? Math.max(Number(limit) * 20, configuredBackfillLimit)
           : Math.max(1, Number(limit) * 3);
         const selectedUids = uids.slice(-scanLimit);
         scanned = selectedUids.length;
@@ -244,6 +248,7 @@ export async function syncMailboxMessages({
           { uid: true }
         )) {
           const parsed = parsedSummaryFromImapMessage(message);
+          if (parsed.date && parsed.date < sinceDate) continue;
           const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
           const decision = evaluateEmailInterceptorDecision({
             message: parsed,
@@ -299,6 +304,8 @@ export async function syncMailboxMessages({
     kind: "mailbox_sync",
     mailbox: settings.mailbox,
     from: filterSenders,
+    since: sinceDate.toISOString(),
+    days_back: historyDays,
     scanned,
     messages: messages.slice(0, limit),
   };

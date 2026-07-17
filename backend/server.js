@@ -322,7 +322,7 @@ async function handleMailboxMessages(req, res) {
 app.get("/api/v1/admin/mailbox/messages", requireAdminSession, handleMailboxMessages);
 app.get("/api/v1/admin/email-watcher/messages", requireAdminSession, handleMailboxMessages);
 
-function startMailboxSync({ from, includeAllSenders = true, limit = 30, query = "" } = {}) {
+function startMailboxSync({ from, includeAllSenders = true, limit = 30, query = "", daysBack = 21 } = {}) {
   if (mailboxSyncRunning) {
     return { ok: true, started: false, busy: true, sync: mailboxSyncStatus };
   }
@@ -345,6 +345,7 @@ function startMailboxSync({ from, includeAllSenders = true, limit = 30, query = 
     includeAllSenders,
     limit,
     query,
+    daysBack,
   })
     .then((result) => {
       mailboxSyncStatus = {
@@ -357,6 +358,7 @@ function startMailboxSync({ from, includeAllSenders = true, limit = 30, query = 
           scanned: result.scanned || 0,
           count: Array.isArray(result.messages) ? result.messages.length : 0,
           mailbox: result.mailbox || null,
+          since: result.since || null,
         },
       };
     })
@@ -384,6 +386,7 @@ app.post("/api/v1/admin/mailbox/sync", requireAdminSession, (req, res) => {
     includeAllSenders: req.body?.include_all_senders !== false,
     limit: Number.parseInt(String(req.body?.limit || "30"), 10) || 30,
     query: req.body?.q || "",
+    daysBack: Number.parseInt(String(req.body?.days_back || "21"), 10) || 21,
   });
   res.status(202).json(result);
 });
@@ -417,12 +420,34 @@ app.post("/api/v1/admin/email-watcher/state/forget", requireAdminSession, async 
   }
 });
 
+function startInitialMailboxBackfillAfterDelay() {
+  const delayMs = positiveInt(process.env.MAILBOX_INITIAL_BACKFILL_DELAY_SECONDS, 5) * 1000;
+  setTimeout(async () => {
+    try {
+      const current = await listMailboxMessages({
+        getSettings: getRuntimeSettings,
+        includeAllSenders: false,
+        limit: 1,
+      });
+      if (current.ok === false || Number(current.total_indexed || 0) > 0) return;
+      startMailboxSync({
+        includeAllSenders: false,
+        limit: positiveInt(process.env.MAILBOX_INITIAL_BACKFILL_LIMIT, 30),
+        daysBack: positiveInt(process.env.MAILBOX_INITIAL_BACKFILL_DAYS, 21),
+      });
+    } catch (error) {
+      console.warn("[mailbox_sync] initial backfill skipped", error.message || String(error));
+    }
+  }, delayMs);
+}
+
 export function startServer(port = process.env.PORT || 3000) {
   const server = app.listen(port, () => console.log(`Server up on http://localhost:${port}`));
   emailWatcher = createEmailWatcher({
     getSettings: getRuntimeSettings,
     onAcceptedMail: processEmailWatcherActivation,
   });
+  startInitialMailboxBackfillAfterDelay();
   startEmailWatcherAfterDelay("server started");
   server.on("close", () => {
     emailWatcher?.stop();

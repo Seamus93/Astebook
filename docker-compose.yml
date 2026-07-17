@@ -1,4 +1,20 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: astebook-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-astebook}
+      POSTGRES_USER: ${POSTGRES_USER:-astebook}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-astebook}
+    volumes:
+      - ./runtime/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
   app:
     container_name: astebook-api
     build: .
@@ -8,6 +24,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      DATABASE_URL: ${DATABASE_URL:-postgresql://astebook:astebook@db:5432/astebook?schema=public}
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "${HOST_PORT:-3000}:3000"
     volumes:

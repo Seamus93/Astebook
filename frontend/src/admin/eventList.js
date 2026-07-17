@@ -178,7 +178,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
     const resp = await apiFetch("/api/v1/admin/mailbox/sync", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ limit: 30, include_all_senders: false }),
+      body: JSON.stringify({ limit: 30, include_all_senders: false, days_back: 21 }),
     });
     const payload = await resp.json().catch(() => ({}));
     if (!resp.ok || payload.ok === false) {
@@ -221,8 +221,8 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
         console.warn("Initial mailbox sync failed", syncError);
         renderEventList(
           mailboxMessages.length
-            ? `Mailbox indicizzata: ${mailboxMessages.length} email. Sync iniziale non completata.`
-            : `Indice mailbox vuoto. Sync iniziale non avviata: ${syncError.message || String(syncError)}.`
+            ? `Mailbox indicizzata: ${mailboxMessages.length} email. Import storico non completato.`
+            : `Indice mailbox vuoto. Import storico non avviato: ${syncError.message || String(syncError)}.`
         );
         updateNotificationCenter();
       });
@@ -230,7 +230,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
 
   async function loadEvents() {
     try {
-      renderEventList("Mailbox IMAP: caricamento in corso...");
+      renderEventList("Mailbox DB: caricamento in corso...");
       const eventsResp = await apiFetch("/api/v1/processing-events");
       if (!eventsResp.ok) {
         console.warn("Failed to load events", eventsResp.status);
@@ -238,7 +238,7 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       }
       const data = await eventsResp.json();
       allEvents = data.events || [];
-      renderEventList("Mailbox IMAP: caricamento in corso...");
+      renderEventList("Mailbox DB: caricamento in corso...");
       updateNotificationCenter();
       if (allEvents.length) selectEvent(allEvents[0].id);
 
@@ -256,10 +256,10 @@ export function createEventListController({ selectEvent, selectMailboxMessage })
       mailboxMessages = mailboxPayload.messages || [];
       const status = mailboxMessages.length
         ? `Mailbox indicizzata: ${mailboxMessages.length} email.`
-        : "Indice mailbox vuoto. Avvio sync IMAP in background...";
+        : "Indice mailbox vuoto. Avvio import storico IMAP in background...";
       renderEventList(status);
       updateNotificationCenter();
-      startInitialMailboxSync();
+      if (!mailboxMessages.length) startInitialMailboxSync();
     } catch (err) {
       console.error("loadEvents", err);
     }

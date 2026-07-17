@@ -1,0 +1,115 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model ProcessingEvent {
+  id         String           @id
+  source     String
+  status     String           @default("received")
+  metadata   Json?
+  request    Json?
+  result     Json?
+  error      Json?
+  receivedAt DateTime         @default(now()) @map("received_at")
+  updatedAt  DateTime         @updatedAt @map("updated_at")
+  steps      ProcessingStep[]
+
+  @@index([source])
+  @@index([status])
+  @@index([receivedAt])
+  @@map("processing_events")
+}
+
+model ProcessingStep {
+  id        Int             @id @default(autoincrement())
+  eventId   String          @map("event_id")
+  at        DateTime        @default(now())
+  level     String          @default("info")
+  message   String
+  data      Json?
+  event     ProcessingEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@index([eventId])
+  @@index([at])
+  @@map("processing_steps")
+}
+
+model MailboxMessage {
+  id                    String    @id
+  messageId             String?   @map("message_id")
+  uid                   Int?
+  mailbox               String    @default("INBOX")
+  subject               String?
+  from                  Json?
+  senderCandidates      Json?     @map("sender_candidates")
+  to                    Json?
+  date                  DateTime?
+  seen                  Boolean   @default(false)
+  senderAllowed         Boolean?  @map("sender_allowed")
+  allowedFrom           Json?     @map("allowed_from")
+  processed             Boolean   @default(false)
+  beforeBaseline        Boolean   @default(false) @map("before_baseline")
+  ignoreBefore          DateTime? @map("ignore_before")
+  requiredFilenameMatch Boolean?  @map("required_filename_match")
+  requiredFilename      String?   @map("required_filename")
+  filenames             Json?
+  interceptor           Json?
+  eventId               String?   @map("event_id")
+  status                String?
+  processingStatus      String?   @map("processing_status")
+  lastSyncedAt          DateTime? @map("last_synced_at")
+
+  @@unique([mailbox, uid])
+  @@index([date])
+  @@index([eventId])
+  @@index([processed])
+  @@map("mailbox_messages")
+}
+
+model EmailWatcherState {
+  id           Int       @id @default(1)
+  processedIds Json      @default("[]") @map("processed_ids")
+  ignoreBefore DateTime? @map("ignore_before")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  @@map("email_watcher_state")
+}
+
+model RuntimeSetting {
+  key       String   @id
+  value     String?
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("runtime_settings")
+}
+
+model ExtractionFeedback {
+  id             String   @id
+  eventId        String?  @map("event_id")
+  fieldPath      String   @map("field_path")
+  aiValue        Json?    @map("ai_value")
+  correctedValue Json?    @map("corrected_value")
+  rating         String?
+  reason         String?
+  model          String?
+  promptVersion  String?  @map("prompt_version")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  @@index([fieldPath])
+  @@index([createdAt])
+  @@map("extraction_feedback")
+}
+
+model GeocodeCache {
+  key       String   @id
+  value     Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("geocode_cache")
+}

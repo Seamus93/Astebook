@@ -5,6 +5,7 @@ Updated: 2026-07-10
 ## Core Files
 
 - `backend/server.js`: Express app composition, Zapier/IMAP intake, extraction orchestration and legacy `/callAI`.
+- `backend/lib/db.js`: Prisma client singleton for PostgreSQL-backed persistence.
 - `backend/lib/app_config.js`: runtime config in `runtime/app-config.json`, first admin, effective setting lookup.
 - `backend/routes/admin_auth.js`: admin setup/login/recovery/logout routes plus session cookie verification middleware.
 - `backend/routes/admin_settings.js`: admin settings read/update API, runtime config persistence and session refresh after admin secret changes.
@@ -29,6 +30,15 @@ Updated: 2026-07-10
 - `backend/lib/document_builder.js`: DOCX/PDF output generation.
 - `backend/lib/merge_json.js`: announcement/proposal merge and normalization.
 - `backend/lib/email_cleaner.js`: email body cleaning before AI.
+
+## Database
+
+- PostgreSQL is provisioned by `docker-compose.yml` as service `db`.
+- Data persists in `./runtime/postgres`.
+- Prisma schema lives in `prisma/schema.prisma`; migrations live in `prisma/migrations`.
+- The Docker app command runs `prisma migrate deploy` before `backend/server.js`.
+- CI starts a PostgreSQL service and runs `npm run db:migrate` before lint/build/tests.
+- In production, mailbox listing is read from `mailbox_messages`; the IMAP watcher writes new/updated messages there. The `/api/v1/admin/mailbox/sync` endpoint is now an import/backfill path, used mainly when the mailbox table is empty.
 
 ## Important Endpoints
 
@@ -118,7 +128,7 @@ Astebook can run email intake directly on the VPS with `backend/lib/email_watche
 Current behavior:
 
 - IMAP watcher starts with the server and stays idle unless `email_watcher_enabled=true`.
-- First automatic scan is delayed by `EMAIL_WATCHER_START_DELAY_SECONDS`, default `30`, and mailbox sync pauses the watcher before resuming it after the same delay.
+- First automatic scan is delayed by `EMAIL_WATCHER_START_DELAY_SECONDS`, default `30`. Mailbox listing reads from the database; the IMAP sync endpoint is kept as a bounded historical import/backfill and pauses the watcher before resuming it after the same delay.
 - IMAP operations are serialized with a timeout; mailbox sync is capped at 60 seconds and email processing runs OCR/AI after releasing the IMAP lock.
 - IMAP credentials reuse SMTP user/password unless `EMAIL_WATCHER_IMAP_USER` and `EMAIL_WATCHER_IMAP_PASSWORD` are set.
 - IMAP host can be configured or derived from SMTP host, for example `smtp.gmail.com` -> `imap.gmail.com`.

@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "start": "node backend/server.js",
+    "start:prod": "prisma migrate deploy && node backend/server.js",
     "start:4000": "set PORT=4000&& node backend/server.js",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate deploy",
     "lint": "node scripts/check-js.js",
     "test": "node --test backend/tests/*.test.js",
     "build": "npm run lint && vite build",
@@ -14,6 +17,7 @@
     "all": "concurrently \"npm run start:4000\" \"npm run ngrok\""
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
     "docxtemplater": "^3.69.0",
     "dotenv": "^17.2.3",
     "express": "^4.19.2",
@@ -25,6 +29,7 @@
     "openai": "^6.7.0",
     "pdf-parse": "^2.4.4",
     "pizzip": "^3.2.0",
+    "prisma": "^6.19.3",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },

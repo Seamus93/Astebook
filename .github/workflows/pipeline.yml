@@ -37,6 +37,22 @@ jobs:
   ci:
     name: CI
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: astebook
+          POSTGRES_USER: astebook
+          POSTGRES_PASSWORD: astebook
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U astebook -d astebook"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://astebook:astebook@localhost:5432/astebook?schema=public
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -69,6 +85,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Apply database migrations
+        run: npm run db:migrate
 
       - name: Lint
         run: npm run lint

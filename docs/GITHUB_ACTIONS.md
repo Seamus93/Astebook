@@ -41,6 +41,7 @@ The SonarCloud job reads:
 - `SONAR_ORGANIZATION` from GitHub Variables.
 
 The scan does not wait for `sonar.qualitygate.wait=true`, matching the AgriAvenger baseline described in `.skills/AGENTS.md`.
+The Sonar job is time-boxed so a stalled SonarCloud scan cannot keep the pipeline open indefinitely.
 
 ## Deploy Variables
 

@@ -261,8 +261,27 @@ function setReprocessButtonProcessing(button, processing, title = "Riprocessa") 
 
 export function createDetailController() {
   let currentEvent = null;
+  let eventPollingTimer = null;
+
+  function stopEventPolling() {
+    if (eventPollingTimer) window.clearTimeout(eventPollingTimer);
+    eventPollingTimer = null;
+  }
+
+  function isEventActive(event) {
+    return ["processing", "extracting"].includes(event?.status);
+  }
+
+  function scheduleEventPolling(eventId) {
+    stopEventPolling();
+    eventPollingTimer = window.setTimeout(async () => {
+      if (!currentEvent || currentEvent.id !== eventId || !isEventActive(currentEvent)) return;
+      await selectEvent(eventId, { fromPolling: true });
+    }, 3000);
+  }
 
   function selectMailboxMessage(message) {
+    stopEventPolling();
     currentEvent = null;
     const state = mailboxState(message);
 
@@ -369,7 +388,7 @@ export function createDetailController() {
     return message;
   }
 
-  async function selectEvent(id) {
+  async function selectEvent(id, { fromPolling = false } = {}) {
     try {
       const resp = await apiFetch(`/api/v1/processing-events/${id}`);
       if (!resp.ok) {
@@ -406,9 +425,15 @@ export function createDetailController() {
       renderStructured(document.getElementById("errorPane"), pipelineErrors(ev), "Nessun errore pipeline.");
 
       wireActionButtons(id, ev, selectEvent, () => currentEvent);
+      if (isEventActive(ev)) {
+        scheduleEventPolling(id);
+      } else {
+        stopEventPolling();
+      }
       return ev;
     } catch (err) {
-      console.error("selectEvent", err);
+      if (!fromPolling) console.error("selectEvent", err);
+      if (fromPolling) scheduleEventPolling(id);
       return null;
     }
   }

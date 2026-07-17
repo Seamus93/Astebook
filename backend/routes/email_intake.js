@@ -74,7 +74,31 @@ export function createEmailIntakeHandlers({
     }
   }
 
-  async function processEmailWatcherActivation({ body, files, metadata }) {
+  function runPipelineForEvent({ event, body, files, source }) {
+    return runAiExtractionPipeline({
+      body,
+      files,
+      eventId: event.id,
+      source,
+    }).catch(async (error) => {
+      await updateProcessingEvent(
+        event.id,
+        {
+          status: "failed",
+          error: {
+            message: error.message || String(error),
+            stack: error.stack || null,
+          },
+        },
+        {
+          level: "error",
+          message: "Email watcher processing failed",
+        }
+      );
+    });
+  }
+
+  async function processEmailWatcherActivation({ body, files, metadata, background = false }) {
     const emailId = body.email_id || body.message_id || body.gmail_id || metadata?.email_id || null;
     const duplicateEvent = await findProcessingEventByExternalEmailId({
       source: "imap.email_activation",
@@ -94,31 +118,26 @@ export function createEmailIntakeHandlers({
         email_id: emailId,
       },
     });
+    await updateProcessingEvent(
+      event.id,
+      { status: "processing" },
+      {
+        message: background ? "Manual mailbox processing queued" : "Email watcher processing queued",
+        data: { background },
+      }
+    );
 
-    try {
-      await runAiExtractionPipeline({
-        body,
-        files,
-        eventId: event.id,
-        source: "imap.email_activation",
-      });
-    } catch (error) {
-      await updateProcessingEvent(
-        event.id,
-        {
-          status: "failed",
-          error: {
-            message: error.message || String(error),
-            stack: error.stack || null,
-          },
-        },
-        {
-          level: "error",
-          message: "Email watcher processing failed",
-        }
-      );
+    const pipeline = runPipelineForEvent({
+      event,
+      body,
+      files,
+      source: "imap.email_activation",
+    });
+    if (background) {
+      return getProcessingEvent(event.id);
     }
 
+    await pipeline;
     return getProcessingEvent(event.id);
   }
 

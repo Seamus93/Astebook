@@ -472,13 +472,14 @@ export async function processMailboxMessage({
     body: imapResult.job.body,
     files: imapResult.job.files,
     metadata: imapResult.job.metadata,
+    background: true,
   });
   await updateMailboxMessage(
     { uid: imapResult.job.uid, mailbox: imapResult.job.mailbox, message_id: imapResult.job.message_id },
     {
       event_id: event?.id || null,
-      status: event?.status || null,
-      processing_status: event?.status || null,
+      status: event?.status || "extracting",
+      processing_status: "extracting",
       processed: true,
     }
   );

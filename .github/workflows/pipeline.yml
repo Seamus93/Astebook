@@ -55,7 +55,7 @@ jobs:
       DATABASE_URL: postgresql://astebook:astebook@localhost:5432/astebook?schema=public
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Fetch secrets from Infisical
         if: ${{ env.INFISICAL_IDENTITY_ID != '' && env.INFISICAL_PROJECT_ID != '' && env.INFISICAL_ENV != '' }}
@@ -106,7 +106,7 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -151,7 +151,7 @@ jobs:
     if: ${{ github.actor != 'dependabot[bot]' && !((github.event_name == 'push' && (contains(github.event.head_commit.message, '[from-template-sync]') || contains(github.event.head_commit.message, '[from-project-sync]') || contains(github.ref_name, 'from-template-sync') || contains(github.ref_name, 'from-project-sync'))) || (github.event_name == 'pull_request' && (contains(github.event.pull_request.title, '[from-template-sync]') || contains(github.event.pull_request.title, '[from-project-sync]') || contains(github.head_ref, 'from-template-sync') || contains(github.head_ref, 'from-project-sync') || contains(github.head_ref, 'sync-standards')))) }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -213,7 +213,7 @@ jobs:
       security-events: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

@@ -27,13 +27,6 @@ function mailboxState(message) {
       ],
     };
   }
-  if (!message.required_filename_match) {
-    return {
-      label: "Scartata",
-      issue: `File richiesto non trovato: ${message.required_filename || "proposta"}.`,
-      notes: ["La mail non passa il filtro allegato configurato nel watcher."],
-    };
-  }
   if (message.processed) {
     return {
       label: "State senza evento",
@@ -44,8 +37,17 @@ function mailboxState(message) {
   if (canManuallyProcessMailboxMessage(message)) {
     return {
       label: message.seen ? "Letta processabile" : "Da processare",
-      issue: message.seen ? "La mail e letta: il watcher automatico la ignora." : null,
-      notes: ["La mail e valida: puoi processarla manualmente dalla toolbar."],
+      issue: message.required_filename_match === false
+        ? `File richiesto non trovato: ${message.required_filename || "proposta"}.`
+        : message.seen
+        ? "La mail e letta: puoi processarla manualmente o lasciare il cronjob."
+        : null,
+      notes: [
+        "La mail puo essere processata dalla toolbar.",
+        message.required_filename_match === false
+          ? "Il filtro allegato non e piu bloccante per il processo manuale o cronjob."
+          : "",
+      ].filter(Boolean),
     };
   }
   if (message.seen) {
@@ -280,7 +282,7 @@ export function createDetailController() {
 
     renderWorkflowStatus({
       status: message.processed ? "received" : "processing",
-      error: message.required_filename_match ? null : { message: "File richiesto non trovato." },
+      error: null,
       steps: [],
     });
 

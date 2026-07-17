@@ -19,14 +19,6 @@ function mailboxState(message) {
       issue: `Mittente non autorizzato: ${(message.from || []).join(", ") || "-"}.`,
     };
   }
-  if (!message.required_filename_match) {
-    return {
-      key: "skipped-file",
-      label: "Scartata",
-      tone: "bad",
-      issue: `File richiesto non trovato: ${message.required_filename || "proposta"}.`,
-    };
-  }
   if (message.processed) {
     return {
       key: "state-only",
@@ -36,26 +28,22 @@ function mailboxState(message) {
     };
   }
   if (message.seen) {
-    if (message.sender_allowed !== false && message.required_filename_match === true) {
-      return {
-        key: "seen-processable",
-        label: "Letta processabile",
-        tone: "warn",
-        issue: "La mail e letta: il watcher automatico la ignora, ma puoi processarla manualmente.",
-      };
-    }
     return {
-      key: "seen-unprocessed",
-      label: "Letta non processata",
+      key: message.required_filename_match === false ? "seen-processable-warning" : "seen-processable",
+      label: "Letta processabile",
       tone: "warn",
-      issue: "La mail e letta: il watcher automatico la ignora finche non viene marcata non letta.",
+      issue: message.required_filename_match === false
+        ? `File richiesto non trovato: ${message.required_filename || "proposta"}. La pipeline puo comunque essere avviata.`
+        : "La mail e letta: puoi processarla manualmente o lasciare il cronjob.",
     };
   }
   return {
-    key: "unseen-unprocessed",
+    key: message.required_filename_match === false ? "unseen-processable-warning" : "unseen-unprocessed",
     label: "Da processare",
     tone: "warn",
-    issue: "La mail e non letta e valida: avvia una scansione watcher.",
+    issue: message.required_filename_match === false
+      ? `File richiesto non trovato: ${message.required_filename || "proposta"}. La pipeline puo comunque essere avviata.`
+      : "La mail e non letta e valida: avvia una scansione watcher.",
   };
 }
 

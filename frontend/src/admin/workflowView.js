@@ -2,6 +2,23 @@ function hasExtractedData(event) {
   return Boolean(event.result?.extracted?.annuncio || event.result?.extracted?.proposta);
 }
 
+function hasOcrProgressed(event) {
+  const steps = event.steps || [];
+  return (
+    hasExtractedData(event) ||
+    steps.some((step) =>
+      /PDF-app OCR completed|Local PDF text extraction completed|DOCX text extraction completed|AI extraction started|Announcement AI extraction started|Proposal AI extraction started|Commission AI extraction started|Proposal body OCR extracted|Commission body OCR extracted/i.test(
+        step.message || ""
+      )
+    )
+  );
+}
+
+function hasOcrFailed(event) {
+  if (hasOcrProgressed(event)) return false;
+  return event.steps?.some((step) => step.level === "error" && /ocr/i.test(step.message || ""));
+}
+
 function mailingStatus(event) {
   const documentEmail = event.result?.document_email || {};
   const message = documentEmail.status || "";
@@ -41,8 +58,8 @@ const workflowSteps = [
     key: "ocr",
     label: "OCR",
     icon: "document_scanner",
-    done: (event) => event.steps?.some((step) => /ocr completed/i.test(step.message)) || hasExtractedData(event),
-    failed: (event) => event.steps?.some((step) => step.level === "error" && /ocr/i.test(step.message)),
+    done: hasOcrProgressed,
+    failed: hasOcrFailed,
   },
   {
     key: "scraper",

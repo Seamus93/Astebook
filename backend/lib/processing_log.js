@@ -115,6 +115,13 @@ function eventErrorSummary(event) {
 function eventWorkflowIssue(event) {
   const steps = Array.isArray(event.steps) ? event.steps : [];
   const missingFields = Array.isArray(event.error?.missing_fields) ? event.error.missing_fields : [];
+  const ocrRecovered =
+    Boolean(event.result?.extracted?.annuncio || event.result?.extracted?.proposta) ||
+    steps.some((step) =>
+      /Local PDF text extraction completed|DOCX text extraction completed|AI extraction started|Announcement AI extraction started|Proposal AI extraction started|Commission AI extraction started|Proposal body OCR extracted|Commission body OCR extracted/i.test(
+        step.message || ""
+      )
+    );
 
   if (event.status === "completed" && eventErrorCount(event) === 0) return null;
   if (!event.received_at) {
@@ -130,7 +137,7 @@ function eventWorkflowIssue(event) {
       /PDF-app OCR skipped|PDF-app OCR failed/i.test(step.message || "") ||
       (step.level === "error" && /ocr/i.test(step.message || ""))
   );
-  if (ocrStep) {
+  if (ocrStep && !ocrRecovered) {
     return {
       step: "OCR",
       message: ocrStep.data?.reason || ocrStep.data?.error || ocrStep.message || "OCR non completato.",

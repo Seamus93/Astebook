@@ -94,10 +94,9 @@ La UI mostra:
 - bottone "Visualizza documento" per aprire il disciplinare compilato in PDF.
 - bottone "Riprocessa" per rigenerare i dati estratti sugli eventi gia ricevuti.
 
-I log runtime vengono salvati in:
+Gli eventi pipeline, i dati estratti e gli step di elaborazione vengono salvati in PostgreSQL. Il bootstrap admin locale resta nel runtime file:
 
 ```text
-runtime/processing-events.jsonl
 runtime/app-config.json
 ```
 

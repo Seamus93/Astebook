@@ -8,6 +8,7 @@
     "start:4000": "set PORT=4000&& node backend/server.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate deploy",
+    "db:import-processing-events": "node scripts/import-processing-events-jsonl.mjs",
     "lint": "node scripts/check-js.js",
     "test": "node --test backend/tests/*.test.js",
     "build": "npm run lint && vite build",

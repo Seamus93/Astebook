@@ -1,14 +1,6 @@
-import { mkdir, readFile, appendFile, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-
-const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
-const logFile = process.env.PROCESSING_LOG_FILE || join(runtimeDir, "processing-events.jsonl");
-
-function nowIso() {
-  return new Date().toISOString();
-}
+import { Prisma } from "@prisma/client";
+import { getPrismaClient } from "./db.js";
 
 function sanitizeFiles(files) {
   return Array.isArray(files)
@@ -22,34 +14,9 @@ function sanitizeFiles(files) {
     : [];
 }
 
-async function ensureLogFile() {
-  await mkdir(runtimeDir, { recursive: true });
-  if (!existsSync(logFile)) {
-    await writeFile(logFile, "", "utf8");
-  }
-}
-
-async function readEvents() {
-  await ensureLogFile();
-  const raw = await readFile(logFile, "utf8");
-  return raw
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .flatMap((line) => {
-      try {
-        return [JSON.parse(line)];
-      } catch (error) {
-        console.error("[processing_log] invalid JSONL line skipped", error);
-        return [];
-      }
-    });
-}
-
-async function writeEvents(events) {
-  await ensureLogFile();
-  const content = events.map((event) => JSON.stringify(event)).join("\n");
-  await writeFile(logFile, content ? `${content}\n` : "", "utf8");
+function jsonDbValue(value) {
+  if (value === undefined) return undefined;
+  return value === null ? Prisma.DbNull : value;
 }
 
 function valueAt(obj, path) {
@@ -62,6 +29,42 @@ function firstValue(obj, paths, fallback = "") {
     if (value !== undefined && value !== null && String(value).trim() !== "") return String(value);
   }
   return fallback;
+}
+
+function eventFromDb(row) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    source: row.source,
+    status: row.status,
+    metadata: row.metadata || {},
+    received_at: row.receivedAt?.toISOString?.() || null,
+    updated_at: row.updatedAt?.toISOString?.() || null,
+    request: row.request || null,
+    steps: (row.steps || []).map((step) => ({
+      at: step.at?.toISOString?.() || null,
+      level: step.level || "info",
+      message: step.message,
+      data: step.data || undefined,
+    })),
+    result: row.result || null,
+    error: row.error || null,
+  };
+}
+
+function dbPatchFromEventPatch(patch = {}) {
+  const data = {};
+  if ("source" in patch) data.source = patch.source;
+  if ("status" in patch) data.status = patch.status;
+  if ("metadata" in patch) data.metadata = jsonDbValue(patch.metadata);
+  if ("request" in patch) data.request = jsonDbValue(patch.request);
+  if ("result" in patch) data.result = jsonDbValue(patch.result);
+  if ("error" in patch) data.error = jsonDbValue(patch.error);
+  if ("received_at" in patch) {
+    const receivedAt = new Date(patch.received_at);
+    if (Number.isFinite(receivedAt.getTime())) data.receivedAt = receivedAt;
+  }
+  return data;
 }
 
 function eventSearchSummary(event) {
@@ -161,115 +164,116 @@ function eventWorkflowIssue(event) {
 }
 
 export async function createProcessingEvent({ source, status = "received", body, files, metadata = {} }) {
-  await ensureLogFile();
-  const event = {
-    id: randomUUID(),
-    source,
-    status,
-    metadata,
-    received_at: nowIso(),
-    updated_at: nowIso(),
-    request: {
-      body: body || {},
-      files: sanitizeFiles(files),
-    },
-    steps: [
-      {
-        at: nowIso(),
-        level: "info",
-        message: "Request received",
+  const prisma = getPrismaClient();
+  const event = await prisma.processingEvent.create({
+    data: {
+      id: randomUUID(),
+      source,
+      status,
+      metadata: jsonDbValue(metadata),
+      request: {
+        body: body || {},
+        files: sanitizeFiles(files),
       },
-    ],
-    result: null,
-    error: null,
-  };
-
-  await appendFile(logFile, `${JSON.stringify(event)}\n`, "utf8");
-  return event;
+      result: Prisma.DbNull,
+      error: Prisma.DbNull,
+      steps: {
+        create: {
+          at: new Date(),
+          level: "info",
+          message: "Request received",
+        },
+      },
+    },
+    include: { steps: { orderBy: [{ at: "asc" }, { id: "asc" }] } },
+  });
+  return eventFromDb(event);
 }
 
-export async function updateProcessingEvent(id, patch, step) {
-  const events = await readEvents();
-  const index = events.findIndex((event) => event.id === id);
-  if (index === -1) return null;
+export async function updateProcessingEvent(id, patch = {}, step = null) {
+  const prisma = getPrismaClient();
+  const data = dbPatchFromEventPatch(patch);
+  if (step) {
+    data.steps = {
+      create: {
+        at: new Date(),
+        level: step.level || "info",
+        message: step.message,
+        data: step.data,
+      },
+    };
+  }
 
-  const current = events[index];
-  const next = {
-    ...current,
-    ...patch,
-    updated_at: nowIso(),
-    steps: [
-      ...(current.steps || []),
-      ...(step
-        ? [
-            {
-              at: nowIso(),
-              level: step.level || "info",
-              message: step.message,
-              data: step.data,
-            },
-          ]
-        : []),
-    ],
-  };
-
-  events[index] = next;
-  await writeEvents(events);
-  return next;
+  try {
+    const event = await prisma.processingEvent.update({
+      where: { id },
+      data,
+      include: { steps: { orderBy: [{ at: "asc" }, { id: "asc" }] } },
+    });
+    return eventFromDb(event);
+  } catch (error) {
+    if (error?.code === "P2025") return null;
+    throw error;
+  }
 }
 
 export async function deleteProcessingEvent(id) {
-  const events = await readEvents();
-  const nextEvents = events.filter((event) => event.id !== id);
-  if (nextEvents.length === events.length) return false;
-  await writeEvents(nextEvents);
-  return true;
+  try {
+    await getPrismaClient().processingEvent.delete({ where: { id } });
+    return true;
+  } catch (error) {
+    if (error?.code === "P2025") return false;
+    throw error;
+  }
 }
 
 export async function listProcessingEvents({ limit = 100 } = {}) {
-  const events = await readEvents();
-  return events
-    .sort((a, b) => String(b.received_at).localeCompare(String(a.received_at)))
-    .slice(0, limit)
-    .map((event) => ({
-      id: event.id,
-      source: event.source,
-      status: event.status,
-      received_at: event.received_at,
-      updated_at: event.updated_at,
-      metadata: event.metadata,
-      file_count: event.request?.files?.length || 0,
-      has_result: Boolean(event.result),
-      has_error: Boolean(event.error),
-      error_count: eventErrorCount(event),
-      error_summary: eventErrorSummary(event),
-      workflow_issue: eventWorkflowIssue(event),
-      search: eventSearchSummary(event),
-    }));
+  const rows = await getPrismaClient().processingEvent.findMany({
+    orderBy: { receivedAt: "desc" },
+    take: limit,
+    include: { steps: { orderBy: [{ at: "asc" }, { id: "asc" }] } },
+  });
+  return rows.map(eventFromDb).map((event) => ({
+    id: event.id,
+    source: event.source,
+    status: event.status,
+    received_at: event.received_at,
+    updated_at: event.updated_at,
+    metadata: event.metadata,
+    file_count: event.request?.files?.length || 0,
+    has_result: Boolean(event.result),
+    has_error: Boolean(event.error),
+    error_count: eventErrorCount(event),
+    error_summary: eventErrorSummary(event),
+    workflow_issue: eventWorkflowIssue(event),
+    search: eventSearchSummary(event),
+  }));
 }
 
 export async function findProcessingEventByExternalEmailId({ source, emailId }) {
   const normalizedEmailId = String(emailId || "").trim();
   if (!normalizedEmailId) return null;
 
-  const events = await readEvents();
-  return (
-    events.find((event) => {
-      if (source && event.source !== source) return false;
-      const metadata = event.metadata || {};
-      const body = event.request?.body || {};
-      const candidates = [
-        metadata.email_id,
-        body.email_id,
-        body.message_id,
-        body.gmail_id,
-      ];
-      return candidates.some((candidate) => String(candidate || "").trim() === normalizedEmailId);
-    }) || null
-  );
+  const event = await getPrismaClient().processingEvent.findFirst({
+    where: {
+      ...(source ? { source } : {}),
+      OR: [
+        { metadata: { path: ["email_id"], equals: normalizedEmailId } },
+        { request: { path: ["body", "email_id"], equals: normalizedEmailId } },
+        { request: { path: ["body", "message_id"], equals: normalizedEmailId } },
+        { request: { path: ["body", "gmail_id"], equals: normalizedEmailId } },
+      ],
+    },
+    orderBy: { receivedAt: "desc" },
+    include: { steps: { orderBy: [{ at: "asc" }, { id: "asc" }] } },
+  });
+  return eventFromDb(event);
 }
 
 export async function getProcessingEvent(id) {
-  const events = await readEvents();
-  return events.find((event) => event.id === id) || null;
+  const event = await getPrismaClient().processingEvent.findUnique({
+    where: { id },
+    include: { steps: { orderBy: [{ at: "asc" }, { id: "asc" }] } },
+  });
+  return eventFromDb(event);
 }

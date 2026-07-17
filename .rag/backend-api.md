@@ -20,7 +20,7 @@ Updated: 2026-07-10
 - `backend/lib/document_email.js`: generated document email composition, quality report, inline logos and automatic send result logging.
 - `backend/lib/format_utils.js`: date and money formatting helpers used by merge/output shaping.
 - `backend/lib/html.js`: HTML escaping helper.
-- `backend/lib/processing_log.js`: JSONL processing event store in `runtime/processing-events.jsonl`.
+- `backend/lib/processing_log.js`: Prisma-backed processing event and step store in `processing_events` / `processing_steps`.
 - `backend/lib/settings_validation.js`: settings redaction, email recipient parsing/validation and configuration issue collection.
 - `backend/lib/smtp.js`: SMTP settings, transport creation and recovery email sending.
 - `backend/lib/ai.js`: OpenAI/OpenRouter integration plus deterministic extraction fallbacks such as annuncio `Localizzazione` address/comune.
@@ -71,7 +71,7 @@ Updated: 2026-07-10
 
 ## Processing Flow
 
-1. Create processing event in JSONL log.
+1. Create processing event in PostgreSQL.
 2. Resolve email text and clean it.
 3. Extract practice code and announcement data from email body.
 4. Collect attachment descriptors and supported file content.

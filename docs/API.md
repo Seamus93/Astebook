@@ -35,7 +35,7 @@ Important fields:
 
 The response contains `codice_pratica` and `merged`.
 
-Every `/callAI` request is also written to the processing log with input metadata, extraction steps, final result and errors.
+Every `/callAI` request is also written to PostgreSQL processing event tables with input metadata, extraction steps, final result and errors.
 
 ## `POST /api/v1/zapier/email-activation`
 

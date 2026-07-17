@@ -62,7 +62,13 @@ Runtime files are persisted through the Docker volume:
 ./runtime:/app/runtime
 ```
 
-This keeps the processing log, first admin and runtime tokens across automatic rebuilds.
+This keeps the first admin bootstrap and local runtime files across automatic rebuilds. Processing events, extracted data and pipeline steps are stored in PostgreSQL.
+
+Legacy deployments that still have `runtime/processing-events.jsonl` can import it once with:
+
+```bash
+docker compose exec app npm run db:import-processing-events
+```
 
 Production access should move behind the host Nginx reverse proxy when the public test is complete.
 

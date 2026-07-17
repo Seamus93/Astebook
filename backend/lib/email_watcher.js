@@ -203,6 +203,7 @@ function resolveSettings(rawSettings) {
 
 async function pollMailbox(settings, onAcceptedMail) {
   const state = await readState();
+  const acceptedJobs = [];
   const stats = {
     enabled: settings.enabled,
     scanned: 0,
@@ -304,27 +305,27 @@ async function pollMailbox(settings, onAcceptedMail) {
               continue;
             }
 
-            const senders = senderAddresses(parsed);
-            const acceptedEvent = await onAcceptedMail({
+            processed.add(messageKey);
+            stats.accepted += 1;
+            await client.messageFlagsAdd(message.uid, ["\\Seen"], { uid: true });
+            acceptedJobs.push({
+              uid: message.uid,
+              mailbox: settings.mailbox,
+              message_id: messageKey,
               body: bodyFromMail(parsed, messageKey, settings),
               files: filesFromMail(parsed),
               metadata: {
                 subject: parsed.subject || null,
-                from: senders.join(", ") || null,
+                from: senderAddresses(parsed).join(", ") || null,
                 email_id: messageKey,
               },
             });
-
-            processed.add(messageKey);
-            stats.accepted += 1;
-            await client.messageFlagsAdd(message.uid, ["\\Seen"], { uid: true });
             await updateMailboxMessage(
               { uid: message.uid, mailbox: settings.mailbox, message_id: messageKey },
               {
                 seen: true,
-                processed: true,
-                event_id: acceptedEvent?.id || null,
-                status: acceptedEvent?.status || "received",
+                processed: false,
+                status: "queued",
               }
             );
           }
@@ -334,9 +335,26 @@ async function pollMailbox(settings, onAcceptedMail) {
       } finally {
         await client.logout().catch(() => {});
       }
-    });
+    }, { timeoutMs: 60_000 });
   } finally {
     await writeState({ processed: Array.from(processed), ignore_before: state.ignore_before });
+  }
+
+  for (const job of acceptedJobs) {
+    const acceptedEvent = await onAcceptedMail({
+      body: job.body,
+      files: job.files,
+      metadata: job.metadata,
+    });
+    await updateMailboxMessage(
+      { uid: job.uid, mailbox: job.mailbox, message_id: job.message_id },
+      {
+        seen: true,
+        processed: true,
+        event_id: acceptedEvent?.id || null,
+        status: acceptedEvent?.status || "received",
+      }
+    );
   }
   return stats;
 }

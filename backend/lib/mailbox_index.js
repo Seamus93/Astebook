@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
@@ -12,10 +12,32 @@ async function ensureMailboxIndexFile() {
   }
 }
 
+async function quarantineCorruptMailboxIndex(raw, error) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const corruptFile = `${mailboxIndexFile}.corrupt-${stamp}`;
+  try {
+    if (raw) await copyFile(mailboxIndexFile, corruptFile);
+  } catch (copyError) {
+    console.warn("[mailbox_index] failed to copy corrupt index", copyError);
+  }
+  console.warn("[mailbox_index] corrupt index reset", {
+    file: mailboxIndexFile,
+    backup: corruptFile,
+    error: error.message || String(error),
+  });
+  await writeFile(mailboxIndexFile, `${JSON.stringify({ messages: [] }, null, 2)}\n`, "utf8");
+  return { messages: [], synced_at: null };
+}
+
 export async function readMailboxIndex() {
   await ensureMailboxIndexFile();
   const raw = await readFile(mailboxIndexFile, "utf8");
-  const parsed = raw.trim() ? JSON.parse(raw) : {};
+  let parsed = {};
+  try {
+    parsed = raw.trim() ? JSON.parse(raw) : {};
+  } catch (error) {
+    return quarantineCorruptMailboxIndex(raw, error);
+  }
   return {
     messages: Array.isArray(parsed.messages) ? parsed.messages : [],
     synced_at: parsed.synced_at || null,
@@ -27,11 +49,9 @@ async function writeMailboxIndex(index) {
   const messages = Array.from(index.messages || [])
     .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
     .slice(0, 2000);
-  await writeFile(
-    mailboxIndexFile,
-    `${JSON.stringify({ messages, synced_at: new Date().toISOString() }, null, 2)}\n`,
-    "utf8"
-  );
+  const tempFile = `${mailboxIndexFile}.tmp-${process.pid}-${Date.now()}`;
+  await writeFile(tempFile, `${JSON.stringify({ messages, synced_at: new Date().toISOString() }, null, 2)}\n`, "utf8");
+  await rename(tempFile, mailboxIndexFile);
 }
 
 function indexKey(message) {

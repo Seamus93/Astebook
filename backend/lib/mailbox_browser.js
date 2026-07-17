@@ -290,7 +290,7 @@ export async function syncMailboxMessages({
       await client.logout().catch(() => {});
     }
     return { messages, scanned };
-  });
+  }, { timeoutMs: 60_000 });
 
   await upsertMailboxMessages(messages);
   messages.sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")));
@@ -328,7 +328,7 @@ export async function processMailboxMessage({
     };
   }
 
-  return withImapRetries(async () => {
+  const imapResult = await withImapRetries(async () => {
     const client = new ImapFlow({
       host: settings.host,
       port: settings.port,
@@ -397,29 +397,21 @@ export async function processMailboxMessage({
           };
         }
 
-        const event = await onAcceptedMail({
-          body: bodyFromMail(parsed, messageKey, settings),
-          files: filesFromMail(parsed),
-          metadata: {
-            subject: parsed.subject || null,
-            from: collectEmailSenderAddresses(parsed).join(", ") || null,
-            email_id: messageKey,
-            manual_mailbox_process: true,
-          },
-        });
-        await updateMailboxMessage(
-          { uid: uidNumber, mailbox: settings.mailbox, message_id: messageKey },
-          {
-            event_id: event?.id || null,
-            status: event?.status || null,
-            processing_status: event?.status || null,
-            processed: true,
-          }
-        );
         return {
           ok: true,
-          event,
-          event_id: event?.id || null,
+          job: {
+            uid: uidNumber,
+            mailbox: settings.mailbox,
+            message_id: messageKey,
+            body: bodyFromMail(parsed, messageKey, settings),
+            files: filesFromMail(parsed),
+            metadata: {
+              subject: parsed.subject || null,
+              from: collectEmailSenderAddresses(parsed).join(", ") || null,
+              email_id: messageKey,
+              manual_mailbox_process: true,
+            },
+          },
           interceptor: decision,
         };
       } finally {
@@ -428,5 +420,28 @@ export async function processMailboxMessage({
     } finally {
       await client.logout().catch(() => {});
     }
+  }, { timeoutMs: 60_000 });
+
+  if (!imapResult?.job) return imapResult;
+
+  const event = await onAcceptedMail({
+    body: imapResult.job.body,
+    files: imapResult.job.files,
+    metadata: imapResult.job.metadata,
   });
+  await updateMailboxMessage(
+    { uid: imapResult.job.uid, mailbox: imapResult.job.mailbox, message_id: imapResult.job.message_id },
+    {
+      event_id: event?.id || null,
+      status: event?.status || null,
+      processing_status: event?.status || null,
+      processed: true,
+    }
+  );
+  return {
+    ok: true,
+    event,
+    event_id: event?.id || null,
+    interceptor: imapResult.interceptor,
+  };
 }

@@ -119,6 +119,7 @@ Current behavior:
 
 - IMAP watcher starts with the server and stays idle unless `email_watcher_enabled=true`.
 - First automatic scan is delayed by `EMAIL_WATCHER_START_DELAY_SECONDS`, default `30`, and mailbox sync pauses the watcher before resuming it after the same delay.
+- IMAP operations are serialized with a timeout; mailbox sync is capped at 60 seconds and email processing runs OCR/AI after releasing the IMAP lock.
 - IMAP credentials reuse SMTP user/password unless `EMAIL_WATCHER_IMAP_USER` and `EMAIL_WATCHER_IMAP_PASSWORD` are set.
 - IMAP host can be configured or derived from SMTP host, for example `smtp.gmail.com` -> `imap.gmail.com`.
 - Filters: sender allowlist plus required attachment filename substring, default `proposta`; proposal-equivalent names such as `offerta irrevocabile` and `offerta d'acquisto` are accepted.

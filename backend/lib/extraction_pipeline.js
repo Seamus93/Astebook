@@ -200,6 +200,54 @@ export function createAiExtractionPipeline({
     return true;
   }
 
+  function annuncioFromImmobiliareData(immobiliare) {
+    const data = immobiliare?.ok === true ? immobiliare.data : null;
+    if (!data) return null;
+    const price = data.prezzo ?? null;
+    return {
+      file_pdf: "Immobiliare.it",
+      source: data.source || immobiliare.provider || "immobiliare.it",
+      source_priority: "immobiliare",
+      immobiliare_url: data.url || immobiliare.url || null,
+      immobiliare_scraped_at: immobiliare.scraped_at || null,
+      immobiliare_provider: immobiliare.provider || data.source || null,
+      immobiliare_reference: data.reference || null,
+      indirizzo: data.indirizzo || null,
+      indirizzo_raw: data.indirizzo || null,
+      descrizione: data.description || data.title || null,
+      prezzo_base: price,
+      offerta_minima: price,
+      stato: data.disponibilita || null,
+      superficie_mq: data.superficie_mq || null,
+      categoria_macro: data.property_type || null,
+      tipo_vendita: data.contract || null,
+      locali: data.rooms || null,
+    };
+  }
+
+  function mergeAnnuncioFallbackWithImmobiliare(fallbackAnnuncio, immobiliareAnnuncio) {
+    if (!immobiliareAnnuncio || !hasUsefulAnnuncioData(immobiliareAnnuncio)) return fallbackAnnuncio || null;
+    const fallback = fallbackAnnuncio || {};
+    return {
+      ...fallback,
+      fallback_annuncio: fallbackAnnuncio || null,
+      fallback_source: fallback.source || fallback.file_pdf || null,
+      ...Object.fromEntries(
+        Object.entries(immobiliareAnnuncio).filter(([, value]) => !isMissingValue(value))
+      ),
+    };
+  }
+
+  function applyImmobiliareAnnuncioOverride(result) {
+    const immobiliareAnnuncio = annuncioFromImmobiliareData(result.immobiliare);
+    if (!immobiliareAnnuncio) return false;
+    const previous = result.extracted?.annuncio || null;
+    const next = mergeAnnuncioFallbackWithImmobiliare(previous, immobiliareAnnuncio);
+    if (!next) return false;
+    result.extracted.annuncio = next;
+    return true;
+  }
+
   async function buildMergedFromExtractionResult(result) {
     const annuncio = result.extracted?.annuncio || {};
     const proposta = result.extracted?.proposta || {};
@@ -371,6 +419,9 @@ export function createAiExtractionPipeline({
           url,
           ...scraped,
         };
+        if (applyImmobiliareAnnuncioOverride(result)) {
+          addUniqueNote(result, `${url}: dati annuncio sostituiti con fonte Immobiliare.it/Apify, fallback AI conservato.`);
+        }
         await updateProcessingEvent(event.id, { result }, {
           message: scraped.ok ? "Immobiliare.it announcement scraped" : "Immobiliare.it announcement scrape skipped",
           data: result.immobiliare,
@@ -421,6 +472,12 @@ export function createAiExtractionPipeline({
         await updateProcessingEvent(event.id, { result }, {
           message: "Immobiliare.it data filled from email body",
           data: result.immobiliare,
+        });
+      }
+      if (applyImmobiliareAnnuncioOverride(result)) {
+        await updateProcessingEvent(event.id, { result }, {
+          message: "Announcement extracted data replaced from Immobiliare.it",
+          data: result.extracted.annuncio,
         });
       }
     }
@@ -572,12 +629,14 @@ export function createAiExtractionPipeline({
 
         if (resolvedAttachment.kind === "annuncio") {
           const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
-          result.extracted.annuncio = await extractAnnuncioAiFirst({
+          const extractedAnnuncio = await extractAnnuncioAiFirst({
             text: attachmentText,
             fileName: resolvedAttachment.file_name,
             eventId: event.id,
             result,
           });
+          result.extracted.annuncio = extractedAnnuncio;
+          applyImmobiliareAnnuncioOverride(result);
           if (
             isMissingValue(result.extracted.annuncio.provvigione_percentuale) &&
             !isMissingValue(result.extracted.provvigione?.provvigione_percentuale)

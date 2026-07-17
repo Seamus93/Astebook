@@ -17,7 +17,7 @@ test("immobiliare scraper extracts only announcement detail urls", () => {
   assert.deepEqual(urls, ["https://www.immobiliare.it/annunci/123456789/"]);
 });
 
-test("immobiliare scraper parses listing metadata without using it for merge", () => {
+test("immobiliare scraper parses listing metadata for enrichment", () => {
   const parsed = parseImmobiliareHtml(
     `<!doctype html>
     <html>

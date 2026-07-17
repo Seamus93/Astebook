@@ -123,6 +123,7 @@ Current behavior:
 - IMAP host can be configured or derived from SMTP host, for example `smtp.gmail.com` -> `imap.gmail.com`.
 - Filters: sender allowlist plus required attachment filename substring, default `proposta`.
 - Accepted emails become `imap.email_activation` processing events and use the same AI/OCR/document pipeline as Zapier.
+- Immobiliare.it/Apify data, when available, replaces overlapping `extracted.annuncio` fields and keeps the AI/email/PDF result in `fallback_annuncio`.
 - Deduplication state is persisted in `runtime/email-watcher-state.json`.
 - Accepted emails are marked `Seen`; skipped emails are remembered locally but not marked read.
 

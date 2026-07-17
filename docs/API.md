@@ -204,6 +204,8 @@ At server startup, the first automatic watcher scan is delayed by `EMAIL_WATCHER
 
 The watcher processes only messages whose sender is in `email_watcher_from_allowlist` and whose attachments include a filename containing `email_watcher_required_filename`. Accepted emails are written as `imap.email_activation` processing events and run through the same AI/OCR/document pipeline used by Zapier intake. Processed message IDs are persisted in `runtime/email-watcher-state.json`.
 
+When an activation email contains an Immobiliare.it announcement URL and the configured scraper returns data, the normalized Immobiliare/Apify payload becomes the primary `extracted.annuncio` source for fields it can provide, such as address, description, price, availability, surface and property type. AI/email/PDF extraction is retained in `fallback_annuncio`, so if Apify is unavailable, rate limited or returns incomplete data, the pipeline still uses the best fallback extracted from the original inputs.
+
 ## `POST /api/v1/admin/email-watcher/scan`
 
 Runs one immediate IMAP watcher scan using the current watcher settings and filters. Requires the `/admin` login cookie.

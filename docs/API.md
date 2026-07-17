@@ -200,6 +200,8 @@ The email includes the generated PDF and an Astebook-styled processing report wi
 
 When `email_watcher_enabled=true`, Astebook connects to the configured IMAP mailbox and polls unread messages. It reuses `smtp_user` and `smtp_password` as IMAP credentials unless `EMAIL_WATCHER_IMAP_USER` and `EMAIL_WATCHER_IMAP_PASSWORD` are provided as environment variables.
 
+At server startup, the first automatic watcher scan is delayed by `EMAIL_WATCHER_START_DELAY_SECONDS`, default `30`, so the admin mailbox listing can run first after login. The mailbox sync endpoint also pauses the watcher while it indexes messages, then starts it again after the same delay to avoid overlapping IMAP sessions.
+
 The watcher processes only messages whose sender is in `email_watcher_from_allowlist` and whose attachments include a filename containing `email_watcher_required_filename`. Accepted emails are written as `imap.email_activation` processing events and run through the same AI/OCR/document pipeline used by Zapier intake. Processed message IDs are persisted in `runtime/email-watcher-state.json`.
 
 ## `POST /api/v1/admin/email-watcher/scan`

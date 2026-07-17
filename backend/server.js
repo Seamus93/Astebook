@@ -224,6 +224,22 @@ let mailboxSyncStatus = {
   last_result: null,
 };
 
+function positiveInt(value, fallback) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function emailWatcherStartDelaySeconds() {
+  return positiveInt(process.env.EMAIL_WATCHER_START_DELAY_SECONDS, 30);
+}
+
+function startEmailWatcherAfterDelay(reason = "scheduled") {
+  if (!emailWatcher) return;
+  const delaySeconds = emailWatcherStartDelaySeconds();
+  console.log(`[email_watcher] ${reason}; starting in ${delaySeconds}s`);
+  emailWatcher.start({ delaySeconds });
+}
+
 registerEmailIntakeRoutes(app, {
   handleZapierEmailActivation: emailIntakeHandlers.handleZapierEmailActivation,
   requireZapierWebhookToken,
@@ -311,6 +327,8 @@ function startMailboxSync({ from, includeAllSenders = true, limit = 30, query = 
     return { ok: true, started: false, busy: true, sync: mailboxSyncStatus };
   }
 
+  emailWatcher?.stop();
+
   mailboxSyncRunning = true;
   mailboxSyncStatus = {
     ...mailboxSyncStatus,
@@ -354,6 +372,7 @@ function startMailboxSync({ from, includeAllSenders = true, limit = 30, query = 
     .finally(() => {
       mailboxSyncRunning = false;
       mailboxSyncStatus = { ...mailboxSyncStatus, running: false };
+      startEmailWatcherAfterDelay("mailbox sync finished");
     });
 
   return { ok: true, started: true, busy: false, sync: mailboxSyncStatus };
@@ -404,7 +423,7 @@ export function startServer(port = process.env.PORT || 3000) {
     getSettings: getRuntimeSettings,
     onAcceptedMail: processEmailWatcherActivation,
   });
-  emailWatcher.start();
+  startEmailWatcherAfterDelay("server started");
   server.on("close", () => {
     emailWatcher?.stop();
     emailWatcher = null;

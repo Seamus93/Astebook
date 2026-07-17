@@ -400,7 +400,12 @@ export function createEmailWatcher({ getSettings, onAcceptedMail }) {
   }
 
   return {
-    start() {
+    start({ delaySeconds = 0 } = {}) {
+      if (timer) clearTimeout(timer);
+      if (delaySeconds > 0) {
+        schedule(delaySeconds);
+        return;
+      }
       tick();
     },
     scanNow() {

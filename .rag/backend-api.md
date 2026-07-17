@@ -118,6 +118,7 @@ Astebook can run email intake directly on the VPS with `backend/lib/email_watche
 Current behavior:
 
 - IMAP watcher starts with the server and stays idle unless `email_watcher_enabled=true`.
+- First automatic scan is delayed by `EMAIL_WATCHER_START_DELAY_SECONDS`, default `30`, and mailbox sync pauses the watcher before resuming it after the same delay.
 - IMAP credentials reuse SMTP user/password unless `EMAIL_WATCHER_IMAP_USER` and `EMAIL_WATCHER_IMAP_PASSWORD` are set.
 - IMAP host can be configured or derived from SMTP host, for example `smtp.gmail.com` -> `imap.gmail.com`.
 - Filters: sender allowlist plus required attachment filename substring, default `proposta`.

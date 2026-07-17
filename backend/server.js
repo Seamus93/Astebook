@@ -24,6 +24,7 @@ import {
   forgetEmailWatcherMessageState,
   resetEmailWatcherState,
 } from "./lib/email_watcher.js";
+import { createMailboxAutoProcessor } from "./lib/mailbox_auto_processor.js";
 import { listMailboxMessages, processMailboxMessage, syncMailboxMessages } from "./lib/mailbox_browser.js";
 import {
   createSmtpTransporter as createSmtpTransporterWithSettings,
@@ -214,6 +215,7 @@ const emailIntakeHandlers = createEmailIntakeHandlers({
 });
 const { processEmailWatcherActivation } = emailIntakeHandlers;
 let emailWatcher = null;
+let mailboxAutoProcessor = null;
 let mailboxSyncRunning = false;
 let mailboxSyncStatus = {
   running: false,
@@ -394,6 +396,22 @@ app.post("/api/v1/admin/mailbox/messages/process", requireAdminSession, async (r
   }
 });
 
+app.post("/api/v1/admin/mailbox/auto-process/run", requireAdminSession, async (_req, res) => {
+  if (!mailboxAutoProcessor) {
+    res.status(503).json({ ok: false, error: "Auto processor non avviato." });
+    return;
+  }
+  const result = await mailboxAutoProcessor.runNow();
+  res.status(result.ok === false ? 500 : 202).json(result);
+});
+
+app.get("/api/v1/admin/mailbox/auto-process/status", requireAdminSession, (_req, res) => {
+  res.json({
+    ok: true,
+    auto_process: mailboxAutoProcessor?.getStatus?.() || null,
+  });
+});
+
 app.post("/api/v1/admin/email-watcher/state/forget", requireAdminSession, async (req, res) => {
   try {
     const result = await forgetEmailWatcherMessageState(req.body?.message_id);
@@ -428,13 +446,21 @@ export function startServer(port = process.env.PORT || 3000) {
   const server = app.listen(port, () => console.log(`Server up on http://localhost:${port}`));
   emailWatcher = createEmailWatcher({
     getSettings: getRuntimeSettings,
+  });
+  mailboxAutoProcessor = createMailboxAutoProcessor({
+    getSettings: getRuntimeSettings,
+    processMailboxMessage,
+    findProcessingEventByExternalEmailId,
     onAcceptedMail: processEmailWatcherActivation,
   });
   startInitialMailboxBackfillAfterDelay();
   startEmailWatcherAfterDelay("server started");
+  mailboxAutoProcessor.start({ delaySeconds: positiveInt(process.env.MAILBOX_AUTO_PROCESS_START_DELAY_SECONDS, 60) });
   server.on("close", () => {
     emailWatcher?.stop();
+    mailboxAutoProcessor?.stop();
     emailWatcher = null;
+    mailboxAutoProcessor = null;
   });
   return server;
 }

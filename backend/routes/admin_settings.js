@@ -68,6 +68,12 @@ export function registerAdminSettingsRoutes(app, {
           process.env.EMAIL_WATCHER_REQUIRED_FILENAME || settings.email_watcher_required_filename || "proposta",
         email_watcher_poll_seconds:
           process.env.EMAIL_WATCHER_POLL_SECONDS || settings.email_watcher_poll_seconds || "120",
+        mailbox_auto_process_enabled:
+          process.env.MAILBOX_AUTO_PROCESS_ENABLED || settings.mailbox_auto_process_enabled || "false",
+        mailbox_auto_process_interval_seconds:
+          process.env.MAILBOX_AUTO_PROCESS_INTERVAL_SECONDS || settings.mailbox_auto_process_interval_seconds || "120",
+        mailbox_auto_process_limit:
+          process.env.MAILBOX_AUTO_PROCESS_LIMIT || settings.mailbox_auto_process_limit || "3",
         immobiliare_scraper_provider:
           process.env.IMMOBILIARE_SCRAPER_PROVIDER || settings.immobiliare_scraper_provider || "direct",
         apify_token: secretValue("APIFY_TOKEN", "apify_token"),
@@ -117,6 +123,9 @@ export function registerAdminSettingsRoutes(app, {
       "email_watcher_from_allowlist",
       "email_watcher_required_filename",
       "email_watcher_poll_seconds",
+      "mailbox_auto_process_enabled",
+      "mailbox_auto_process_interval_seconds",
+      "mailbox_auto_process_limit",
       "immobiliare_scraper_provider",
       "apify_immobiliare_actor_id",
       "apify_immobiliare_input_template",

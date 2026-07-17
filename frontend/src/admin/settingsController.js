@@ -33,6 +33,9 @@ const settingsInputIds = {
   email_watcher_from_allowlist: "emailWatcherFromAllowlist",
   email_watcher_required_filename: "emailWatcherRequiredFilename",
   email_watcher_poll_seconds: "emailWatcherPollSeconds",
+  mailbox_auto_process_enabled: "mailboxAutoProcessEnabled",
+  mailbox_auto_process_interval_seconds: "mailboxAutoProcessIntervalSeconds",
+  mailbox_auto_process_limit: "mailboxAutoProcessLimit",
   immobiliare_scraper_provider: "immobiliareScraperProvider",
   apify_token: "apifyToken",
   apify_immobiliare_actor_id: "apifyImmobiliareActorId",
@@ -109,7 +112,7 @@ function watcherScanSummary(result) {
   if (result.disabled_reason) return `Watcher non avviato: ${result.disabled_reason}.`;
   const summary = [
     `Lette ${result.scanned || 0}`,
-    `processate ${result.accepted || 0}`,
+    `indicizzate ${result.accepted || 0}`,
     `duplicate ${result.duplicates || 0}`,
     `mittente escluso ${result.skipped_sender || 0}`,
     `file escluso ${result.skipped_filename || 0}`,
@@ -147,6 +150,15 @@ async function fetchMailboxSyncStatus() {
     throw new Error(payload.error || `HTTP ${resp.status}`);
   }
   return payload.sync || {};
+}
+
+async function fetchMailboxAutoProcessStatus() {
+  const resp = await apiFetch("/api/v1/admin/mailbox/auto-process/status");
+  const payload = await resp.json().catch(() => ({}));
+  if (!resp.ok || payload.ok === false) {
+    throw new Error(payload.error || `HTTP ${resp.status}`);
+  }
+  return payload.auto_process || {};
 }
 
 async function fetchMailboxMessages(limit = 20) {
@@ -454,6 +466,67 @@ export function createSettingsController() {
     });
   }
 
+  function renderCronStatus(status) {
+    const node = qs("cronjobStatus");
+    if (!node) return;
+    const result = status.last_result || {};
+    const rows = [
+      `Stato: ${status.running ? "in corso" : "fermo"} · ${status.enabled ? "abilitato" : "disabilitato"}`,
+      `Ultimo avvio: ${formatEventTimestamp(status.last_started_at)}`,
+      `Ultima fine: ${formatEventTimestamp(status.last_finished_at)}`,
+      status.last_error ? `Errore: ${status.last_error}` : null,
+      status.last_result
+        ? `Ultimo risultato: ${result.candidates || 0} candidate, ${result.processed || 0} processate, ${result.failed || 0} errori.`
+        : "Nessun run registrato.",
+    ].filter(Boolean);
+    node.textContent = rows.join(" ");
+  }
+
+  async function refreshCronStatus() {
+    try {
+      renderCronStatus(await fetchMailboxAutoProcessStatus());
+    } catch (error) {
+      const node = qs("cronjobStatus");
+      if (node) node.textContent = `Stato cronjob non disponibile: ${error.message || String(error)}`;
+    }
+  }
+
+  function initCronjobControls() {
+    const button = qs("manualCronjobRunButton");
+    const refreshButton = qs("refreshCronjobStatusButton");
+    if (button) {
+      button.addEventListener("click", async () => {
+        button.disabled = true;
+        const status = qs("cronjobStatus");
+        if (status) status.textContent = "Esecuzione cronjob mailbox in corso...";
+        try {
+          const resp = await apiFetch("/api/v1/admin/mailbox/auto-process/run", { method: "POST" });
+          const payload = await resp.json().catch(() => ({}));
+          if (!resp.ok || payload.ok === false) {
+            const message = payload.error || `HTTP ${resp.status}`;
+            showToast({ title: "Cronjob non completato", message, tone: "error" });
+            if (status) status.textContent = message;
+            return;
+          }
+          showToast({
+            title: "Cronjob eseguito",
+            message: `${payload.processed || 0} mail processate, ${payload.failed || 0} errori.`,
+            tone: payload.failed ? "error" : "info",
+          });
+          await refreshCronStatus();
+        } catch (error) {
+          const message = error.message || String(error);
+          showToast({ title: "Cronjob fallito", message, tone: "error" });
+          if (status) status.textContent = message;
+        } finally {
+          button.disabled = false;
+        }
+      });
+    }
+    refreshButton?.addEventListener("click", refreshCronStatus);
+    refreshCronStatus();
+  }
+
   function initManualSendLatestDocumentButton() {
     const button = qs("manualSendLatestDocumentButton");
     const status = qs("manualSendLatestDocumentStatus");
@@ -585,6 +658,7 @@ export function createSettingsController() {
     initRevealButtons,
     initManualAnalyzeLatestEmailButton,
     initManualSendLatestDocumentButton,
+    initCronjobControls,
     initWatcherResetStateButton,
     initWatcherScanButton,
     initDiagnosticsLogger,

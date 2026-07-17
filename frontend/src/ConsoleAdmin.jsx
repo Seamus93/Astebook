@@ -49,6 +49,18 @@ const settingsSections = [
     ],
   },
   {
+    id: "cronjob",
+    title: "Cronjob",
+    tag: "Automazioni",
+    icon: "schedule",
+    panel: "cronjob",
+    fields: [
+      ["mailboxAutoProcessEnabled", "mailbox_auto_process_enabled", "Auto process mailbox", "true o false", "off", "text", "Quando true, un job periodico avvia la pipeline sulle mail in mailbox senza evento."],
+      ["mailboxAutoProcessIntervalSeconds", "mailbox_auto_process_interval_seconds", "Intervallo sec", "120", "off", "text", "Ogni quanti secondi il cronjob controlla la tabella mailbox per nuove mail da processare."],
+      ["mailboxAutoProcessLimit", "mailbox_auto_process_limit", "Batch massimo", "3", "off", "text", "Numero massimo di mail processate a ogni esecuzione del cronjob."],
+    ],
+  },
+  {
     id: "api-ai-ocr",
     title: "API AI e OCR",
     tag: "Estrazione dati",
@@ -327,6 +339,28 @@ export default function ConsoleAdmin() {
                       </div>
                       <p id="manualWatcherScanStatus" className="settings-help-text">
                         Avvia subito un controllo IMAP usando i filtri configurati sopra.
+                      </p>
+                    </div>
+                  ) : null}
+                  {section.panel === "cronjob" ? (
+                    <div className="settings-section-panel">
+                      <div className="settings-panel-header">
+                        <div>
+                          <p className="eyebrow">Schedulazione</p>
+                          <h3>Auto process mailbox</h3>
+                        </div>
+                        <div className="settings-panel-actions">
+                          <button id="refreshCronjobStatusButton" className="icon-button" type="button" title="Aggiorna stato cronjob">
+                            <span className="material-symbols-outlined" aria-hidden="true">refresh</span>
+                          </button>
+                          <button id="manualCronjobRunButton" className="secondary-button" type="button">
+                            <span className="material-symbols-outlined" aria-hidden="true">play_arrow</span>
+                            Esegui ora
+                          </button>
+                        </div>
+                      </div>
+                      <p id="cronjobStatus" className="settings-help-text">
+                        Controlla lo stato del job automatico che trasforma le righe mailbox in pipeline.
                       </p>
                     </div>
                   ) : null}

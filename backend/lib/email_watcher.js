@@ -5,7 +5,6 @@ import { ImapFlow } from "imapflow";
 import { simpleParser } from "mailparser";
 import {
   attachmentFilenameMatchesRequired,
-  collectEmailSenderAddresses,
   evaluateEmailInterceptorDecision,
 } from "../ai_agents/Interceptor.js";
 import { isTransientImapError, withImapRetries } from "./imap_operation_lock.js";
@@ -89,10 +88,6 @@ export async function forgetEmailWatcherMessageState(messageId) {
   };
 }
 
-function senderAddresses(parsed) {
-  return collectEmailSenderAddresses(parsed);
-}
-
 function interceptorDecision(parsed, settings, state, messageKey) {
   return evaluateEmailInterceptorDecision({
     message: parsed,
@@ -131,32 +126,6 @@ function mailboxIndexMessageFromWatcher({ parsed, message, messageKey, settings,
   };
 }
 
-function filesFromMail(parsed) {
-  return (parsed.attachments || []).map((attachment, index) => ({
-    fieldname: `email_attachment_${index + 1}`,
-    originalname: attachment.filename || `attachment_${index + 1}`,
-    mimetype: attachment.contentType || "application/octet-stream",
-    size: attachment.size || attachment.content?.length || null,
-    encoding: "7bit",
-    buffer: attachment.content,
-  }));
-}
-
-function bodyFromMail(parsed, messageKey, settings) {
-  return {
-    subject: parsed.subject || "",
-    from: senderAddresses(parsed).join(", "),
-    to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean).join(", "),
-    date: parsed.date?.toISOString?.() || "",
-    email_id: messageKey,
-    message_id: parsed.messageId || messageKey,
-    email_body_text: parsed.text || "",
-    email_body_html: parsed.html || "",
-    source_mailbox: settings.mailbox,
-    watcher_required_filename: settings.requiredFilename,
-  };
-}
-
 function resolveSettings(rawSettings) {
   const smtpHost = process.env.SMTP_HOST || rawSettings.smtp_host || "";
   const smtpUser = process.env.SMTP_USER || rawSettings.smtp_user || "";
@@ -179,9 +148,8 @@ function resolveSettings(rawSettings) {
   };
 }
 
-async function pollMailbox(settings, onAcceptedMail) {
+async function pollMailbox(settings) {
   const state = await readState();
-  const acceptedJobs = [];
   const stats = {
     enabled: settings.enabled,
     scanned: 0,
@@ -274,27 +242,15 @@ async function pollMailbox(settings, onAcceptedMail) {
               continue;
             }
 
-            processed.add(messageKey);
             stats.accepted += 1;
             await client.messageFlagsAdd(message.uid, ["\\Seen"], { uid: true });
-            acceptedJobs.push({
-              uid: message.uid,
-              mailbox: settings.mailbox,
-              message_id: messageKey,
-              body: bodyFromMail(parsed, messageKey, settings),
-              files: filesFromMail(parsed),
-              metadata: {
-                subject: parsed.subject || null,
-                from: senderAddresses(parsed).join(", ") || null,
-                email_id: messageKey,
-              },
-            });
             await updateMailboxMessage(
               { uid: message.uid, mailbox: settings.mailbox, message_id: messageKey },
               {
                 seen: true,
                 processed: false,
-                status: "queued",
+                status: "mailbox_indexed",
+                processing_status: "mailbox_indexed",
               }
             );
           }
@@ -309,26 +265,10 @@ async function pollMailbox(settings, onAcceptedMail) {
     await writeState({ processed: Array.from(processed) });
   }
 
-  for (const job of acceptedJobs) {
-    const acceptedEvent = await onAcceptedMail({
-      body: job.body,
-      files: job.files,
-      metadata: job.metadata,
-    });
-    await updateMailboxMessage(
-      { uid: job.uid, mailbox: job.mailbox, message_id: job.message_id },
-      {
-        seen: true,
-        processed: true,
-        event_id: acceptedEvent?.id || null,
-        status: acceptedEvent?.status || "received",
-      }
-    );
-  }
   return stats;
 }
 
-export function createEmailWatcher({ getSettings, onAcceptedMail }) {
+export function createEmailWatcher({ getSettings }) {
   let timer = null;
   let running = false;
   let consecutiveTransientFailures = 0;
@@ -351,7 +291,7 @@ export function createEmailWatcher({ getSettings, onAcceptedMail }) {
     running = true;
     try {
       const settings = resolveSettings(await getSettings());
-      const stats = await pollMailbox(settings, onAcceptedMail);
+      const stats = await pollMailbox(settings);
       consecutiveTransientFailures = 0;
       if (reschedule) schedule(settings.pollSeconds);
       return { ok: true, ...stats };

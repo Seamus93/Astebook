@@ -345,3 +345,27 @@ export async function listMailboxIndexMessages({
     total_indexed: index.messages.length,
   };
 }
+
+export async function listPendingMailboxMessagesForProcessing({ limit = 5 } = {}) {
+  const take = Math.min(Math.max(Number(limit) || 5, 1), 25);
+  if (useMailboxDb()) {
+    const prisma = getPrismaClient();
+    const rows = await prisma.mailboxMessage.findMany({
+      where: {
+        eventId: null,
+        processed: false,
+        uid: { not: null },
+        senderAllowed: { not: false },
+      },
+      orderBy: [{ date: "asc" }, { lastSyncedAt: "asc" }],
+      take,
+    });
+    return rows.map(mailboxMessageFromDb);
+  }
+
+  const index = await readMailboxIndex();
+  return index.messages
+    .filter((message) => !message.event_id && !message.processed && message.uid && message.sender_allowed !== false)
+    .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")))
+    .slice(0, take);
+}

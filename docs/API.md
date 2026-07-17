@@ -169,6 +169,9 @@ Updates runtime settings for:
 - `email_watcher_from_allowlist`: comma, semicolon or newline separated sender allowlist.
 - `email_watcher_required_filename`: required substring in at least one attachment filename, for example `proposta`. The default `proposta` also accepts proposal-equivalent filenames such as `offerta irrevocabile` and `offerta d'acquisto`.
 - `email_watcher_poll_seconds`: polling interval, minimum runtime value is 30 seconds.
+- `mailbox_auto_process_enabled`: `true` enables the cronjob that starts pipeline processing for indexed mailbox rows.
+- `mailbox_auto_process_interval_seconds`: cron interval, minimum runtime value is 30 seconds.
+- `mailbox_auto_process_limit`: maximum mailbox rows processed in one cron batch.
 - `admin_password`
 
 These endpoints require the `/admin` login cookie.
@@ -202,7 +205,9 @@ When `email_watcher_enabled=true`, Astebook connects to the configured IMAP mail
 
 At server startup, the first automatic watcher scan is delayed by `EMAIL_WATCHER_START_DELAY_SECONDS`, default `30`, so the admin mailbox listing can run first after login. The mailbox sync endpoint also pauses the watcher while it indexes messages, then starts it again after the same delay to avoid overlapping IMAP sessions.
 
-The watcher processes only messages whose sender is in `email_watcher_from_allowlist` and whose attachments include a filename containing `email_watcher_required_filename`. Accepted emails are written as `imap.email_activation` processing events and run through the same AI/OCR/document pipeline used by Zapier intake. Processed message IDs are persisted in `runtime/email-watcher-state.json`.
+The watcher indexes unread mailbox messages into the DB-backed mailbox list. Messages that pass the watcher sender and filename filters are marked as indexed, but the pipeline is started separately by the admin Process button or by the mailbox auto-process cronjob. This avoids coupling IMAP discovery to OCR/AI execution and lets the same DB mailbox row be processed later.
+
+When `mailbox_auto_process_enabled=true`, the cronjob periodically reads indexed mailbox rows that have no `event_id`, are not marked `processed`, and are not from an explicitly excluded sender. It then calls the same manual mailbox processing path used by the Process button, without requiring the attachment filename filter.
 
 When an activation email contains an Immobiliare.it announcement URL and the configured scraper returns data, the normalized Immobiliare/Apify payload becomes the primary `extracted.annuncio` source for fields it can provide, such as address, description, price, availability, surface and property type. AI/email/PDF extraction is retained in `fallback_annuncio`, so if Apify is unavailable, rate limited or returns incomplete data, the pipeline still uses the best fallback extracted from the original inputs.
 
@@ -210,7 +215,13 @@ When an activation email contains an Immobiliare.it announcement URL and the con
 
 Runs one immediate IMAP watcher scan using the current watcher settings and filters. Requires the `/admin` login cookie.
 
-The response includes scan counters: `scanned`, `accepted`, `duplicates`, `skipped_sender` and `skipped_filename`. It also returns recent `diagnostics` for skipped unread messages, including subject, sender and attachment filenames.
+The response includes scan counters: `scanned`, `accepted`, `duplicates`, `skipped_sender` and `skipped_filename`; `accepted` means indexed into the mailbox DB for later processing. It also returns recent `diagnostics` for skipped unread messages, including subject, sender and attachment filenames.
+
+## `POST /api/v1/admin/mailbox/auto-process/run`
+
+Runs one immediate mailbox auto-process batch. Requires the `/admin` login cookie.
+
+The scheduled version uses the `mailbox_auto_process_*` settings and calls the same backend path as the Process button for each eligible mailbox row.
 
 ## `POST /api/v1/processing-events/:id/reprocess`
 

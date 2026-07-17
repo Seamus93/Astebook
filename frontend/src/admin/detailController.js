@@ -6,10 +6,7 @@ import { showToast } from "./toast.js";
 import { renderWorkflowStatus } from "./workflowView.js";
 
 function canManuallyProcessMailboxMessage(message) {
-  const hasFiltersOk =
-    message.interceptor?.processable ||
-    (message.sender_allowed !== false && message.required_filename_match === true);
-  return Boolean(message.uid && !message.event_id && hasFiltersOk);
+  return Boolean(message.uid && !message.event_id);
 }
 
 function mailboxState(message) {

@@ -622,6 +622,9 @@ test("Admin login can read and update runtime settings", async () => {
         email_watcher_from_allowlist: "lc@astebook.com, mv@astebook.com",
         email_watcher_required_filename: "proposta",
         email_watcher_poll_seconds: "120",
+        mailbox_auto_process_enabled: "true",
+        mailbox_auto_process_interval_seconds: "90",
+        mailbox_auto_process_limit: "4",
         immobiliare_scraper_provider: "apify",
         apify_token: "apify-secret",
         apify_immobiliare_actor_id: "user/immobiliare-scraper",
@@ -685,6 +688,9 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(updatedSettingsPayload.settings.email_watcher_from_allowlist, "lc@astebook.com, mv@astebook.com");
     assert.equal(updatedSettingsPayload.settings.email_watcher_required_filename, "proposta");
     assert.equal(updatedSettingsPayload.settings.email_watcher_poll_seconds, "120");
+    assert.equal(updatedSettingsPayload.settings.mailbox_auto_process_enabled, "true");
+    assert.equal(updatedSettingsPayload.settings.mailbox_auto_process_interval_seconds, "90");
+    assert.equal(updatedSettingsPayload.settings.mailbox_auto_process_limit, "4");
     assert.equal(updatedSettingsPayload.settings.immobiliare_scraper_provider, "apify");
     assert.equal(updatedSettingsPayload.settings.apify_token, "apify-secret");
     assert.equal(updatedSettingsPayload.settings.apify_immobiliare_actor_id, "user/immobiliare-scraper");

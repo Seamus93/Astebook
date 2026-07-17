@@ -441,14 +441,6 @@ export async function processMailboxMessage({
           state: force ? { processed: [] } : await readWatcherState(),
           messageKey,
         });
-        if (!decision.sender_allowed || !decision.required_filename_match) {
-          return {
-            ok: false,
-            error: "Email non processabile.",
-            interceptor: decision,
-          };
-        }
-
         return {
           ok: true,
           job: {

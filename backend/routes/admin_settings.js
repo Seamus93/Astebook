@@ -68,8 +68,6 @@ export function registerAdminSettingsRoutes(app, {
           process.env.EMAIL_WATCHER_REQUIRED_FILENAME || settings.email_watcher_required_filename || "proposta",
         email_watcher_poll_seconds:
           process.env.EMAIL_WATCHER_POLL_SECONDS || settings.email_watcher_poll_seconds || "120",
-        email_watcher_scan_limit:
-          process.env.EMAIL_WATCHER_SCAN_LIMIT || settings.email_watcher_scan_limit || "20",
         mailbox_auto_process_enabled:
           process.env.MAILBOX_AUTO_PROCESS_ENABLED || settings.mailbox_auto_process_enabled || "false",
         mailbox_auto_process_interval_seconds:
@@ -125,7 +123,6 @@ export function registerAdminSettingsRoutes(app, {
       "email_watcher_from_allowlist",
       "email_watcher_required_filename",
       "email_watcher_poll_seconds",
-      "email_watcher_scan_limit",
       "mailbox_auto_process_enabled",
       "mailbox_auto_process_interval_seconds",
       "mailbox_auto_process_limit",

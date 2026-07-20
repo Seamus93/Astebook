@@ -2,13 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ImapFlow } from "imapflow";
+import { simpleParser } from "mailparser";
 import {
   attachmentFilenameMatchesRequired,
   evaluateEmailInterceptorDecision,
 } from "../ai_agents/Interceptor.js";
 import { isTransientImapError, withImapRetries } from "./imap_operation_lock.js";
 import { findMailboxIndexMessage, updateMailboxMessage, upsertMailboxMessages } from "./mailbox_index.js";
-import { parsedSummaryFromImapMessage } from "./mailbox_browser.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -149,7 +149,6 @@ function resolveSettings(rawSettings) {
     requiredFilename:
       process.env.EMAIL_WATCHER_REQUIRED_FILENAME || rawSettings.email_watcher_required_filename || "proposta",
     pollSeconds: intValue(process.env.EMAIL_WATCHER_POLL_SECONDS || rawSettings.email_watcher_poll_seconds, 120),
-    scanLimit: intValue(process.env.EMAIL_WATCHER_SCAN_LIMIT || rawSettings.email_watcher_scan_limit, 20),
   };
 }
 
@@ -194,15 +193,9 @@ async function pollMailbox(settings) {
         await client.connect();
         const lock = await client.getMailboxLock(settings.mailbox);
         try {
-          const uids = await client.search({ seen: false }, { uid: true });
-          const selectedUids = uids.slice(-settings.scanLimit);
-          for await (const message of client.fetch(
-            selectedUids,
-            { uid: true, flags: true, envelope: true, internalDate: true, bodyStructure: true },
-            { uid: true }
-          )) {
+          for await (const message of client.fetch({ seen: false }, { uid: true, source: true })) {
             stats.scanned += 1;
-            const parsed = parsedSummaryFromImapMessage(message);
+            const parsed = await simpleParser(message.source);
             const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
             const indexedMessage = await findMailboxIndexMessage({
               uid: message.uid,
@@ -271,7 +264,7 @@ async function pollMailbox(settings) {
       } finally {
         await client.logout().catch(() => {});
       }
-    }, { timeoutMs: timeoutMsFromEnv("EMAIL_WATCHER_IMAP_TIMEOUT_SECONDS", 45), attempts: 1 });
+    }, { timeoutMs: timeoutMsFromEnv("EMAIL_WATCHER_IMAP_TIMEOUT_SECONDS", 180) });
   } finally {
     await writeState({ processed: Array.from(processed) });
   }

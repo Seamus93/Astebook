@@ -153,7 +153,7 @@ function attachmentFilenamesFromBodyStructure(node, acc = []) {
   return acc;
 }
 
-export function parsedSummaryFromImapMessage(message) {
+function parsedSummaryFromImapMessage(message) {
   const envelope = message.envelope || {};
   const date = envelope.date || message.internalDate || null;
   return {

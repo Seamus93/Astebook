@@ -35,7 +35,6 @@ const settingsSections = [
       ],
       ["emailWatcherRequiredFilename", "email_watcher_required_filename", "File richiesto", "proposta", "off", "text", "La pipeline prosegue solo se tra gli allegati c'è un file il cui nome contiene questo testo."],
       ["emailWatcherPollSeconds", "email_watcher_poll_seconds", "Polling watcher sec", "120", "off", "text", "Ogni quanti secondi il watcher controlla la casella IMAP per nuove email."],
-      ["emailWatcherScanLimit", "email_watcher_scan_limit", "Limite scan watcher", "20", "off", "text", "Numero massimo di email non lette controllate a ogni giro del watcher."],
     ],
   },
   {

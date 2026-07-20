@@ -43,7 +43,6 @@ const defaultConfig = {
     email_watcher_from_allowlist: "",
     email_watcher_required_filename: "proposta",
     email_watcher_poll_seconds: "120",
-    email_watcher_scan_limit: "20",
     mailbox_auto_process_enabled: "false",
     mailbox_auto_process_interval_seconds: "120",
     mailbox_auto_process_limit: "3",

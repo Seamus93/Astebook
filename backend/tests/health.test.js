@@ -622,6 +622,7 @@ test("Admin login can read and update runtime settings", async () => {
         email_watcher_from_allowlist: "lc@astebook.com, mv@astebook.com",
         email_watcher_required_filename: "proposta",
         email_watcher_poll_seconds: "120",
+        email_watcher_scan_limit: "15",
         mailbox_auto_process_enabled: "true",
         mailbox_auto_process_interval_seconds: "90",
         mailbox_auto_process_limit: "4",
@@ -688,6 +689,7 @@ test("Admin login can read and update runtime settings", async () => {
     assert.equal(updatedSettingsPayload.settings.email_watcher_from_allowlist, "lc@astebook.com, mv@astebook.com");
     assert.equal(updatedSettingsPayload.settings.email_watcher_required_filename, "proposta");
     assert.equal(updatedSettingsPayload.settings.email_watcher_poll_seconds, "120");
+    assert.equal(updatedSettingsPayload.settings.email_watcher_scan_limit, "15");
     assert.equal(updatedSettingsPayload.settings.mailbox_auto_process_enabled, "true");
     assert.equal(updatedSettingsPayload.settings.mailbox_auto_process_interval_seconds, "90");
     assert.equal(updatedSettingsPayload.settings.mailbox_auto_process_limit, "4");

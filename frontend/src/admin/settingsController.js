@@ -33,6 +33,7 @@ const settingsInputIds = {
   email_watcher_from_allowlist: "emailWatcherFromAllowlist",
   email_watcher_required_filename: "emailWatcherRequiredFilename",
   email_watcher_poll_seconds: "emailWatcherPollSeconds",
+  email_watcher_scan_limit: "emailWatcherScanLimit",
   mailbox_auto_process_enabled: "mailboxAutoProcessEnabled",
   mailbox_auto_process_interval_seconds: "mailboxAutoProcessIntervalSeconds",
   mailbox_auto_process_limit: "mailboxAutoProcessLimit",

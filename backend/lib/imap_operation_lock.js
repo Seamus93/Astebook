@@ -26,7 +26,10 @@ export async function runExclusiveImapOperation(operation, { timeoutMs = 0 } = {
 
 export function isTransientImapError(error) {
   const message = String(error?.message || error || "");
-  return error?.code === "NoConnection" || /connection not available|no connection/i.test(message);
+  return (
+    error?.code === "NoConnection" ||
+    /connection not available|no connection|socket timeout|operazione imap timeout/i.test(message)
+  );
 }
 
 export async function withImapRetries(operation, { attempts = 2, delayMs = 600, timeoutMs = 0 } = {}) {

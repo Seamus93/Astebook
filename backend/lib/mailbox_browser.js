@@ -153,7 +153,7 @@ function attachmentFilenamesFromBodyStructure(node, acc = []) {
   return acc;
 }
 
-function parsedSummaryFromImapMessage(message) {
+export function parsedSummaryFromImapMessage(message) {
   const envelope = message.envelope || {};
   const date = envelope.date || message.internalDate || null;
   return {
@@ -270,11 +270,10 @@ export async function syncMailboxMessages({
           uids = await client.search({ all: true }, { uid: true });
         }
         const configuredBackfillLimit = intValue(process.env.MAILBOX_BACKFILL_SCAN_LIMIT, 500);
-        const scanLimit = normalizedQuery
-          ? Math.max(Number(limit) * 20, configuredBackfillLimit)
-          : filterSenders.length
-          ? Math.max(Number(limit) * 20, configuredBackfillLimit)
-          : Math.max(1, Number(limit) * 3);
+        const scanLimit =
+          normalizedQuery || filterSenders.length
+            ? Math.max(Number(limit) * 20, configuredBackfillLimit)
+            : Math.max(Number(limit) * 10, configuredBackfillLimit);
         const selectedUids = uids.slice(-scanLimit).reverse();
         scanned = selectedUids.length;
         diagnostics.scanned = selectedUids.length;

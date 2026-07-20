@@ -2,13 +2,13 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { ImapFlow } from "imapflow";
-import { simpleParser } from "mailparser";
 import {
   attachmentFilenameMatchesRequired,
   evaluateEmailInterceptorDecision,
 } from "../ai_agents/Interceptor.js";
 import { isTransientImapError, withImapRetries } from "./imap_operation_lock.js";
 import { findMailboxIndexMessage, updateMailboxMessage, upsertMailboxMessages } from "./mailbox_index.js";
+import { parsedSummaryFromImapMessage } from "./mailbox_browser.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -26,6 +26,14 @@ function intValue(value, fallback) {
 
 function timeoutMsFromEnv(name, fallbackSeconds) {
   return intValue(process.env[name], fallbackSeconds) * 1000;
+}
+
+function batchItems(items, size) {
+  const batches = [];
+  for (let index = 0; index < items.length; index += size) {
+    batches.push(items.slice(index, index + size));
+  }
+  return batches;
 }
 
 function parseList(value) {
@@ -117,7 +125,7 @@ function mailboxIndexMessageFromWatcher({ parsed, message, messageKey, settings,
     sender_candidates: decision.sender_candidates,
     to: (parsed.to?.value || []).map((item) => item.address).filter(Boolean),
     date: parsed.date?.toISOString?.() || null,
-    seen: false,
+    seen: Array.from(message.flags || []).includes("\\Seen"),
     sender_allowed: decision.sender_allowed,
     allowed_from: decision.allowed_from,
     processed: decision.processed,
@@ -149,6 +157,7 @@ function resolveSettings(rawSettings) {
     requiredFilename:
       process.env.EMAIL_WATCHER_REQUIRED_FILENAME || rawSettings.email_watcher_required_filename || "proposta",
     pollSeconds: intValue(process.env.EMAIL_WATCHER_POLL_SECONDS || rawSettings.email_watcher_poll_seconds, 120),
+    scanLimit: intValue(process.env.EMAIL_WATCHER_SCAN_LIMIT || rawSettings.email_watcher_scan_limit, 500),
   };
 }
 
@@ -193,70 +202,92 @@ async function pollMailbox(settings) {
         await client.connect();
         const lock = await client.getMailboxLock(settings.mailbox);
         try {
-          for await (const message of client.fetch({ seen: false }, { uid: true, source: true })) {
-            stats.scanned += 1;
-            const parsed = await simpleParser(message.source);
-            const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
-            const indexedMessage = await findMailboxIndexMessage({
-              uid: message.uid,
-              mailbox: settings.mailbox,
-              message_id: messageKey,
-            });
-            const effectiveState = indexedMessage?.processed
-              ? { processed: [...state.processed, messageKey] }
-              : state;
-            const decision = interceptorDecision(parsed, settings, effectiveState, messageKey);
-            await upsertMailboxMessages(mailboxIndexMessageFromWatcher({
-              parsed,
-              message,
-              messageKey,
-              settings,
-              state,
-              decision,
-            }));
-            if (decision.processed) {
-              stats.duplicates += 1;
-              addDiagnostic(stats, {
-                reason: "duplicate",
-                subject: parsed.subject || null,
-                from: decision.sender_candidates.from,
-                sender_candidates: decision.sender_candidates,
-                filenames: decision.filenames,
+          const uids = await client.search({ all: true }, { uid: true });
+          const selectedUids = uids.slice(-settings.scanLimit).reverse();
+          for (const uidBatch of batchItems(selectedUids, 100)) {
+            for await (const message of client.fetch(
+              uidBatch,
+              { uid: true, flags: true, envelope: true, internalDate: true, bodyStructure: true },
+              { uid: true }
+            )) {
+              stats.scanned += 1;
+              const parsed = parsedSummaryFromImapMessage(message);
+              const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
+              const indexedMessage = await findMailboxIndexMessage({
+                uid: message.uid,
+                mailbox: settings.mailbox,
+                message_id: messageKey,
               });
-              continue;
-            }
-
-            if (!decision.processable) {
-              if (!decision.sender_allowed) stats.skipped_sender += 1;
-              if (!decision.required_filename_match) stats.skipped_filename += 1;
-              addDiagnostic(stats, {
-                reason: !decision.sender_allowed && !decision.required_filename_match
-                  ? "sender_and_filename"
-                  : !decision.sender_allowed
-                  ? "sender"
-                  : "filename",
-                subject: parsed.subject || null,
-                from: decision.sender_candidates.from,
-                sender_candidates: decision.sender_candidates,
-                allowed_from: decision.allowed_from,
-                required_filename: decision.required_filename,
-                filenames: decision.filenames,
-                interceptor: decision,
-              });
-              continue;
-            }
-
-            stats.accepted += 1;
-            await client.messageFlagsAdd(message.uid, ["\\Seen"], { uid: true });
-            await updateMailboxMessage(
-              { uid: message.uid, mailbox: settings.mailbox, message_id: messageKey },
-              {
-                seen: true,
-                processed: false,
-                status: "mailbox_indexed",
-                processing_status: "mailbox_indexed",
+              if (
+                indexedMessage?.event_id ||
+                (indexedMessage?.status === "mailbox_indexed" && indexedMessage?.processing_status === "mailbox_indexed")
+              ) {
+                stats.duplicates += 1;
+                continue;
               }
-            );
+
+              const effectiveState = indexedMessage?.processed
+                ? { processed: [...state.processed, messageKey] }
+                : state;
+              const decision = interceptorDecision(parsed, settings, effectiveState, messageKey);
+              if (!decision.sender_allowed) {
+                stats.skipped_sender += 1;
+                addDiagnostic(stats, {
+                  reason: "sender",
+                  subject: parsed.subject || null,
+                  from: decision.sender_candidates.from,
+                  sender_candidates: decision.sender_candidates,
+                  allowed_from: decision.allowed_from,
+                });
+                continue;
+              }
+
+              await upsertMailboxMessages(mailboxIndexMessageFromWatcher({
+                parsed,
+                message,
+                messageKey,
+                settings,
+                state,
+                decision,
+              }));
+              if (decision.processed) {
+                stats.duplicates += 1;
+                addDiagnostic(stats, {
+                  reason: "duplicate",
+                  subject: parsed.subject || null,
+                  from: decision.sender_candidates.from,
+                  sender_candidates: decision.sender_candidates,
+                  filenames: decision.filenames,
+                });
+                continue;
+              }
+
+              if (!decision.processable) {
+                if (!decision.required_filename_match) stats.skipped_filename += 1;
+                addDiagnostic(stats, {
+                  reason: "filename",
+                  subject: parsed.subject || null,
+                  from: decision.sender_candidates.from,
+                  sender_candidates: decision.sender_candidates,
+                  allowed_from: decision.allowed_from,
+                  required_filename: decision.required_filename,
+                  filenames: decision.filenames,
+                  interceptor: decision,
+                });
+                continue;
+              }
+
+              stats.accepted += 1;
+              await updateMailboxMessage(
+                { uid: message.uid, mailbox: settings.mailbox, message_id: messageKey },
+                {
+                  seen: Array.from(message.flags || []).includes("\\Seen"),
+                  processed: false,
+                  status: "mailbox_indexed",
+                  processing_status: "mailbox_indexed",
+                }
+              );
+            }
           }
         } finally {
           lock.release();

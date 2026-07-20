@@ -6,8 +6,10 @@ import { simpleParser } from "mailparser";
 import { evaluateEmailInterceptorDecision } from "../ai_agents/Interceptor.js";
 import { collectEmailSenderAddresses } from "../ai_agents/Interceptor.js";
 import { withImapRetries } from "./imap_operation_lock.js";
+import { cacheMailboxSource, readCachedMailboxSource } from "./mail_cache.js";
 import {
   listMailboxIndexMessages,
+  findMailboxIndexMessage,
   updateMailboxMessage,
   upsertMailboxMessages,
 } from "./mailbox_index.js";
@@ -368,18 +370,89 @@ export async function processMailboxMessage({
   force = true,
 } = {}) {
   const settings = resolveMailboxSettings(await getSettings());
-  if (!settings.host || !settings.user || !settings.password) {
-    return {
-      ok: false,
-      error: "IMAP host/user/password missing",
-    };
-  }
-
   const uidNumber = Number.parseInt(String(uid || ""), 10);
   if (!Number.isFinite(uidNumber) || uidNumber <= 0) {
     return {
       ok: false,
       error: "uid obbligatorio.",
+    };
+  }
+
+  const indexedMessage = await findMailboxIndexMessage({
+    uid: uidNumber,
+    mailbox: settings.mailbox,
+    message_id: messageId,
+  });
+
+  async function jobFromParsedMail(parsed, messageKey, mailCache = null) {
+    const duplicateEvent = await findProcessingEventByExternalEmailId?.({
+      source: "imap.email_activation",
+      emailId: messageKey,
+    });
+    if (duplicateEvent) {
+      await updateMailboxMessage(
+        { uid: uidNumber, mailbox: settings.mailbox, message_id: messageKey },
+        {
+          event_id: duplicateEvent.id,
+          status: duplicateEvent.status,
+          processing_status: duplicateEvent.status,
+          processed: true,
+          ...(mailCache ? { mail_cache: mailCache } : {}),
+        }
+      );
+      return {
+        ok: true,
+        duplicate: true,
+        event: duplicateEvent,
+        event_id: duplicateEvent.id,
+      };
+    }
+
+    const decision = evaluateEmailInterceptorDecision({
+      message: parsed,
+      settings,
+      state: force ? { processed: [] } : await readWatcherState(),
+      messageKey,
+    });
+    return {
+      ok: true,
+      job: {
+        uid: uidNumber,
+        mailbox: settings.mailbox,
+        message_id: messageKey,
+        body: bodyFromMail(parsed, messageKey, settings),
+        files: filesFromMail(parsed),
+        metadata: {
+          subject: parsed.subject || null,
+          from: collectEmailSenderAddresses(parsed).join(", ") || null,
+          email_id: messageKey,
+          manual_mailbox_process: true,
+          mail_cache: mailCache || indexedMessage?.mail_cache || null,
+        },
+      },
+      interceptor: decision,
+    };
+  }
+
+  const cachedSource = await readCachedMailboxSource(indexedMessage?.mail_cache);
+  if (cachedSource) {
+    try {
+      const parsed = await simpleParser(cachedSource);
+      const messageKey = parsed.messageId || messageId || indexedMessage?.message_id || `${settings.mailbox}:${uidNumber}`;
+      const cachedResult = await jobFromParsedMail(parsed, messageKey, indexedMessage?.mail_cache || null);
+      if (cachedResult?.job) {
+        cachedResult.job.metadata.mail_source = "cache";
+      }
+      return await runMailboxJob({ imapResult: cachedResult, onAcceptedMail, uidNumber, settings });
+    } catch (error) {
+      console.warn("[mailbox_browser] cached mail parse failed, falling back to IMAP", error.message || String(error));
+    }
+  }
+
+  if (!settings.host || !settings.user || !settings.password) {
+    return {
+      ok: false,
+      error: "Mail cache mancante e IMAP host/user/password missing.",
     };
   }
 
@@ -416,53 +489,17 @@ export async function processMailboxMessage({
             };
           }
 
-          const parsed = await simpleParser(found.source);
-          const messageKey = parsed.messageId || messageId || `${settings.mailbox}:${uidNumber}`;
-          const duplicateEvent = await findProcessingEventByExternalEmailId?.({
-            source: "imap.email_activation",
-            emailId: messageKey,
-          });
-          if (duplicateEvent) {
-            await updateMailboxMessage(
-              { uid: uidNumber, mailbox: settings.mailbox, message_id: messageKey },
-              {
-                event_id: duplicateEvent.id,
-                status: duplicateEvent.status,
-                processing_status: duplicateEvent.status,
-                processed: true,
-              }
-            );
-            return {
-              ok: true,
-              duplicate: true,
-              event: duplicateEvent,
-              event_id: duplicateEvent.id,
-            };
-          }
-
-          const decision = evaluateEmailInterceptorDecision({
-            message: parsed,
-            settings,
-            state: force ? { processed: [] } : await readWatcherState(),
+          const messageKey = messageId || indexedMessage?.message_id || `${settings.mailbox}:${uidNumber}`;
+          const mailCache = await cacheMailboxSource({
             messageKey,
+            uid: uidNumber,
+            mailbox: settings.mailbox,
+            source: found.source,
           });
-          return {
-            ok: true,
-            job: {
-              uid: uidNumber,
-              mailbox: settings.mailbox,
-              message_id: messageKey,
-              body: bodyFromMail(parsed, messageKey, settings),
-              files: filesFromMail(parsed),
-              metadata: {
-                subject: parsed.subject || null,
-                from: collectEmailSenderAddresses(parsed).join(", ") || null,
-                email_id: messageKey,
-                manual_mailbox_process: true,
-              },
-            },
-            interceptor: decision,
-          };
+          const sourceForParse = (await readCachedMailboxSource(mailCache)) || found.source;
+          const parsed = await simpleParser(sourceForParse);
+          const parsedMessageKey = parsed.messageId || messageKey;
+          return jobFromParsedMail(parsed, parsedMessageKey, mailCache);
         } finally {
           lock.release();
         }
@@ -491,6 +528,12 @@ export async function processMailboxMessage({
 
   if (!imapResult?.job) return imapResult;
 
+  return runMailboxJob({ imapResult, onAcceptedMail, uidNumber, settings });
+}
+
+async function runMailboxJob({ imapResult, onAcceptedMail, uidNumber, settings }) {
+  if (!imapResult?.job) return imapResult;
+
   const event = await onAcceptedMail({
     body: imapResult.job.body,
     files: imapResult.job.files,
@@ -503,6 +546,7 @@ export async function processMailboxMessage({
       event_id: event?.id || null,
       status: event?.status || "extracting",
       processing_status: "extracting",
+      ...(imapResult.job.metadata?.mail_cache ? { mail_cache: imapResult.job.metadata.mail_cache } : {}),
       processed: true,
     }
   );

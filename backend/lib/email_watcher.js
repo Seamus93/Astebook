@@ -9,6 +9,7 @@ import {
 import { isTransientImapError, withImapRetries } from "./imap_operation_lock.js";
 import { findMailboxIndexMessage, updateMailboxMessage, upsertMailboxMessages } from "./mailbox_index.js";
 import { parsedSummaryFromImapMessage } from "./mailbox_browser.js";
+import { cacheMailboxSource } from "./mail_cache.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
@@ -277,11 +278,27 @@ async function pollMailbox(settings) {
                 continue;
               }
 
+              let mailCache = null;
+              for await (const sourceMessage of client.fetch(
+                [message.uid],
+                { uid: true, source: true },
+                { uid: true }
+              )) {
+                mailCache = await cacheMailboxSource({
+                  messageKey,
+                  uid: message.uid,
+                  mailbox: settings.mailbox,
+                  source: sourceMessage.source,
+                });
+                break;
+              }
+
               stats.accepted += 1;
               await updateMailboxMessage(
                 { uid: message.uid, mailbox: settings.mailbox, message_id: messageKey },
                 {
                   seen: Array.from(message.flags || []).includes("\\Seen"),
+                  mail_cache: mailCache,
                   processed: false,
                   status: "mailbox_indexed",
                   processing_status: "mailbox_indexed",

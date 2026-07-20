@@ -43,6 +43,7 @@ function dbDataFromMailboxMessage(message) {
     requiredFilename: message.required_filename || message.requiredFilename || null,
     filenames: arrayOrEmpty(message.filenames),
     interceptor: message.interceptor || null,
+    mailCache: message.mail_cache || message.mailCache || null,
     eventId: message.event_id || message.eventId || null,
     status: message.status || null,
     processingStatus: message.processing_status || message.processingStatus || null,
@@ -70,6 +71,7 @@ function mailboxMessageFromDb(row) {
     required_filename: row.requiredFilename || null,
     filenames: arrayOrEmpty(row.filenames),
     interceptor: row.interceptor || null,
+    mail_cache: row.mailCache || null,
     event_id: row.eventId || null,
     status: row.status || null,
     processing_status: row.processingStatus || null,
@@ -101,6 +103,7 @@ function dbPatchFromMailboxPatch(patch = {}) {
   }
   if ("filenames" in patch) data.filenames = arrayOrEmpty(patch.filenames);
   if ("interceptor" in patch) data.interceptor = patch.interceptor || null;
+  if ("mail_cache" in patch || "mailCache" in patch) data.mailCache = patch.mail_cache || patch.mailCache || null;
   if ("event_id" in patch || "eventId" in patch) data.eventId = patch.event_id || patch.eventId || null;
   if ("status" in patch) data.status = patch.status || null;
   if ("processing_status" in patch || "processingStatus" in patch) {

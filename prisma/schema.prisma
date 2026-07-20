@@ -57,6 +57,7 @@ model MailboxMessage {
   requiredFilename      String?   @map("required_filename")
   filenames             Json?
   interceptor           Json?
+  mailCache             Json?     @map("mail_cache")
   eventId               String?   @map("event_id")
   status                String?
   processingStatus      String?   @map("processing_status")

@@ -73,6 +73,9 @@ model MailboxMessage {
 model EmailWatcherState {
   id           Int       @id @default(1)
   processedIds Json      @default("[]") @map("processed_ids")
+  lastUid      Int?      @map("last_uid")
+  mailbox      String    @default("INBOX")
+  baselineAt   DateTime? @map("baseline_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
   @@map("email_watcher_state")

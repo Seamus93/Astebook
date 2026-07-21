@@ -1,4 +1,4 @@
-import { listPendingMailboxMessagesForProcessing } from "./mailbox_index.js";
+import { claimMailboxMessageForProcessing, listPendingMailboxMessagesForProcessing } from "./mailbox_index.js";
 
 function boolValue(value, fallback = false) {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -75,18 +75,20 @@ export function createMailboxAutoProcessor({
       const candidates = await listPendingMailboxMessagesForProcessing({ limit: settings.batchLimit });
       for (const message of candidates) {
         try {
+          const claimed = await claimMailboxMessageForProcessing(message);
+          if (!claimed) continue;
           const result = await processMailboxMessage({
             getSettings,
             findProcessingEventByExternalEmailId,
             onAcceptedMail,
-            uid: message.uid,
-            messageId: message.id || message.message_id,
+            uid: claimed.uid,
+            messageId: claimed.id || claimed.message_id,
             force: true,
           });
           if (result.ok === false) {
-            failed.push({ uid: message.uid, subject: message.subject, error: result.error || "Errore sconosciuto" });
+            failed.push({ uid: claimed.uid, subject: claimed.subject, error: result.error || "Errore sconosciuto" });
           } else {
-            processed.push({ uid: message.uid, subject: message.subject, event_id: result.event_id || null });
+            processed.push({ uid: claimed.uid, subject: claimed.subject, event_id: result.event_id || null });
           }
         } catch (error) {
           failed.push({ uid: message.uid, subject: message.subject, error: error.message || String(error) });

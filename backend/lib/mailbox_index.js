@@ -4,7 +4,11 @@ import { join } from "node:path";
 import { getPrismaClient } from "./db.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
-const mailboxIndexFile = process.env.MAILBOX_INDEX_FILE || join(runtimeDir, "mailbox-index.json");
+let mailboxIndexClaimChain = Promise.resolve();
+
+function mailboxIndexFilePath() {
+  return process.env.MAILBOX_INDEX_FILE || join(process.env.RUNTIME_DIR || runtimeDir, "mailbox-index.json");
+}
 
 function useMailboxDb() {
   return Boolean(process.env.DATABASE_URL) && !process.env.MAILBOX_INDEX_FILE;
@@ -114,13 +118,15 @@ function dbPatchFromMailboxPatch(patch = {}) {
 }
 
 async function ensureMailboxIndexFile() {
-  await mkdir(runtimeDir, { recursive: true });
+  const mailboxIndexFile = mailboxIndexFilePath();
+  await mkdir(join(mailboxIndexFile, ".."), { recursive: true });
   if (!existsSync(mailboxIndexFile)) {
     await writeFile(mailboxIndexFile, JSON.stringify({ messages: [] }, null, 2), "utf8");
   }
 }
 
 async function quarantineCorruptMailboxIndex(raw, error) {
+  const mailboxIndexFile = mailboxIndexFilePath();
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");
   const corruptFile = `${mailboxIndexFile}.corrupt-${stamp}`;
   try {
@@ -139,6 +145,7 @@ async function quarantineCorruptMailboxIndex(raw, error) {
 
 export async function readMailboxIndex() {
   await ensureMailboxIndexFile();
+  const mailboxIndexFile = mailboxIndexFilePath();
   const raw = await readFile(mailboxIndexFile, "utf8");
   let parsed = {};
   try {
@@ -153,7 +160,8 @@ export async function readMailboxIndex() {
 }
 
 async function writeMailboxIndex(index) {
-  await mkdir(runtimeDir, { recursive: true });
+  const mailboxIndexFile = mailboxIndexFilePath();
+  await mkdir(join(mailboxIndexFile, ".."), { recursive: true });
   const messages = Array.from(index.messages || [])
     .sort((a, b) => String(b.date || "").localeCompare(String(a.date || "")))
     .slice(0, 2000);
@@ -357,6 +365,7 @@ export async function listPendingMailboxMessagesForProcessing({ limit = 5 } = {}
       where: {
         eventId: null,
         processed: false,
+        status: "mailbox_indexed",
         uid: { not: null },
         senderAllowed: { not: false },
       },
@@ -368,7 +377,62 @@ export async function listPendingMailboxMessagesForProcessing({ limit = 5 } = {}
 
   const index = await readMailboxIndex();
   return index.messages
-    .filter((message) => !message.event_id && !message.processed && message.uid && message.sender_allowed !== false)
+    .filter((message) =>
+      message.status === "mailbox_indexed" &&
+      !message.event_id &&
+      !message.processed &&
+      message.uid &&
+      message.sender_allowed !== false
+    )
     .sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")))
     .slice(0, take);
+}
+
+export async function claimMailboxMessageForProcessing(message) {
+  if (!message?.id) return null;
+
+  if (useMailboxDb()) {
+    const prisma = getPrismaClient();
+    const result = await prisma.mailboxMessage.updateMany({
+      where: {
+        id: message.id,
+        status: "mailbox_indexed",
+        eventId: null,
+      },
+      data: {
+        status: "processing",
+        processingStatus: "processing",
+        lastSyncedAt: new Date(),
+      },
+    });
+    if (!result.count) return null;
+    const row = await prisma.mailboxMessage.findUnique({ where: { id: message.id } });
+    return mailboxMessageFromDb(row);
+  }
+
+  const previous = mailboxIndexClaimChain;
+  let release;
+  mailboxIndexClaimChain = new Promise((resolve) => {
+    release = resolve;
+  });
+  await previous.catch(() => {});
+  try {
+    const index = await readMailboxIndex();
+    let claimed = null;
+    const messages = index.messages.map((item) => {
+      if (claimed || item.id !== message.id || item.status !== "mailbox_indexed" || item.event_id) return item;
+      claimed = {
+        ...item,
+        status: "processing",
+        processing_status: "processing",
+        last_synced_at: new Date().toISOString(),
+      };
+      return claimed;
+    });
+    if (!claimed) return null;
+    await writeMailboxIndex({ messages });
+    return claimed;
+  } finally {
+    release();
+  }
 }

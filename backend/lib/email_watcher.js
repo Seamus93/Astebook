@@ -7,12 +7,17 @@ import {
   evaluateEmailInterceptorDecision,
 } from "../ai_agents/Interceptor.js";
 import { isTransientImapError, withImapRetries } from "./imap_operation_lock.js";
+import { getPrismaClient } from "./db.js";
 import { findMailboxIndexMessage, updateMailboxMessage, upsertMailboxMessages } from "./mailbox_index.js";
 import { parsedSummaryFromImapMessage } from "./mailbox_browser.js";
 import { cacheMailboxSource } from "./mail_cache.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const watcherStateFile = process.env.EMAIL_WATCHER_STATE_FILE || join(runtimeDir, "email-watcher-state.json");
+
+function useWatcherStateDb() {
+  return Boolean(process.env.DATABASE_URL);
+}
 
 function boolValue(value, fallback = false) {
   const normalized = String(value ?? "").trim().toLowerCase();
@@ -55,7 +60,7 @@ function deriveImapHost({ imapHost, smtpHost }) {
   return host;
 }
 
-async function readState() {
+async function readFileState() {
   await mkdir(runtimeDir, { recursive: true });
   if (!existsSync(watcherStateFile)) {
     await writeFile(watcherStateFile, JSON.stringify({ processed: [] }, null, 2), "utf8");
@@ -64,14 +69,61 @@ async function readState() {
   const parsed = raw.trim() ? JSON.parse(raw) : {};
   return {
     processed: Array.isArray(parsed.processed) ? parsed.processed : [],
+    last_uid: Number.isFinite(Number(parsed.last_uid)) ? Number(parsed.last_uid) : null,
+    mailbox: parsed.mailbox || "INBOX",
+    baseline_at: parsed.baseline_at || null,
   };
 }
 
+async function readState() {
+  if (useWatcherStateDb()) {
+    const prisma = getPrismaClient();
+    const existing = await prisma.emailWatcherState.findUnique({ where: { id: 1 } });
+    const legacy = existing ? null : await readFileState();
+    const row = existing || await prisma.emailWatcherState.create({
+      data: {
+        id: 1,
+        processedIds: legacy?.processed || [],
+        mailbox: legacy?.mailbox || "INBOX",
+        lastUid: legacy?.last_uid ?? null,
+        baselineAt: legacy?.baseline_at ? new Date(legacy.baseline_at) : null,
+      },
+    });
+    return {
+      processed: Array.isArray(row.processedIds) ? row.processedIds : [],
+      last_uid: row.lastUid ?? null,
+      mailbox: row.mailbox || "INBOX",
+      baseline_at: row.baselineAt?.toISOString?.() || null,
+    };
+  }
+
+  return readFileState();
+}
+
 async function writeState(state) {
+  if (useWatcherStateDb()) {
+    const prisma = getPrismaClient();
+    const data = {
+      processedIds: Array.from(new Set(state.processed || [])).slice(-1000),
+      mailbox: state.mailbox || "INBOX",
+      ...(state.last_uid !== undefined ? { lastUid: state.last_uid } : {}),
+      ...(state.baseline_at !== undefined ? { baselineAt: state.baseline_at ? new Date(state.baseline_at) : null } : {}),
+    };
+    await prisma.emailWatcherState.upsert({
+      where: { id: 1 },
+      create: { id: 1, ...data },
+      update: data,
+    });
+    return;
+  }
+
   await mkdir(runtimeDir, { recursive: true });
   const processed = Array.from(new Set(state.processed || [])).slice(-1000);
   const nextState = {
     processed,
+    ...(state.last_uid !== undefined ? { last_uid: state.last_uid } : {}),
+    ...(state.mailbox !== undefined ? { mailbox: state.mailbox } : {}),
+    ...(state.baseline_at !== undefined ? { baseline_at: state.baseline_at } : {}),
   };
   await writeFile(watcherStateFile, `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
 }
@@ -116,6 +168,8 @@ function addDiagnostic(stats, diagnostic) {
 }
 
 function mailboxIndexMessageFromWatcher({ parsed, message, messageKey, settings, state, decision, eventId = null }) {
+  const processable = Boolean(decision.processable && !decision.processed);
+  const status = eventId ? "received" : processable ? "mailbox_indexed" : "ignored";
   return {
     id: messageKey,
     message_id: parsed.messageId || messageKey,
@@ -129,13 +183,14 @@ function mailboxIndexMessageFromWatcher({ parsed, message, messageKey, settings,
     seen: Array.from(message.flags || []).includes("\\Seen"),
     sender_allowed: decision.sender_allowed,
     allowed_from: decision.allowed_from,
-    processed: decision.processed,
+    processed: !processable,
     required_filename_match: decision.required_filename_match,
     required_filename: decision.required_filename,
     filenames: decision.filenames,
     interceptor: decision,
     event_id: eventId,
-    status: eventId ? "received" : null,
+    status,
+    processing_status: status,
   };
 }
 
@@ -162,7 +217,26 @@ function resolveSettings(rawSettings) {
   };
 }
 
-async function pollMailbox(settings) {
+function createImapClient(settings, imapClientFactory = null) {
+  if (imapClientFactory) return imapClientFactory(settings);
+  return new ImapFlow({
+    host: settings.host,
+    port: settings.port,
+    secure: settings.secure,
+    auth: {
+      user: settings.user,
+      pass: settings.password,
+    },
+    logger: false,
+  });
+}
+
+async function maxMailboxUid(client) {
+  const uids = await client.search({ all: true }, { uid: true });
+  return Math.max(0, ...uids.map((uid) => Number(uid)).filter((uid) => Number.isFinite(uid)));
+}
+
+export async function pollMailbox(settings, { imapClientFactory = null } = {}) {
   const state = await readState();
   const stats = {
     enabled: settings.enabled,
@@ -183,18 +257,10 @@ async function pollMailbox(settings) {
   }
 
   const processed = new Set(state.processed);
+  let maxObservedUid = Number.isFinite(Number(state.last_uid)) ? Number(state.last_uid) : null;
   try {
     await withImapRetries(async () => {
-      const client = new ImapFlow({
-        host: settings.host,
-        port: settings.port,
-        secure: settings.secure,
-        auth: {
-          user: settings.user,
-          pass: settings.password,
-        },
-        logger: false,
-      });
+      const client = createImapClient(settings, imapClientFactory);
       client.on("error", (error) => {
         console.warn("[email_watcher] IMAP client error", error.message || String(error));
       });
@@ -203,14 +269,25 @@ async function pollMailbox(settings) {
         await client.connect();
         const lock = await client.getMailboxLock(settings.mailbox);
         try {
-          const uids = await client.search({ all: true }, { uid: true });
-          const selectedUids = uids.slice(-settings.scanLimit).reverse();
+          if (state.last_uid == null) {
+            const baselineUid = await maxMailboxUid(client);
+            maxObservedUid = baselineUid;
+            stats.baselined = true;
+            stats.last_uid = baselineUid;
+            return;
+          }
+
+          const uids = await client.search({ uid: `${Number(state.last_uid) + 1}:*` }, { uid: true });
+          const selectedUids = uids.slice(0, settings.scanLimit);
           for (const uidBatch of batchItems(selectedUids, 100)) {
             for await (const message of client.fetch(
               uidBatch,
               { uid: true, flags: true, envelope: true, internalDate: true, bodyStructure: true },
               { uid: true }
             )) {
+              if (Number.isFinite(Number(message.uid))) {
+                maxObservedUid = Math.max(Number(maxObservedUid || 0), Number(message.uid));
+              }
               stats.scanned += 1;
               const parsed = parsedSummaryFromImapMessage(message);
               const messageKey = parsed.messageId || `${settings.mailbox}:${message.uid}`;
@@ -240,6 +317,14 @@ async function pollMailbox(settings) {
                   sender_candidates: decision.sender_candidates,
                   allowed_from: decision.allowed_from,
                 });
+                await upsertMailboxMessages(mailboxIndexMessageFromWatcher({
+                  parsed,
+                  message,
+                  messageKey,
+                  settings,
+                  state,
+                  decision,
+                }));
                 continue;
               }
 
@@ -314,13 +399,18 @@ async function pollMailbox(settings) {
       }
     }, { timeoutMs: timeoutMsFromEnv("EMAIL_WATCHER_IMAP_TIMEOUT_SECONDS", 180) });
   } finally {
-    await writeState({ processed: Array.from(processed) });
+    await writeState({
+      processed: Array.from(processed),
+      mailbox: settings.mailbox,
+      last_uid: maxObservedUid,
+      baseline_at: state.baseline_at || (state.last_uid == null && maxObservedUid != null ? new Date().toISOString() : undefined),
+    });
   }
 
   return stats;
 }
 
-export function createEmailWatcher({ getSettings }) {
+export function createEmailWatcher({ getSettings, imapClientFactory = null }) {
   let timer = null;
   let running = false;
   let consecutiveTransientFailures = 0;
@@ -343,7 +433,7 @@ export function createEmailWatcher({ getSettings }) {
     running = true;
     try {
       const settings = resolveSettings(await getSettings());
-      const stats = await pollMailbox(settings);
+      const stats = await pollMailbox(settings, { imapClientFactory });
       consecutiveTransientFailures = 0;
       if (reschedule) schedule(settings.pollSeconds);
       return { ok: true, ...stats };

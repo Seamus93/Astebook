@@ -75,6 +75,18 @@ async function readFileState() {
   };
 }
 
+async function writeFileState(state) {
+  await mkdir(runtimeDir, { recursive: true });
+  const processed = Array.from(new Set(state.processed || [])).slice(-1000);
+  const nextState = {
+    processed,
+    ...(state.last_uid !== undefined ? { last_uid: state.last_uid } : {}),
+    ...(state.mailbox !== undefined ? { mailbox: state.mailbox } : {}),
+    ...(state.baseline_at !== undefined ? { baseline_at: state.baseline_at } : {}),
+  };
+  await writeFile(watcherStateFile, `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
+}
+
 async function readState() {
   if (useWatcherStateDb()) {
     const prisma = getPrismaClient();
@@ -114,18 +126,11 @@ async function writeState(state) {
       create: { id: 1, ...data },
       update: data,
     });
+    await writeFileState(state);
     return;
   }
 
-  await mkdir(runtimeDir, { recursive: true });
-  const processed = Array.from(new Set(state.processed || [])).slice(-1000);
-  const nextState = {
-    processed,
-    ...(state.last_uid !== undefined ? { last_uid: state.last_uid } : {}),
-    ...(state.mailbox !== undefined ? { mailbox: state.mailbox } : {}),
-    ...(state.baseline_at !== undefined ? { baseline_at: state.baseline_at } : {}),
-  };
-  await writeFile(watcherStateFile, `${JSON.stringify(nextState, null, 2)}\n`, "utf8");
+  await writeFileState(state);
 }
 
 export async function resetEmailWatcherState() {
@@ -143,8 +148,10 @@ export async function forgetEmailWatcherMessageState(messageId) {
   }
 
   const state = await readState();
-  const before = state.processed.length;
-  const processed = state.processed.filter((item) => String(item || "").trim() !== normalizedMessageId);
+  const legacyState = useWatcherStateDb() ? await readFileState() : state;
+  const combined = Array.from(new Set([...(state.processed || []), ...(legacyState.processed || [])]));
+  const before = combined.length;
+  const processed = combined.filter((item) => String(item || "").trim() !== normalizedMessageId);
   await writeState({ processed });
   return {
     file: watcherStateFile,

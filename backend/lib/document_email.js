@@ -23,7 +23,78 @@ function qualityResponsibility(field) {
   return "Dato non trovato o non letto con sufficiente affidabilita dal documento sorgente.";
 }
 
-function buildDocumentQualityReport(event) {
+function nonEmpty(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "" && String(value).trim() !== "-";
+}
+
+function sourceLabelFromAnnuncio(annuncio = {}) {
+  if (annuncio.source_priority === "immobiliare" || annuncio.file_pdf === "Immobiliare.it") return "Immobiliare.it/Apify";
+  return annuncio.file_pdf || annuncio.source || "Annuncio";
+}
+
+function recoveredElsewhere(field, result) {
+  const path = String(field?.path || "");
+  const annuncio = result.extracted?.annuncio || {};
+  const merged = result.merged || {};
+  if (path === "extracted.proposta.indirizzo_immobile") {
+    const recovered = annuncio.indirizzo || merged.immobile?.indirizzo;
+    if (nonEmpty(recovered)) {
+      return `Manca nella Proposta, ma il documento finale usa "${recovered}" da ${sourceLabelFromAnnuncio(annuncio)}.`;
+    }
+  }
+  if (path === "extracted.annuncio.indirizzo" && nonEmpty(merged.immobile?.indirizzo)) {
+    return `Indirizzo presente nel documento finale: "${merged.immobile.indirizzo}".`;
+  }
+  return "";
+}
+
+function diagnosticHints(field) {
+  const text = `${field?.field || ""} ${field?.path || ""}`.toLowerCase();
+  if (/proponente|nominativo/.test(text)) {
+    return "Cercati riferimenti a proponente, offerente, nominativo, sottoscrittore o dati anagrafici nella Proposta.";
+  }
+  if (/indirizzo/.test(text)) {
+    return "Cercate sezioni tipo Descrizione immobile, immobile sito in/a, indirizzo, lotto; controllato fallback Annuncio/Immobiliare.";
+  }
+  if (/prezzo|offerta/.test(text)) {
+    return "Cercati prezzo offerto, offerta irrevocabile, importo offerto, cauzionata e valori economici vicini alla Proposta.";
+  }
+  if (/iban|bic|banc|beneficiario/.test(text)) {
+    return "Cercati IBAN italiani che iniziano con IT, beneficiario/intestatario cauzione, conto dedicato, BIC.";
+  }
+  if (/catasto|foglio|particella|mappale|subalterno/.test(text)) {
+    return "Cercate keyword catastali nella Proposta: identificazione catastale, catasto, censito, N.C.E.U., N.C.T., foglio, part., particella, mappale, sub.";
+  }
+  if (/data|ora|vendita/.test(text)) {
+    return "Cercate date/ore asta nell'Annuncio: data vendita, inizio offerte, termine/deposito, gara, esperimento, asta.";
+  }
+  return "Controllati testo OCR/DOCX e risultato AI per il campo atteso.";
+}
+
+function relevantStepDiagnostics(field, steps = []) {
+  const text = `${field?.field || ""} ${field?.path || ""}`.toLowerCase();
+  const scope = /annuncio|data vendita|ora vendita|offerta minima/.test(text)
+    ? /Annuncio|Immobiliare|OCR|PDF|DOCX/i
+    : /Proposal|Proposta|OCR|PDF|DOCX/i;
+  return steps
+    .filter((step) => step?.level === "error" || /failed|skipped|OCR|DOCX text extraction|AI extraction/i.test(step?.message || ""))
+    .filter((step) => scope.test(step?.message || "") || scope.test(step?.data?.file_name || ""))
+    .slice(-3)
+    .map((step) => {
+      const file = step.data?.file_name || step.data?.file_pdf || step.data?.file || step.data?.url || "";
+      const reason = step.data?.reason || step.data?.error || "";
+      return [step.message, file ? `file: ${file}` : "", reason].filter(Boolean).join(" - ");
+    });
+}
+
+function issueDiagnostics(field, event) {
+  const result = event?.result || {};
+  const recovered = recoveredElsewhere(field, result);
+  const steps = relevantStepDiagnostics(field, event?.steps || []);
+  return [recovered, diagnosticHints(field), ...steps].filter(Boolean).join(" ");
+}
+
+export function buildDocumentQualityReport(event) {
   const result = event?.result || {};
   const missing = Array.isArray(result.missing_fields) ? result.missing_fields : [];
   const issues = missing.map((field) => ({
@@ -31,6 +102,8 @@ function buildDocumentQualityReport(event) {
     detail: field.message || "Dato non trovato o mancante.",
     source: field.expected_file || "Documento sorgente",
     responsibility: qualityResponsibility(field),
+    diagnostics: issueDiagnostics(field, event),
+    recovered: recoveredElsewhere(field, result),
   }));
 
   return {
@@ -58,7 +131,7 @@ function buildDocumentEmailHtml(event, report) {
               <td>${escapeHtml(issue.title)}</td>
               <td>${escapeHtml(issue.detail)}</td>
               <td>${escapeHtml(issue.source)}</td>
-              <td>${escapeHtml(issue.responsibility)}</td>
+              <td>${escapeHtml([issue.responsibility, issue.diagnostics].filter(Boolean).join(" "))}</td>
             </tr>`
         )
         .join("")
@@ -129,7 +202,9 @@ function buildDocumentEmailText(event, report) {
     lines.push("- Nessuna criticita rilevata dalla pipeline automatica.");
   } else {
     report.issues.forEach((issue) => {
-      lines.push(`- ${issue.title}: ${issue.detail} Fonte: ${issue.source}. Responsabilita probabile: ${issue.responsibility}`);
+      lines.push(
+        `- ${issue.title}: ${issue.detail} Fonte: ${issue.source}. Responsabilita probabile: ${issue.responsibility}. Diagnostica: ${issue.diagnostics}`
+      );
     });
   }
   return lines.join("\n");

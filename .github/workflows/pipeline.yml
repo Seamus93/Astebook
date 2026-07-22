@@ -133,7 +133,7 @@ jobs:
       - name: SonarQube Scan
         if: ${{ env.SONAR_TOKEN != '' && env.SONAR_ORGANIZATION != '' }}
         timeout-minutes: 18
-        uses: SonarSource/sonarqube-scan-action@v6
+        uses: SonarSource/sonarqube-scan-action@v8
         with:
           args: >-
             -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}

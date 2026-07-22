@@ -115,6 +115,7 @@ const adminMarkup = String.raw`
       </button>
       <button class="mobile-nav-primary" type="button" title="Processa">
         <span class="material-symbols-outlined" aria-hidden="true">add</span>
+        <span class="mobile-nav-primary-label">Avvia</span>
       </button>
       <button class="mobile-nav-button mobile-nav-events" type="button">
         <span class="material-symbols-outlined" aria-hidden="true">schedule</span>

@@ -723,6 +723,224 @@
   .mobile-nav-primary .material-symbols-outlined {
     font-size: 34px;
   }
+
+  .mobile-nav-primary-label {
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .detail,
+  .settings-page {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .detail-header {
+    padding: 22px clamp(16px, 5vw, 24px) 16px;
+  }
+
+  .detail-title {
+    grid-template-columns: 36px minmax(0, 1fr);
+    gap: 12px;
+    min-width: 0;
+  }
+
+  .detail-title > div,
+  .detail-header h1,
+  #selectedSource {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .detail-title::before {
+    width: 30px;
+    height: 38px;
+    font-size: 32px;
+  }
+
+  .detail-header h1 {
+    margin-top: 8px;
+    font-size: clamp(22px, 6vw, 28px);
+    line-height: 1.18;
+  }
+
+  .workflow-status {
+    justify-content: flex-start;
+    gap: 6px;
+    min-height: 0;
+    margin: 0 clamp(16px, 5vw, 24px);
+    padding: 14px 12px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+  }
+
+  .workflow-step {
+    flex: 0 0 58px;
+    min-width: 58px;
+    scroll-snap-align: start;
+  }
+
+  .workflow-circle {
+    width: 48px;
+    height: 48px;
+  }
+
+  .workflow-label {
+    max-width: 58px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workflow-connector {
+    flex: 0 0 28px;
+    width: 28px;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+    margin: 0 clamp(16px, 5vw, 24px) 16px;
+    border-radius: 9px;
+  }
+
+  .summary-grid div {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr);
+    min-height: 72px;
+    padding: 16px;
+    column-gap: 12px;
+    align-items: center;
+  }
+
+  .summary-grid div + div {
+    border-left: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .summary-grid div::before {
+    grid-row: 1 / span 2;
+  }
+
+  .summary-grid span,
+  .summary-grid strong {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .panes {
+    padding: 0 clamp(16px, 5vw, 24px) 24px;
+  }
+
+  .panel-toggle {
+    min-height: 64px;
+    padding: 16px;
+    font-size: 18px;
+  }
+
+  .sidebar {
+    padding: 0 clamp(16px, 5vw, 24px) 18px;
+  }
+
+  .event-item strong,
+  .mailbox-item-main strong {
+    overflow-wrap: anywhere;
+  }
+
+  .settings-page {
+    padding: 72px 12px 92px;
+  }
+
+  .settings-page-header {
+    position: static;
+    padding: 14px 0;
+  }
+
+  .settings-page-content,
+  .settings-form-page,
+  .settings-view-shell,
+  .settings-view-content,
+  .settings-section,
+  .settings-section-panel,
+  .diagnostics-panel,
+  .diagnostics-pane {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .settings-view-list {
+    display: flex;
+    gap: 8px;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .settings-view-tab {
+    flex: 0 0 min(178px, 70vw);
+    min-width: 0;
+  }
+
+  .settings-panel-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .settings-panel-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .settings-panel-actions .secondary-button,
+  #manualAnalyzeLatestEmailButton,
+  #manualSendLatestDocumentButton,
+  #manualWatcherScanButton,
+  #manualWatcherResetStateButton,
+  #manualCronjobRunButton {
+    display: inline-flex;
+    width: 100%;
+    min-height: 46px;
+    justify-content: center;
+    white-space: normal;
+  }
+
+  .diagnostic-card {
+    padding: 12px;
+    overflow: hidden;
+  }
+
+  .diagnostic-card-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .diagnostic-card-header strong,
+  .diagnostic-card-header span,
+  .diagnostic-card p {
+    max-width: 100%;
+    text-align: left;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .mobile-bottom-nav {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    min-height: 84px;
+    padding: 8px 8px max(10px, env(safe-area-inset-bottom));
+  }
+
+  .mobile-nav-primary {
+    gap: 0;
+    width: 68px;
+    height: 68px;
+  }
 }
 
 @media (max-width: 380px) {
@@ -750,5 +968,27 @@
   .search-bar .selection-delete-button:not([hidden]) {
     grid-column: 1 / -1;
     width: 100%;
+  }
+
+  .detail-header {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .workflow-status,
+  .summary-grid,
+  .panes {
+    margin-left: 14px;
+    margin-right: 14px;
+  }
+
+  .panes {
+    padding-left: 0;
+    padding-right: 0;
+  }
+
+  .mobile-nav-button,
+  .mobile-nav-primary {
+    font-size: 11px;
   }
 }

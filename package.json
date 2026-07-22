@@ -38,7 +38,7 @@
     "@emnapi/core": "^1.11.2",
     "@emnapi/runtime": "^1.11.2",
     "@vitejs/plugin-react": "^6.0.3",
-    "concurrently": "^9.2.1",
+    "concurrently": "^10.0.3",
     "vite": "^8.1.3"
   }
 }

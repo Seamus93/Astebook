@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { buildDocumentQualityReport } from "../lib/document_email.js";
 import { finalizeZapierResult } from "../lib/extraction_result.js";
 
-test("document quality report explains proposal address recovered from Immobiliare", () => {
+test("document quality report omits proposal address recovered from Immobiliare", () => {
   const event = {
     result: {
       missing_fields: [
@@ -41,10 +41,114 @@ test("document quality report explains proposal address recovered from Immobilia
 
   const report = buildDocumentQualityReport(event);
 
-  assert.equal(report.issues.length, 1);
-  assert.match(report.issues[0].diagnostics, /Manca nella Proposta/);
-  assert.match(report.issues[0].diagnostics, /Immobiliare\.it\/Apify/);
-  assert.match(report.issues[0].diagnostics, /Descrizione immobile/);
+  assert.equal(report.ok, true);
+  assert.equal(report.issues.length, 0);
+});
+
+test("document quality report omits announcement fields recovered from Apify", () => {
+  const event = {
+    result: {
+      missing_fields: [
+        {
+          field: "Annuncio - Indirizzo",
+          path: "extracted.annuncio.indirizzo",
+          expected_file: "Annuncio",
+          message: "Annuncio - Indirizzo: Dato non trovato o mancante. (Expected File Annuncio)",
+        },
+        {
+          field: "Offerta Minima",
+          path: "extracted.annuncio.offerta_minima",
+          expected_file: "Annuncio",
+          message: "Offerta Minima: Dato non trovato o mancante. (Expected File Annuncio)",
+        },
+        {
+          field: "Data Vendita",
+          path: "extracted.annuncio.data_vendita",
+          expected_file: "Annuncio",
+          message: "Data Vendita: Dato non trovato o mancante. (Expected File Annuncio)",
+        },
+        {
+          field: "Ora Vendita",
+          path: "extracted.annuncio.ora_vendita",
+          expected_file: "Annuncio",
+          message: "Ora Vendita: Dato non trovato o mancante. (Expected File Annuncio)",
+        },
+      ],
+      extracted: {
+        annuncio: {
+          source: "apify",
+          file_pdf: "Immobiliare.it",
+          indirizzo: "viale Andrea Palladio 28, Verona, Stadio, VR",
+          offerta_minima: 220000,
+          data_vendita: "28/09/2026",
+          ora_vendita: "11:00",
+        },
+        proposta: {},
+      },
+      merged: {
+        immobile: {
+          indirizzo: "viale Andrea Palladio 28",
+          comune: "Verona",
+          provincia: "VR",
+        },
+        asta: {
+          data: "28/09/2026",
+          ora: "11:00",
+        },
+        gara: {
+          offerta_minima: 220000,
+        },
+      },
+    },
+  };
+
+  const report = buildDocumentQualityReport(event);
+
+  assert.equal(report.ok, true);
+  assert.equal(report.issues.length, 0);
+});
+
+test("document quality report omits fields available as derived document values", () => {
+  const event = {
+    result: {
+      missing_fields: [
+        {
+          field: "Data Vendita",
+          path: "extracted.annuncio.data_vendita",
+          expected_file: "Annuncio",
+          message: "Data Vendita: Dato non trovato o mancante. (Expected File Annuncio)",
+        },
+        {
+          field: "Ora Vendita",
+          path: "extracted.annuncio.ora_vendita",
+          expected_file: "Annuncio",
+          message: "Ora Vendita: Dato non trovato o mancante. (Expected File Annuncio)",
+        },
+      ],
+      extracted: {
+        annuncio: {
+          source: "apify",
+          file_pdf: "Immobiliare.it",
+          data_termine_deposito: "2026-09-25",
+        },
+        proposta: {},
+      },
+      merged: {
+        gara: {
+          data_gara: "2026-09-28",
+          ora_inizio: "09:00",
+        },
+        deposito: {
+          data_termine_deposito: "2026-09-25",
+        },
+      },
+    },
+  };
+
+  const report = buildDocumentQualityReport(event);
+
+  assert.equal(report.ok, true);
+  assert.equal(report.issues.length, 0);
 });
 
 test("catasto missing fields no longer advertise Visura extraction", () => {

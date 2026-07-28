@@ -27,9 +27,91 @@ function nonEmpty(value) {
   return value !== null && value !== undefined && String(value).trim() !== "" && String(value).trim() !== "-";
 }
 
+function nonEmptyFieldValue(value) {
+  if (!nonEmpty(value)) return false;
+  if (typeof value === "number") return value > 0;
+  return true;
+}
+
 function sourceLabelFromAnnuncio(annuncio = {}) {
   if (annuncio.source_priority === "immobiliare" || annuncio.file_pdf === "Immobiliare.it") return "Immobiliare.it/Apify";
   return annuncio.file_pdf || annuncio.source || "Annuncio";
+}
+
+function recoveredFieldValue(field, result) {
+  const path = String(field?.path || "");
+  const annuncio = result.extracted?.annuncio || {};
+  const merged = result.merged || {};
+  const candidatesByPath = {
+    codice_pratica: [merged.codice_pratica, result.codice_pratica],
+    "extracted.proposta.indirizzo_immobile": [
+      annuncio.indirizzo,
+      annuncio.indirizzo_raw,
+      merged.immobile?.indirizzo,
+    ],
+    "extracted.annuncio.indirizzo": [
+      annuncio.indirizzo,
+      annuncio.indirizzo_raw,
+      merged.immobile?.indirizzo,
+    ],
+    "extracted.annuncio.offerta_minima": [
+      annuncio.offerta_minima,
+      annuncio.prezzo_base,
+      merged.gara?.offerta_minima,
+      merged.gara?.offerta_minima_ammissibile,
+    ],
+    "extracted.annuncio.data_vendita": [
+      annuncio.data_vendita,
+      merged.asta?.data,
+      merged.gara?.data_gara,
+    ],
+    "extracted.annuncio.ora_vendita": [
+      annuncio.ora_vendita,
+      merged.asta?.ora,
+      annuncio.ora_gara_inizio,
+      merged.gara?.ora_inizio,
+    ],
+    "extracted.annuncio.data_termine_deposito": [
+      annuncio.data_termine_deposito,
+      merged.deposito?.data_termine_deposito,
+    ],
+    "extracted.annuncio.ora_termine_deposito": [
+      annuncio.ora_termine_deposito,
+      merged.deposito?.ora_termine_deposito,
+    ],
+    "extracted.proposta.data_termine_deposito": [
+      merged.deposito?.data_termine_deposito,
+    ],
+    "extracted.proposta.ora_termine_deposito": [
+      merged.deposito?.ora_termine_deposito,
+    ],
+    "merged.data_apertura_pubblicazione": [
+      merged.data_apertura_pubblicazione,
+      result.data_apertura_pubblicazione,
+    ],
+    "merged.gara.data_gara": [
+      merged.gara?.data_gara,
+      annuncio.data_vendita,
+    ],
+    "merged.gara.ora_inizio": [
+      merged.gara?.ora_inizio,
+      annuncio.ora_gara_inizio,
+      annuncio.ora_vendita,
+    ],
+    "merged.deposito.data_termine_deposito": [
+      merged.deposito?.data_termine_deposito,
+      annuncio.data_termine_deposito,
+    ],
+    "merged.deposito.ora_termine_deposito": [
+      merged.deposito?.ora_termine_deposito,
+      annuncio.ora_termine_deposito,
+    ],
+  };
+  return (candidatesByPath[path] || []).find(nonEmptyFieldValue);
+}
+
+function fieldRecoveredForReport(field, result) {
+  return nonEmptyFieldValue(recoveredFieldValue(field, result));
 }
 
 function recoveredElsewhere(field, result) {
@@ -37,13 +119,14 @@ function recoveredElsewhere(field, result) {
   const annuncio = result.extracted?.annuncio || {};
   const merged = result.merged || {};
   if (path === "extracted.proposta.indirizzo_immobile") {
-    const recovered = annuncio.indirizzo || merged.immobile?.indirizzo;
+    const recovered = recoveredFieldValue(field, result);
     if (nonEmpty(recovered)) {
       return `Manca nella Proposta, ma il documento finale usa "${recovered}" da ${sourceLabelFromAnnuncio(annuncio)}.`;
     }
   }
-  if (path === "extracted.annuncio.indirizzo" && nonEmpty(merged.immobile?.indirizzo)) {
-    return `Indirizzo presente nel documento finale: "${merged.immobile.indirizzo}".`;
+  const recovered = recoveredFieldValue(field, result);
+  if (nonEmpty(recovered)) {
+    return `Dato presente nel documento finale: "${recovered}".`;
   }
   return "";
 }
@@ -97,14 +180,16 @@ function issueDiagnostics(field, event) {
 export function buildDocumentQualityReport(event) {
   const result = event?.result || {};
   const missing = Array.isArray(result.missing_fields) ? result.missing_fields : [];
-  const issues = missing.map((field) => ({
-    title: field.field || field.path || "Campo mancante",
-    detail: field.message || "Dato non trovato o mancante.",
-    source: field.expected_file || "Documento sorgente",
-    responsibility: qualityResponsibility(field),
-    diagnostics: issueDiagnostics(field, event),
-    recovered: recoveredElsewhere(field, result),
-  }));
+  const issues = missing
+    .filter((field) => !fieldRecoveredForReport(field, result))
+    .map((field) => ({
+      title: field.field || field.path || "Campo mancante",
+      detail: field.message || "Dato non trovato o mancante.",
+      source: field.expected_file || "Documento sorgente",
+      responsibility: qualityResponsibility(field),
+      diagnostics: issueDiagnostics(field, event),
+      recovered: recoveredElsewhere(field, result),
+    }));
 
   return {
     ok: issues.length === 0,

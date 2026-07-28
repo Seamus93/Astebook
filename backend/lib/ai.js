@@ -472,12 +472,7 @@ export async function aiExtractProposta({ text, fileName }) {
   if (json.anno_redazione  == null) json.anno_redazione  = red.anno;
   if (json.iban_beneficiario == null) json.iban_beneficiario = ibanGuess;
   if (isBlankExtractedValue(json.indirizzo_immobile)) json.indirizzo_immobile = indirizzoGuess;
-  if (!json.catasto) json.catasto = {};
-  if (isBlankExtractedValue(json.catasto.foglio)) json.catasto.foglio = catastoGuess.foglio;
-  if (isBlankExtractedValue(json.catasto.particella)) json.catasto.particella = catastoGuess.particella;
-  if (isBlankExtractedValue(json.catasto.mappale)) json.catasto.mappale = catastoGuess.mappale;
-  if (isBlankExtractedValue(json.catasto.subalterno)) json.catasto.subalterno = catastoGuess.subalterno;
-  if (isBlankExtractedValue(json.catasto.categoria)) json.catasto.categoria = catastoGuess.categoria;
+  json.catasto = normalizePropostaCatasto(json.catasto, catastoGuess);
   if (!Array.isArray(json.catasto_voci) || json.catasto_voci.length === 0) {
     json.catasto_voci = catastoVociGuess.length ? catastoVociGuess : null;
   }
@@ -620,6 +615,39 @@ function isBlankExtractedValue(value) {
   if (value === null || value === undefined) return true;
   const clean = String(value).trim().toLowerCase();
   return !clean || clean === "-" || clean === "null" || clean === "n/a" || /^[…._\s”")/]+$/.test(clean);
+}
+
+function catastoLabelToken(value) {
+  return /^(fg|foglio|part|particella|mapp|mappale|sub|subalterno|cat|categoria|zona|cens|censuaria)$/i.test(
+    String(value || "").trim()
+  );
+}
+
+function validNumericCatastoValue(value) {
+  if (isBlankExtractedValue(value) || catastoLabelToken(value)) return false;
+  return /\d/.test(String(value));
+}
+
+function validCatastoValue(key, value) {
+  if (key === "categoria") return Boolean(normalizeCategory(value));
+  return validNumericCatastoValue(value);
+}
+
+export function normalizePropostaCatasto(catasto = {}, fallback = {}) {
+  const normalized = { ...(catasto || {}) };
+  ["foglio", "particella", "mappale", "subalterno", "categoria"].forEach((key) => {
+    const fallbackValue = fallback?.[key] ?? null;
+    if (validCatastoValue(key, normalized[key])) {
+      if (key === "categoria") normalized[key] = normalizeCategory(normalized[key]);
+      return;
+    }
+    normalized[key] = validCatastoValue(key, fallbackValue)
+      ? key === "categoria"
+        ? normalizeCategory(fallbackValue)
+        : fallbackValue
+      : null;
+  });
+  return normalized;
 }
 
 function normalizeCategory(value) {

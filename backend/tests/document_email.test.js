@@ -171,3 +171,47 @@ test("catasto missing fields no longer advertise Visura extraction", () => {
   assert.deepEqual(Array.from(new Set(catastoFields.map((field) => field.expected_file))), ["Proposta"]);
   assert.equal(catastoFields.some((field) => /Visura/.test(field.message)), false);
 });
+
+test("catasto diagnostics ignore unrelated commission attachments", () => {
+  const event = {
+    result: {
+      missing_fields: [
+        {
+          field: "Catasto - Particella",
+          path: "extracted.proposta.catasto.particella",
+          expected_file: "Proposta",
+          message: "Catasto - Particella: Dato non trovato o mancante. (Expected File Proposta)",
+        },
+      ],
+      extracted: {
+        annuncio: {},
+        proposta: { file_pdf: "Proposta offerente.PDF", catasto: {} },
+      },
+    },
+    steps: [
+      {
+        message: "Local PDF text extraction completed",
+        data: { file_name: "Proposta offerente.PDF", text_length: 1200 },
+      },
+      {
+        message: "Proposal AI extraction completed",
+        data: { file_name: "Proposta offerente.PDF" },
+      },
+      {
+        message: "DOCX text extraction completed",
+        data: { file_name: "provvigione su raccolta offerte Jeggred.docx", text_length: 800 },
+      },
+      {
+        message: "Commission AI extraction completed",
+        data: { file_name: "provvigione su raccolta offerte Jeggred.docx" },
+      },
+    ],
+  };
+
+  const report = buildDocumentQualityReport(event);
+
+  assert.equal(report.issues.length, 1);
+  assert.match(report.issues[0].diagnostics, /Proposta offerente\.PDF/);
+  assert.doesNotMatch(report.issues[0].diagnostics, /provvigione su raccolta offerte/);
+  assert.doesNotMatch(report.issues[0].diagnostics, /Commission AI extraction/);
+});

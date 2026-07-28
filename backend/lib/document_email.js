@@ -154,14 +154,33 @@ function diagnosticHints(field) {
   return "Controllati testo OCR/DOCX e risultato AI per il campo atteso.";
 }
 
-function relevantStepDiagnostics(field, steps = []) {
+function fileNameLooksLikeProposal(value) {
+  const fileName = String(value || "");
+  if (/provvigione|commission|raccolta\s+offerte/i.test(fileName)) return false;
+  return /proposta|offerta\b|offerte\b|offer\b/i.test(fileName);
+}
+
+function fileNameLooksLikeAnnouncement(value) {
+  return /annuncio|immobiliare|disciplinare|gara|asta|lotto/i.test(String(value || ""));
+}
+
+function stepRelevantToField(field, step) {
   const text = `${field?.field || ""} ${field?.path || ""}`.toLowerCase();
-  const scope = /annuncio|data vendita|ora vendita|offerta minima/.test(text)
-    ? /Annuncio|Immobiliare|OCR|PDF|DOCX/i
-    : /Proposal|Proposta|OCR|PDF|DOCX/i;
+  const message = String(step?.message || "");
+  const file = step?.data?.file_name || step?.data?.file_pdf || step?.data?.file || step?.data?.url || "";
+  if (/annuncio|data vendita|ora vendita|offerta minima/.test(text)) {
+    return /Announcement|Annuncio|Immobiliare/i.test(message) || fileNameLooksLikeAnnouncement(file);
+  }
+  if (/proposta|proponente|indirizzo immobile|prezzo offerto|iban|catasto|foglio|particella|mappale|subalterno/.test(text)) {
+    return /Proposal|Proposta|Proposal body OCR/i.test(message) || fileNameLooksLikeProposal(file);
+  }
+  return /OCR|PDF|DOCX|AI extraction/i.test(message);
+}
+
+function relevantStepDiagnostics(field, steps = []) {
   return steps
     .filter((step) => step?.level === "error" || /failed|skipped|OCR|DOCX text extraction|AI extraction/i.test(step?.message || ""))
-    .filter((step) => scope.test(step?.message || "") || scope.test(step?.data?.file_name || ""))
+    .filter((step) => stepRelevantToField(field, step))
     .slice(-3)
     .map((step) => {
       const file = step.data?.file_name || step.data?.file_pdf || step.data?.file || step.data?.url || "";

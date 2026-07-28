@@ -1,5 +1,7 @@
 .event-list {
   display: grid;
+  grid-auto-rows: 132px;
+  align-content: start;
   gap: 1px;
   flex: 1;
   min-height: 0;
@@ -78,6 +80,7 @@
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
+  min-height: 132px;
   padding: 0;
   cursor: default;
 }
@@ -107,6 +110,7 @@
   display: grid;
   grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
+  min-height: 132px;
   padding: 0;
   cursor: default;
 }
@@ -170,13 +174,21 @@
 }
 
 .event-item strong {
+  display: -webkit-box;
+  overflow: hidden;
   line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
 }
 
 .event-item span {
+  display: -webkit-box;
+  overflow: hidden;
   color: var(--muted);
   font-size: 13px;
   margin-top: 4px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .event-error-badge {

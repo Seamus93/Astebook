@@ -49,6 +49,23 @@ test("document localizzazione omits empty province parentheses", () => {
   assert.equal(fields.localizzazione, "Collesalvetti in Via Aiaccia, 3");
 });
 
+test("document localizzazione ignores template placeholders", () => {
+  const fields = buildDocumentFields({
+    result: {
+      merged: {
+        immobile: {
+          indirizzo: " ",
+          comune: "Immobile sito a _________________________________in_________________________________",
+          provincia: " ",
+        },
+      },
+    },
+  });
+
+  assert.equal(fields.comune, " ");
+  assert.equal(fields.localizzazione, " ");
+});
+
 test("document fields do not use technical email message id as practice code", () => {
   const fields = buildDocumentFields({
     metadata: {

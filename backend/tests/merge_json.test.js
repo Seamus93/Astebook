@@ -41,3 +41,17 @@ test("merge splits proposal address with trailing comune and defaults placeholde
   assert.equal(merged.immobile.provincia, "BR");
   assert.equal(merged.redazione.luogo, "Milano");
 });
+
+test("merge ignores proposal address template placeholders", () => {
+  const merged = mergeAnnuncioProposta(
+    {},
+    {
+      file_pdf: "Proposta offerente.doc",
+      indirizzo_immobile: "Immobile sito a _________________________________in_________________________________",
+    }
+  );
+
+  assert.equal(merged.immobile.indirizzo, " ");
+  assert.equal(merged.immobile.comune, " ");
+  assert.equal(merged.immobile.provincia, " ");
+});

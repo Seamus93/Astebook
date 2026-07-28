@@ -19,16 +19,20 @@ function firstValue(obj, paths, fallback = " ") {
     const value = valueAt(obj, path);
     if (value !== undefined && value !== null) {
       const clean = String(value).trim();
-      if (clean && clean !== "-" && !/^[…._\s”")/]+$/.test(clean)) return value;
+      if (clean && clean !== "-" && !isTemplatePlaceholder(clean) && !/^[…._\s”")/]+$/.test(clean)) return value;
     }
   }
   return fallback;
 }
 
+function isTemplatePlaceholder(value) {
+  return /immobile\s+sito\s+a\s*_+\s*in\s*_+/i.test(String(value || ""));
+}
+
 function cleanField(value) {
   if (value === undefined || value === null) return "";
   const clean = String(value).trim();
-  if (!clean || clean === "-" || /^[…._\s”")/]+$/.test(clean)) return "";
+  if (!clean || clean === "-" || isTemplatePlaceholder(clean) || /^[…._\s”")/]+$/.test(clean)) return "";
   return clean;
 }
 

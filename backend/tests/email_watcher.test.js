@@ -55,6 +55,26 @@ test("email interceptor accepts direct allowed sender with required attachment",
   assert.equal(decision.required_filename_match, true);
 });
 
+test("email interceptor rejects legacy doc proposal as unsupported input", () => {
+  const decision = evaluateEmailInterceptorDecision({
+    message: {
+      from: { value: [{ address: "lc@astebook.com" }] },
+      date: new Date("2026-07-28T09:45:00.000Z"),
+      attachments: [{ filename: "Proposta offerente.doc", contentType: "application/msword" }],
+    },
+    settings: {
+      fromAllowlist: ["lc@astebook.com"],
+      requiredFilename: "proposta",
+    },
+    state: { processed: [] },
+    messageKey: "mail-doc-proposal",
+  });
+
+  assert.equal(decision.processable, false);
+  assert.equal(decision.required_filename_match, false);
+  assert.deepEqual(decision.reasons, ["required_attachment_missing"]);
+});
+
 test("email interceptor accepts irrevocable offer when proposal file is required", () => {
   const decision = evaluateEmailInterceptorDecision({
     message: {

@@ -97,6 +97,15 @@ export function attachmentFilenameMatchesRequired(fileName, requiredFilename) {
   });
 }
 
+function attachmentSupportedForExtraction(attachment = {}) {
+  const fileName = String(attachment.filename || attachment.file_name || attachment.originalname || "").toLowerCase();
+  const mimeType = String(attachment.contentType || attachment.content_type || attachment.mime_type || attachment.mimetype || "").toLowerCase();
+  if (mimeType.includes("pdf") || fileName.endsWith(".pdf")) return true;
+  if (mimeType.includes("wordprocessingml.document") || fileName.endsWith(".docx")) return true;
+  if (mimeType.startsWith("image/") && !mimeType.includes("png")) return true;
+  return /\.(jpe?g|bmp|tiff?|webp|heic)$/i.test(fileName);
+}
+
 export function collectEmailAddressCandidates(message = {}) {
   const from = addressesFromAddressObject(message.from);
   const sender = addressesFromAddressObject(message.sender);
@@ -136,8 +145,11 @@ export function evaluateEmailInterceptorDecision({
   const candidates = collectEmailAddressCandidates(message);
   const senderAllowed =
     allowlist.length === 0 || candidates.all.some((address) => allowlist.includes(address));
-  const requiredFilenameMatch = filenames.some((filename) =>
-    attachmentFilenameMatchesRequired(filename, requiredFilename)
+  const requiredFilenameMatch = attachments.some((attachment) =>
+    attachmentFilenameMatchesRequired(
+      attachment.filename || attachment.file_name || attachment.originalname || "",
+      requiredFilename
+    ) && attachmentSupportedForExtraction(attachment)
   );
 
   const processed = Array.isArray(state.processed)

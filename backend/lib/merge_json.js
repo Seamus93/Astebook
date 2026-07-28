@@ -7,7 +7,12 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
     if (value === null || value === undefined) return true;
     if (typeof value !== "string") return false;
     const clean = value.trim();
-    return !clean || clean === "-" || /^[…._\s”")/]+$/.test(clean);
+    return (
+      !clean ||
+      clean === "-" ||
+      /^[…._\s”")/]+$/.test(clean) ||
+      /immobile\s+sito\s+a\s*_+\s*in\s*_+/i.test(clean)
+    );
   };
   const firstClean = (...values) => values.find((value) => !isBlankPlaceholder(value)) ?? null;
 
@@ -17,6 +22,9 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
       return { indirizzo: null, comune: null, cap: null, provincia: null };
     }
     const raw = val.trim();
+    if (isBlankPlaceholder(raw)) {
+      return { indirizzo: null, comune: null, cap: null, provincia: null };
+    }
 
     const parseComuneCapProvincia = (input) => {
       if (!input || typeof input !== "string") {

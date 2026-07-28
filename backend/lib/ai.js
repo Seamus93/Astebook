@@ -606,9 +606,12 @@ function preExtractRedazione(text) {
 
 function preExtractIban(text) {
   if (!text) return null;
-  const m = text.match(/\bIT[0-9A-Z]{2}\s?(?:[0-9A-Z]{4}\s?){4}[0-9A-Z]{0,12}\b/i);
-  if (!m) return null;
-  return m[0].replace(/\s+/g, "").toUpperCase();
+  const candidates = text.match(/\bIT[\s0-9A-Z]{25,45}\b/gi) || [];
+  for (const candidate of candidates) {
+    const clean = candidate.replace(/\s+/g, "").toUpperCase();
+    if (/^IT[0-9A-Z]{25}$/.test(clean)) return clean;
+  }
+  return null;
 }
 
 function isBlankExtractedValue(value) {

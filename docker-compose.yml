@@ -31,6 +31,10 @@ services:
       PGPASSWORD: ${PGPASSWORD:-${POSTGRES_PASSWORD:-astebook}}
       PGDATABASE: ${PGDATABASE:-${POSTGRES_DB:-astebook}}
       DATABASE_URL: ${DATABASE_URL:-postgresql://astebook:astebook@db:5432/astebook?schema=public}
+      PROJECT_URL: ${PROJECT_URL:-}
+      HEALTH_URL: ${HEALTH_URL:-}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-${PROJECT_URL:-}}
+      OCR_PUBLIC_BASE_URL: ${OCR_PUBLIC_BASE_URL:-${PUBLIC_BASE_URL:-${PROJECT_URL:-}}}
     depends_on:
       db:
         condition: service_healthy

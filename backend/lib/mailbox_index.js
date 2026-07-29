@@ -245,6 +245,22 @@ export async function findMailboxIndexMessage(match = {}) {
   }) || null;
 }
 
+export async function findMailboxIndexMessageByEventId(eventId) {
+  const normalizedEventId = String(eventId || "").trim();
+  if (!normalizedEventId) return null;
+
+  if (useMailboxDb()) {
+    const row = await getPrismaClient().mailboxMessage.findFirst({
+      where: { eventId: normalizedEventId },
+      orderBy: { lastSyncedAt: "desc" },
+    });
+    return mailboxMessageFromDb(row);
+  }
+
+  const index = await readMailboxIndex();
+  return index.messages.find((message) => String(message.event_id || "") === normalizedEventId) || null;
+}
+
 export async function updateMailboxMessage(match, patch) {
   if (useMailboxDb()) {
     const prisma = getPrismaClient();

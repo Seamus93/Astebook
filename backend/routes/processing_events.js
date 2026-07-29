@@ -1,5 +1,8 @@
+import { simpleParser } from "mailparser";
 import { buildDocumentDocx, buildDocumentPdf } from "../lib/document_builder.js";
 import { documentFileName } from "../lib/document_naming.js";
+import { readCachedMailboxSource } from "../lib/mail_cache.js";
+import { findMailboxIndexMessageByEventId } from "../lib/mailbox_index.js";
 import { parseEmailRecipients } from "../lib/settings_validation.js";
 
 function valueAtPath(obj, path) {
@@ -21,6 +24,41 @@ function setValueAtPath(obj, path, value) {
     current = current[part];
   });
   current[parts[parts.length - 1]] = value;
+}
+
+function filesFromParsedMail(parsed) {
+  return (parsed.attachments || []).map((attachment, index) => ({
+    fieldname: `email_attachment_${index + 1}`,
+    originalname: attachment.filename || `attachment_${index + 1}`,
+    mimetype: attachment.contentType || "application/octet-stream",
+    size: attachment.size || attachment.content?.length || null,
+    encoding: "7bit",
+    buffer: attachment.content,
+  }));
+}
+
+async function recoverReprocessFiles(event) {
+  if (event.source !== "imap.email_activation") return { files: [], source: null, reason: "not_imap" };
+
+  try {
+    const indexedMessage = await findMailboxIndexMessageByEventId(event.id);
+    const mailCache = event.metadata?.mail_cache || indexedMessage?.mail_cache || null;
+    const cachedSource = await readCachedMailboxSource(mailCache);
+    if (!cachedSource) return { files: [], source: null, reason: "missing_mail_cache" };
+
+    const parsed = await simpleParser(cachedSource);
+    return {
+      files: filesFromParsedMail(parsed),
+      source: mailCache?.raw_path || mailCache?.rawPath || "mail_cache",
+      reason: null,
+    };
+  } catch (error) {
+    return {
+      files: [],
+      source: null,
+      reason: `mail_cache_error: ${error.message || String(error)}`,
+    };
+  }
 }
 
 export function registerProcessingEventRoutes(app, {
@@ -309,6 +347,7 @@ export function registerProcessingEventRoutes(app, {
     }
 
     const body = event.request?.body || {};
+    const recovered = await recoverReprocessFiles(event);
     await updateProcessingEvent(
       event.id,
       {
@@ -316,11 +355,18 @@ export function registerProcessingEventRoutes(app, {
         result: null,
         error: null,
       },
-      { message: "Manual reprocess requested" }
+      {
+        message: "Manual reprocess requested",
+        data: {
+          recovered_attachment_count: recovered.files.length,
+          recovery_source: recovered.source,
+          recovery_reason: recovered.reason,
+        },
+      }
     );
     const result = await runAiExtractionPipeline({
       body,
-      files: [],
+      files: recovered.files,
       eventId: event.id,
       source: event.source || "zapier.email_activation",
       skipAutoSend: req.body?.skip_auto_send === true,

@@ -116,6 +116,8 @@ export function createEmailIntakeHandlers({
         from: metadata?.from || body.from || null,
         zap_run_id: null,
         email_id: emailId,
+        mail_cache: metadata?.mail_cache || null,
+        mail_source: metadata?.mail_source || null,
       },
     });
     await updateProcessingEvent(

@@ -5,6 +5,13 @@ export function createEmailIntakeHandlers({
   runAiExtractionPipeline,
   updateProcessingEvent,
 }) {
+  function publicResult(result) {
+    if (!result || typeof result !== "object") return result;
+    const next = { ...result };
+    delete next.attachment_text_cache;
+    return next;
+  }
+
   async function handleZapierEmailActivation(req, res) {
     let event = null;
     try {
@@ -21,7 +28,7 @@ export function createEmailIntakeHandlers({
           event_id: duplicateEvent.id,
           status: duplicateEvent.status,
           admin_url: `/admin/#/events/${duplicateEvent.id}`,
-          result: duplicateEvent.result,
+          result: publicResult(duplicateEvent.result),
         });
         return;
       }

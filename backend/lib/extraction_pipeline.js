@@ -51,9 +51,22 @@ export function createAiExtractionPipeline({
     const key = attachmentTextCacheKey(resolvedAttachment);
     const entry = key ? result.attachment_text_cache?.[key] : null;
     if (!entry?.text) return null;
-    const minLength = ["pdf", "image"].includes(resolvedAttachment.format) ? 500 : 1;
-    if (String(entry.text).trim().length < minLength) return null;
+    if (!isUsefulCachedAttachmentText(entry, resolvedAttachment.format)) return null;
     return { key, entry };
+  }
+
+  function isUsefulCachedAttachmentText(entry, format) {
+    const textLength = String(entry?.text || "").trim().length;
+    const normalizedFormat = String(format || entry?.format || "").toLowerCase();
+    const minLength = ["pdf", "image"].includes(normalizedFormat) ? 500 : 1;
+    return textLength >= minLength;
+  }
+
+  function normalizedAttachmentTextCache(cache) {
+    if (!cache || typeof cache !== "object" || Array.isArray(cache)) return {};
+    return Object.fromEntries(
+      Object.entries(cache).filter(([, entry]) => isUsefulCachedAttachmentText(entry))
+    );
   }
 
   function rememberAttachmentText(result, resolvedAttachment, text, source) {
@@ -61,8 +74,7 @@ export function createAiExtractionPipeline({
     if (!cleanText.trim()) return;
     const key = attachmentTextCacheKey(resolvedAttachment);
     if (!key) return;
-    result.attachment_text_cache = result.attachment_text_cache || {};
-    result.attachment_text_cache[key] = {
+    const entry = {
       file_name: resolvedAttachment.file_name,
       mime_type: resolvedAttachment.mime_type || null,
       size: resolvedAttachment.size || null,
@@ -73,6 +85,12 @@ export function createAiExtractionPipeline({
       source,
       cached_at: new Date().toISOString(),
     };
+    if (!isUsefulCachedAttachmentText(entry)) {
+      delete result.attachment_text_cache?.[key];
+      return;
+    }
+    result.attachment_text_cache = result.attachment_text_cache || {};
+    result.attachment_text_cache[key] = entry;
   }
 
   async function extractAttachmentText(resolvedAttachment, eventId, result) {
@@ -515,10 +533,7 @@ export function createAiExtractionPipeline({
         has_body_text: emailText.trim().length > 0,
       },
       attachments,
-      attachment_text_cache:
-        previousResult?.attachment_text_cache && typeof previousResult.attachment_text_cache === "object"
-          ? previousResult.attachment_text_cache
-          : {},
+      attachment_text_cache: normalizedAttachmentTextCache(previousResult?.attachment_text_cache),
       extracted: {
         annuncio: null,
         proposta: null,

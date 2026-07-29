@@ -37,6 +37,21 @@ function filesFromParsedMail(parsed) {
   }));
 }
 
+function publicResult(result) {
+  if (!result || typeof result !== "object") return result;
+  const next = { ...result };
+  delete next.attachment_text_cache;
+  return next;
+}
+
+function publicEvent(event) {
+  if (!event?.result) return event;
+  return {
+    ...event,
+    result: publicResult(event.result),
+  };
+}
+
 async function recoverReprocessFiles(event) {
   if (event.source !== "imap.email_activation") return { files: [], source: null, reason: "not_imap" };
 
@@ -89,7 +104,7 @@ export function registerProcessingEventRoutes(app, {
       res.status(404).json({ ok: false, error: "Processing event not found" });
       return;
     }
-    res.json({ ok: true, event });
+    res.json({ ok: true, event: publicEvent(event) });
   });
 
   app.delete("/api/v1/processing-events/:id", requireProcessingUiToken, async (req, res) => {
@@ -153,7 +168,7 @@ export function registerProcessingEventRoutes(app, {
           }
         );
       }
-      res.status(201).json({ ok: true, feedback, event: updatedEvent });
+      res.status(201).json({ ok: true, feedback, event: publicEvent(updatedEvent) });
     } catch (error) {
       res.status(400).json({ ok: false, error: error.message || String(error) });
     }
@@ -376,8 +391,8 @@ export function registerProcessingEventRoutes(app, {
 
     res.json({
       ok: true,
-      event: updatedEvent,
-      result,
+      event: publicEvent(updatedEvent),
+      result: publicResult(result),
     });
   });
 }

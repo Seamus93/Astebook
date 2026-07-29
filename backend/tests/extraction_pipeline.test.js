@@ -65,6 +65,46 @@ test("reprocess reuses cached attachment text instead of reparsing the same file
   assert.ok(events.get("cache-test").steps.some((step) => step.message === "Attachment text cache hit"));
 });
 
+test("reprocess prunes short local PDF text cache entries", async () => {
+  const buffer = Buffer.from("%PDF short");
+  const cacheKey = createHash("sha256").update(buffer).digest("hex");
+  const events = new Map([["short-pdf-cache-test", { id: "short-pdf-cache-test", steps: [] }]]);
+  const pipeline = createAiExtractionPipeline({
+    autoSendMergedDocumentEmail: async () => null,
+    getProcessingEvent: async (id) => events.get(id) || null,
+    updateProcessingEvent: async (id, patch = {}, step = null) => {
+      const current = events.get(id) || { id, steps: [] };
+      const next = {
+        ...current,
+        ...patch,
+        steps: step ? [...(current.steps || []), step] : current.steps || [],
+      };
+      events.set(id, next);
+      return next;
+    },
+  });
+
+  const result = await pipeline({
+    eventId: "short-pdf-cache-test",
+    body: { subject: "SHORT_PDF_CACHE_TEST" },
+    files: [],
+    previousResult: {
+      attachment_text_cache: {
+        [cacheKey]: {
+          file_name: "Proposta scannerizzata.pdf",
+          format: "pdf",
+          text: "-- 1 of 10 --",
+          text_length: 13,
+          source: "local_pdf",
+        },
+      },
+    },
+    skipAutoSend: true,
+  });
+
+  assert.deepEqual(result.attachment_text_cache, {});
+});
+
 test("Apify announcement data replaces extracted announcement while keeping AI fallback", async () => {
   const previousProvider = process.env.IMMOBILIARE_SCRAPER_PROVIDER;
   const previousToken = process.env.APIFY_TOKEN;

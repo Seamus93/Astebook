@@ -85,7 +85,9 @@ function filesForLatestExtraction(event) {
     groups.get(fileName).steps.push(step);
   });
 
-  return Array.from(groups.values()).filter((group) => group.steps.length > 0 || group.file);
+  return Array.from(groups.values())
+    .filter((group) => group.steps.length > 0 || group.file)
+    .sort((a, b) => String(b.steps.at(-1)?.at || "").localeCompare(String(a.steps.at(-1)?.at || "")));
 }
 
 function descriptorRows(file) {
@@ -139,7 +141,7 @@ function renderLatestFilesPane(event) {
 
   const marker = document.createElement("p");
   marker.className = "latest-extraction-note";
-  marker.textContent = "Vista filtrata: solo file e log dell'ultima estrazione.";
+  marker.textContent = "Vista filtrata: solo file e log dell'ultima estrazione, piu recenti in alto.";
   pane.append(marker);
 
   groups.forEach(({ fileName, file, steps }) => {
@@ -152,7 +154,7 @@ function renderLatestFilesPane(event) {
         <small>${escapeHtml(file?.format || file?.mime_type || file?.mimetype || "-")} · ${steps.length} log ultima estrazione</small>
       </summary>
       <div class="file-descriptor"><div class="kv-list">${descriptorRows(file)}</div></div>
-      ${steps.length ? `<div class="file-steps">${steps.map(stepHtml).join("")}</div>` : ""}`;
+      ${steps.length ? `<div class="file-steps">${[...steps].reverse().map(stepHtml).join("")}</div>` : ""}`;
     pane.append(details);
   });
 }

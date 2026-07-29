@@ -35,7 +35,7 @@ function isImageFile(fileOrName) {
 }
 
 function pipelineSteps(event) {
-  return (event.steps || []).filter((step) => !isFileStep(step));
+  return (event.steps || []).filter((step) => !isFileStep(step)).reverse();
 }
 
 function fileStepGroups(event) {
@@ -133,7 +133,7 @@ export function renderFileSections(event) {
     if (steps.length) {
       const stepList = document.createElement("div");
       stepList.className = "file-steps";
-      steps.forEach((step) => stepList.appendChild(renderStepItem(step)));
+      [...steps].reverse().forEach((step) => stepList.appendChild(renderStepItem(step)));
       details.appendChild(stepList);
     }
 

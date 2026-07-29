@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { existsSync } from "node:fs";
 
 import { createAiExtractionPipeline } from "./lib/extraction_pipeline.js";
+import { readOcrInput } from "./lib/ocr_input_store.js";
 import {
   appendExtractionFeedback,
   buildExtractionFeedbackContext,
@@ -199,6 +200,21 @@ app.get("/health", (_req, res) =>
     version: process.env.npm_package_version || "0.0.0",
   })
 );
+
+app.get("/api/v1/ocr-inputs/:token/:fileName", async (req, res) => {
+  const input = await readOcrInput({
+    token: req.params.token,
+    fileName: req.params.fileName,
+  });
+  if (!input) {
+    res.status(404).json({ ok: false, error: "OCR input not found" });
+    return;
+  }
+  res.setHeader("content-type", input.mime_type);
+  res.setHeader("content-length", String(input.buffer.length));
+  res.setHeader("cache-control", "private, max-age=3600");
+  res.send(input.buffer);
+});
 
 const runAiExtractionPipeline = createAiExtractionPipeline({
   autoSendMergedDocumentEmail,

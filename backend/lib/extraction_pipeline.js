@@ -27,6 +27,7 @@ import {
   toISOFromITDate,
 } from "./format_utils.js";
 import { mergeAnnuncioProposta } from "./merge_json.js";
+import { createOcrInputFromBuffer } from "./ocr_input_store.js";
 import { parsePdfBuffer } from "./pdf.js";
 import { ocrFileUrlWithPdfApp } from "./pdf_app.js";
 import { extractImmobiliareAnnouncementUrls, scrapeImmobiliareAnnouncement } from "./immobiliare_scraper.js";
@@ -133,7 +134,27 @@ export function createAiExtractionPipeline({
       return parsed.text;
     }
     if (["pdf", "image"].includes(resolvedAttachment.format)) {
-      if (resolvedAttachment.url) {
+      let ocrFileUrl = resolvedAttachment.url || "";
+      if (!ocrFileUrl) {
+        const ocrInput = await createOcrInputFromBuffer({
+          buffer: resolvedAttachment.buffer,
+          fileName: resolvedAttachment.file_name,
+          mimeType: resolvedAttachment.mime_type,
+        });
+        ocrFileUrl = ocrInput?.url || "";
+        if (eventId) {
+          await updateProcessingEvent(eventId, {}, {
+            message: ocrFileUrl ? "PDF-app OCR input prepared" : "PDF-app OCR input unavailable",
+            data: {
+              file_name: resolvedAttachment.file_name,
+              reason: ocrFileUrl ? null : "public_base_url_missing",
+              url: ocrFileUrl || null,
+            },
+          });
+        }
+      }
+
+      if (ocrFileUrl) {
         try {
           if (eventId) {
             await updateProcessingEvent(eventId, {}, {
@@ -145,7 +166,7 @@ export function createAiExtractionPipeline({
             });
           }
           const ocrResult = await ocrFileUrlWithPdfApp({
-            fileUrl: resolvedAttachment.url,
+            fileUrl: ocrFileUrl,
             fileName: resolvedAttachment.file_name,
           });
           if (ocrResult.ok && ocrResult.text) {

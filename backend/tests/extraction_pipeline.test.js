@@ -105,6 +105,77 @@ test("reprocess prunes short local PDF text cache entries", async () => {
   assert.deepEqual(result.attachment_text_cache, {});
 });
 
+test("buffered PDF attachments are exposed to PDF-app OCR through a temporary URL", async () => {
+  const previousProjectUrl = process.env.PROJECT_URL;
+  const previousPdfKey = process.env.PDF_APP_API_KEY;
+  const previousPdfEndpoint = process.env.PDF_APP_OCR_ENDPOINT;
+  const previousFetch = globalThis.fetch;
+  const previousMock = process.env.ASTEBOOK_AI_MOCK;
+  process.env.PROJECT_URL = "https://astebook.example";
+  process.env.PDF_APP_API_KEY = "pdf-key";
+  process.env.PDF_APP_OCR_ENDPOINT = "https://pdf-app.example/ocr";
+  process.env.ASTEBOOK_AI_MOCK = "1";
+
+  let requestedFileUrl = "";
+  globalThis.fetch = async (_url, options = {}) => {
+    const body = JSON.parse(options.body || "{}");
+    requestedFileUrl = body.fileUrl;
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        text: "Proposta OCR vera ".repeat(80),
+      }),
+    };
+  };
+
+  const events = new Map([["buffer-pdf-ocr-test", { id: "buffer-pdf-ocr-test", steps: [] }]]);
+  const pipeline = createAiExtractionPipeline({
+    autoSendMergedDocumentEmail: async () => null,
+    getProcessingEvent: async (id) => events.get(id) || null,
+    updateProcessingEvent: async (id, patch = {}, step = null) => {
+      const current = events.get(id) || { id, steps: [] };
+      const next = {
+        ...current,
+        ...patch,
+        steps: step ? [...(current.steps || []), step] : current.steps || [],
+      };
+      events.set(id, next);
+      return next;
+    },
+  });
+
+  try {
+    const result = await pipeline({
+      eventId: "buffer-pdf-ocr-test",
+      body: { subject: "BUFFER_PDF_OCR_TEST" },
+      files: [
+        {
+          fieldname: "email_attachment_1",
+          originalname: "Polis Proposta test.pdf",
+          mimetype: "application/pdf",
+          buffer: Buffer.from("%PDF scannerizzato"),
+        },
+      ],
+      skipAutoSend: true,
+    });
+
+    assert.match(requestedFileUrl, /^https:\/\/astebook\.example\/api\/v1\/ocr-inputs\/[a-f0-9]{32}\/Polis_Proposta_test\.pdf$/);
+    assert.equal(result.extracted.proposta.raw_length, "Proposta OCR vera ".repeat(80).length);
+    assert.ok(Object.values(result.attachment_text_cache).some((entry) => entry.source === "pdf_app"));
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousProjectUrl === undefined) delete process.env.PROJECT_URL;
+    else process.env.PROJECT_URL = previousProjectUrl;
+    if (previousPdfKey === undefined) delete process.env.PDF_APP_API_KEY;
+    else process.env.PDF_APP_API_KEY = previousPdfKey;
+    if (previousPdfEndpoint === undefined) delete process.env.PDF_APP_OCR_ENDPOINT;
+    else process.env.PDF_APP_OCR_ENDPOINT = previousPdfEndpoint;
+    if (previousMock === undefined) delete process.env.ASTEBOOK_AI_MOCK;
+    else process.env.ASTEBOOK_AI_MOCK = previousMock;
+  }
+});
+
 test("Apify announcement data replaces extracted announcement while keeping AI fallback", async () => {
   const previousProvider = process.env.IMMOBILIARE_SCRAPER_PROVIDER;
   const previousToken = process.env.APIFY_TOKEN;

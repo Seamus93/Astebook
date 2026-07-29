@@ -1,3 +1,5 @@
+import { formatEventTimestamp, isIsoTimestamp } from "./admin/dateFormat.js";
+
 const EVENT_DETAIL_RE = /\/api\/v1\/processing-events\/([^/?#]+)$/;
 
 function escapeHtml(value) {
@@ -19,6 +21,11 @@ function fileNameFrom(value, fallback = "File") {
       value?.fieldname ||
       fallback
   );
+}
+
+function displayValue(value) {
+  if (isIsoTimestamp(value)) return formatEventTimestamp(value);
+  return value;
 }
 
 function normalized(value) {
@@ -114,15 +121,16 @@ function stepHtml(step) {
         .map(([key, value]) => `
           <div class="kv-row">
             <div class="kv-key">${escapeHtml(key.replace(/_/g, " "))}</div>
-            <div class="kv-value">${escapeHtml(typeof value === "object" ? JSON.stringify(value, null, 2) : value)}</div>
+            <div class="kv-value">${escapeHtml(typeof value === "object" ? JSON.stringify(value, null, 2) : displayValue(value))}</div>
           </div>`)
         .join("")
     : "";
+  const formattedAt = formatEventTimestamp(step.at);
 
   return `
     <div class="step${levelClass}">
       <strong>${escapeHtml(step.message || "Step")}</strong>
-      <span>${escapeHtml(step.at || "")}</span>
+      <span title="${escapeHtml(step.at || "")}">${escapeHtml(formattedAt)}</span>
       ${detailRows ? `<div class="step-data"><div class="kv-list">${detailRows}</div></div>` : ""}
     </div>`;
 }

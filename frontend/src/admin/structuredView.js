@@ -1,4 +1,5 @@
 import { apiFetch } from "./apiClient.js";
+import { formatEventTimestamp, isIsoTimestamp } from "./dateFormat.js";
 import { showToast } from "./toast.js";
 
 function isPlainObject(value) {
@@ -8,6 +9,7 @@ function isPlainObject(value) {
 function primitiveText(value) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "boolean") return value ? "Si" : "No";
+  if (isIsoTimestamp(value)) return formatEventTimestamp(value);
   return String(value);
 }
 

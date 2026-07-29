@@ -1,4 +1,5 @@
 import { renderStructured } from "./structuredView.js";
+import { formatEventTimestamp } from "./dateFormat.js";
 
 export function fileNameFromStep(step) {
   return step?.data?.file_name || step?.data?.file_pdf || step?.data?.file || null;
@@ -63,7 +64,8 @@ function renderStepItem(step) {
   const message = document.createElement("strong");
   message.textContent = step.message;
   const date = document.createElement("span");
-  date.textContent = step.at || "";
+  date.textContent = formatEventTimestamp(step.at);
+  if (step.at) date.title = step.at;
   item.append(message, date);
 
   if (step.data) {

@@ -1,4 +1,5 @@
 import { apiFetch } from "./apiClient.js";
+import { formatEventTimestamp } from "./dateFormat.js";
 import { qs } from "./dom.js";
 
 function escapeHtml(value) {
@@ -35,7 +36,7 @@ function renderRecent(items) {
         <article class="learning-recent-item">
           <strong>${escapeHtml(item.field_path)}</strong>
           <span>${escapeHtml(item.corrected_value ?? "null")}</span>
-          <small>${escapeHtml(item.source_file || "Fonte non indicata")}${item.created_at ? ` · ${escapeHtml(item.created_at)}` : ""}</small>
+          <small>${escapeHtml(item.source_file || "Fonte non indicata")}${item.created_at ? ` · ${escapeHtml(formatEventTimestamp(item.created_at))}` : ""}</small>
         </article>
       `).join("")}
     </div>

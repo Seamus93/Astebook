@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -13,6 +14,55 @@ const { createAiExtractionPipeline } = await import("../lib/extraction_pipeline.
 
 test.after(async () => {
   await rm(runtimeDir, { recursive: true, force: true });
+});
+
+test("reprocess reuses cached attachment text instead of reparsing the same file", async () => {
+  const buffer = Buffer.from("this is not a valid docx");
+  const cacheKey = createHash("sha256").update(buffer).digest("hex");
+  const steps = [];
+  const events = new Map([["cache-test", { id: "cache-test", steps }]]);
+  const pipeline = createAiExtractionPipeline({
+    autoSendMergedDocumentEmail: async () => null,
+    getProcessingEvent: async (id) => events.get(id) || null,
+    updateProcessingEvent: async (id, patch = {}, step = null) => {
+      const current = events.get(id) || { id, steps: [] };
+      const next = {
+        ...current,
+        ...patch,
+        steps: step ? [...(current.steps || []), step] : current.steps || [],
+      };
+      events.set(id, next);
+      return next;
+    },
+  });
+
+  const result = await pipeline({
+    eventId: "cache-test",
+    body: { subject: "CACHE_TEST" },
+    files: [
+      {
+        fieldname: "email_attachment_1",
+        originalname: "Proposta cache.docx",
+        mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        buffer,
+      },
+    ],
+    previousResult: {
+      attachment_text_cache: {
+        [cacheKey]: {
+          file_name: "Proposta cache.docx",
+          format: "docx",
+          text: "Proposta irrevocabile valida gia estratta.",
+          text_length: 41,
+          source: "docx",
+        },
+      },
+    },
+    skipAutoSend: true,
+  });
+
+  assert.equal(result.extracted.proposta.file_pdf, "Proposta cache.docx");
+  assert.ok(events.get("cache-test").steps.some((step) => step.message === "Attachment text cache hit"));
 });
 
 test("Apify announcement data replaces extracted announcement while keeping AI fallback", async () => {

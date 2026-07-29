@@ -368,6 +368,7 @@ export function registerProcessingEventRoutes(app, {
       body,
       files: recovered.files,
       eventId: event.id,
+      previousResult: event.result || null,
       source: event.source || "zapier.email_activation",
       skipAutoSend: req.body?.skip_auto_send === true,
     });

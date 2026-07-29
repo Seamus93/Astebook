@@ -94,6 +94,7 @@ function extractedResultView(event) {
   delete result.notes;
   delete result.missing_fields;
   delete result.immobiliare;
+  delete result.attachment_text_cache;
   return result;
 }
 

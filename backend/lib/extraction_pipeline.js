@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { aiExtractAnnuncio, aiExtractCodicePratica, aiExtractProposta, aiExtractProvvigionePercentuale } from "./ai.js";
 import { collectZapierAttachments, readAttachment } from "./attachments.js";
 import { parseDocxBuffer } from "./docx.js";
@@ -35,7 +36,61 @@ export function createAiExtractionPipeline({
   getProcessingEvent,
   updateProcessingEvent,
 }) {
+  function attachmentTextCacheKey(resolvedAttachment) {
+    const hash = resolvedAttachment?.buffer?.length
+      ? createHash("sha256").update(resolvedAttachment.buffer).digest("hex")
+      : "";
+    return hash || [
+      resolvedAttachment?.file_name,
+      resolvedAttachment?.mime_type,
+      resolvedAttachment?.size,
+    ].filter(Boolean).join("|");
+  }
+
+  function cachedAttachmentText(result, resolvedAttachment) {
+    const key = attachmentTextCacheKey(resolvedAttachment);
+    const entry = key ? result.attachment_text_cache?.[key] : null;
+    if (!entry?.text) return null;
+    const minLength = ["pdf", "image"].includes(resolvedAttachment.format) ? 500 : 1;
+    if (String(entry.text).trim().length < minLength) return null;
+    return { key, entry };
+  }
+
+  function rememberAttachmentText(result, resolvedAttachment, text, source) {
+    const cleanText = String(text || "");
+    if (!cleanText.trim()) return;
+    const key = attachmentTextCacheKey(resolvedAttachment);
+    if (!key) return;
+    result.attachment_text_cache = result.attachment_text_cache || {};
+    result.attachment_text_cache[key] = {
+      file_name: resolvedAttachment.file_name,
+      mime_type: resolvedAttachment.mime_type || null,
+      size: resolvedAttachment.size || null,
+      kind: resolvedAttachment.kind || null,
+      format: resolvedAttachment.format || null,
+      text: cleanText,
+      text_length: cleanText.length,
+      source,
+      cached_at: new Date().toISOString(),
+    };
+  }
+
   async function extractAttachmentText(resolvedAttachment, eventId, result) {
+    const cached = cachedAttachmentText(result, resolvedAttachment);
+    if (cached) {
+      if (eventId) {
+        await updateProcessingEvent(eventId, {}, {
+          message: "Attachment text cache hit",
+          data: {
+            file_name: resolvedAttachment.file_name,
+            format: resolvedAttachment.format,
+            text_length: cached.entry.text_length || cached.entry.text.length,
+          },
+        });
+      }
+      return cached.entry.text;
+    }
+
     if (resolvedAttachment.format === "docx") {
       if (eventId) {
         await updateProcessingEvent(eventId, {}, {
@@ -56,6 +111,7 @@ export function createAiExtractionPipeline({
           },
         });
       }
+      rememberAttachmentText(result, resolvedAttachment, parsed.text, "docx");
       return parsed.text;
     }
     if (["pdf", "image"].includes(resolvedAttachment.format)) {
@@ -85,6 +141,7 @@ export function createAiExtractionPipeline({
                 },
               });
             }
+            rememberAttachmentText(result, resolvedAttachment, ocrResult.text, "pdf_app");
             return ocrResult.text;
           }
           if (eventId) {
@@ -139,6 +196,7 @@ export function createAiExtractionPipeline({
             },
           });
         }
+        rememberAttachmentText(result, resolvedAttachment, parsed.text, "local_pdf");
         return parsed.text;
       }
     }
@@ -436,6 +494,7 @@ export function createAiExtractionPipeline({
     body = {},
     files = [],
     eventId,
+    previousResult = null,
     source = "zapier.email_activation",
     skipAutoSend = false,
   }) {
@@ -456,6 +515,10 @@ export function createAiExtractionPipeline({
         has_body_text: emailText.trim().length > 0,
       },
       attachments,
+      attachment_text_cache:
+        previousResult?.attachment_text_cache && typeof previousResult.attachment_text_cache === "object"
+          ? previousResult.attachment_text_cache
+          : {},
       extracted: {
         annuncio: null,
         proposta: null,

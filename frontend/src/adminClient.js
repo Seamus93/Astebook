@@ -29,6 +29,11 @@ export default function initAdminClient() {
     window.scrollTo({ top: 0, left: 0, behavior: "smooth" });
   }
 
+  window.astebookOpenEvent = async (eventId) => {
+    navigate("/admin/");
+    await details.selectEvent(eventId);
+  };
+
   function initPanelToggles() {
     document.querySelectorAll(".collapsible-panel").forEach((panel) => {
       const button = panel.querySelector(".panel-toggle");

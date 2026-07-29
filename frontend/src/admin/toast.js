@@ -1,6 +1,6 @@
 import { escapeHtml } from "./html.js";
 
-export function showToast({ title = "", message = "", items = [], tone = "error" } = {}) {
+export function showToast({ title = "", message = "", items = [], actions = [], tone = "error" } = {}) {
   let host = document.getElementById("toastHost");
   if (!host) {
     host = document.createElement("div");
@@ -21,6 +21,7 @@ export function showToast({ title = "", message = "", items = [], tone = "error"
       ${title ? `<strong>${escapeHtml(title)}</strong>` : ""}
       ${message ? `<p>${escapeHtml(message)}</p>` : ""}
       ${itemList}
+      ${actions.length ? `<div class="toast-actions"></div>` : ""}
     </div>
     <button class="icon-button toast-close" type="button" title="Chiudi">
       <span class="material-symbols-outlined" aria-hidden="true">close</span>
@@ -29,5 +30,19 @@ export function showToast({ title = "", message = "", items = [], tone = "error"
 
   const close = () => toast.remove();
   toast.querySelector(".toast-close")?.addEventListener("click", close);
+  const actionsContainer = toast.querySelector(".toast-actions");
+  actions.forEach((action) => {
+    if (!actionsContainer || !action?.label) return;
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "secondary-button toast-action";
+    button.textContent = action.label;
+    if (action.title) button.title = action.title;
+    button.addEventListener("click", () => {
+      close();
+      action.onClick?.();
+    });
+    actionsContainer.appendChild(button);
+  });
   window.setTimeout(close, 9000);
 }

@@ -602,7 +602,24 @@ export function createSettingsController() {
         }
 
         status.textContent = `OCR e Analisi AI completate per evento ${event.id}.`;
-        showToast({ title: "Analisi completata", message: status.textContent, tone: "info" });
+        showToast({
+          title: "Analisi completata",
+          message: status.textContent,
+          tone: "info",
+          actions: [
+            {
+              label: "Vedi",
+              title: "Apri evento processato",
+              onClick: () => {
+                if (window.astebookOpenEvent) {
+                  window.astebookOpenEvent(event.id);
+                } else {
+                  window.location.href = "/admin/";
+                }
+              },
+            },
+          ],
+        });
       } catch (error) {
         const message = error.message || String(error);
         status.textContent = `Analisi fallita: ${message}`;

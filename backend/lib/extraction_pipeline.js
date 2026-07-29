@@ -634,10 +634,29 @@ export function createAiExtractionPipeline({
         resolvedAttachment = await readAttachment(attachment);
       } catch (error) {
         result.notes.push(`${attachment.file_name}: download fallito (${error.message || String(error)})`);
+        await updateProcessingEvent(event.id, { result }, {
+          level: "error",
+          message: "Attachment read failed",
+          data: {
+            file_name: attachment.file_name,
+            error: error.message || String(error),
+          },
+        });
         continue;
       }
 
-      if (!resolvedAttachment?.buffer) continue;
+      if (!resolvedAttachment?.buffer) {
+        addUniqueNote(result, `${attachment.file_name}: contenuto allegato non disponibile.`);
+        await updateProcessingEvent(event.id, { result }, {
+          level: "error",
+          message: "Attachment skipped",
+          data: {
+            file_name: attachment.file_name,
+            reason: "missing_buffer",
+          },
+        });
+        continue;
+      }
 
       const safeDescriptor = {
         field_name: resolvedAttachment.field_name,
@@ -654,15 +673,44 @@ export function createAiExtractionPipeline({
       );
       if (existingIndex >= 0) result.attachments[existingIndex] = safeDescriptor;
 
-      if (resolvedAttachment.kind === "ignored") continue;
+      if (resolvedAttachment.kind === "ignored") {
+        await updateProcessingEvent(event.id, { result }, {
+          message: "Attachment skipped",
+          data: {
+            file_name: resolvedAttachment.file_name,
+            kind: resolvedAttachment.kind,
+            format: resolvedAttachment.format,
+            reason: "ignored_attachment",
+          },
+        });
+        continue;
+      }
 
       if (resolvedAttachment.format === "png") {
         addUniqueNote(result, `${resolvedAttachment.file_name}: PNG escluso da OCR e analisi AI.`);
+        await updateProcessingEvent(event.id, { result }, {
+          message: "Attachment skipped",
+          data: {
+            file_name: resolvedAttachment.file_name,
+            kind: resolvedAttachment.kind,
+            format: resolvedAttachment.format,
+            reason: "png_excluded",
+          },
+        });
         continue;
       }
 
       if (!["pdf", "docx", "image"].includes(resolvedAttachment.format)) {
         result.notes.push(`Formato non supportato: ${resolvedAttachment.file_name}`);
+        await updateProcessingEvent(event.id, { result }, {
+          message: "Attachment skipped",
+          data: {
+            file_name: resolvedAttachment.file_name,
+            kind: resolvedAttachment.kind,
+            format: resolvedAttachment.format,
+            reason: "unsupported_format",
+          },
+        });
         continue;
       }
 
@@ -743,6 +791,15 @@ export function createAiExtractionPipeline({
       }
 
       result.notes.push(`Allegato non classificato: ${resolvedAttachment.file_name}`);
+      await updateProcessingEvent(event.id, { result }, {
+        message: "Attachment skipped",
+        data: {
+          file_name: resolvedAttachment.file_name,
+          kind: resolvedAttachment.kind,
+          format: resolvedAttachment.format,
+          reason: "unclassified_attachment",
+        },
+      });
     }
 
     if (

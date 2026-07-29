@@ -94,9 +94,28 @@ export function createAiExtractionPipeline({
     result.attachment_text_cache[key] = entry;
   }
 
+  function recordOcrSummary(result, resolvedAttachment, status, data = {}) {
+    result.ocr_summary = result.ocr_summary || { files: {} };
+    const fileName = resolvedAttachment?.file_name || "attachment";
+    const files = result.ocr_summary.files || {};
+    files[fileName] = {
+      ...(files[fileName] || {}),
+      file_name: fileName,
+      kind: resolvedAttachment?.kind || null,
+      format: resolvedAttachment?.format || null,
+      status,
+      ...data,
+    };
+    result.ocr_summary.files = files;
+  }
+
   async function extractAttachmentText(resolvedAttachment, eventId, result) {
     const cached = cachedAttachmentText(result, resolvedAttachment);
     if (cached) {
+      recordOcrSummary(result, resolvedAttachment, "cache_hit", {
+        source: cached.entry.source || null,
+        text_length: cached.entry.text_length || cached.entry.text.length,
+      });
       if (eventId) {
         await updateProcessingEvent(eventId, {}, {
           message: "Attachment text cache hit",
@@ -142,6 +161,9 @@ export function createAiExtractionPipeline({
           mimeType: resolvedAttachment.mime_type,
         });
         ocrFileUrl = ocrInput?.url || "";
+        recordOcrSummary(result, resolvedAttachment, ocrFileUrl ? "pdf_app_input_prepared" : "pdf_app_input_unavailable", {
+          reason: ocrFileUrl ? null : "public_base_url_missing",
+        });
         if (eventId) {
           await updateProcessingEvent(eventId, {}, {
             message: ocrFileUrl ? "PDF-app OCR input prepared" : "PDF-app OCR input unavailable",
@@ -156,6 +178,7 @@ export function createAiExtractionPipeline({
 
       if (ocrFileUrl) {
         try {
+          recordOcrSummary(result, resolvedAttachment, "pdf_app_started");
           if (eventId) {
             await updateProcessingEvent(eventId, {}, {
               message: "PDF-app OCR started",
@@ -170,6 +193,10 @@ export function createAiExtractionPipeline({
             fileName: resolvedAttachment.file_name,
           });
           if (ocrResult.ok && ocrResult.text) {
+            recordOcrSummary(result, resolvedAttachment, "pdf_app_completed", {
+              text_length: ocrResult.text.length,
+              job_id: ocrResult.job_id || null,
+            });
             if (eventId) {
               await updateProcessingEvent(eventId, {}, {
                 message: "PDF-app OCR completed",
@@ -183,6 +210,10 @@ export function createAiExtractionPipeline({
             rememberAttachmentText(result, resolvedAttachment, ocrResult.text, "pdf_app");
             return ocrResult.text;
           }
+          recordOcrSummary(result, resolvedAttachment, "pdf_app_empty", {
+            reason: ocrResult.reason || "Nessun testo OCR restituito.",
+            job_id: ocrResult.job_id || null,
+          });
           if (eventId) {
             await updateProcessingEvent(eventId, {}, {
               message: "PDF-app OCR skipped or empty",
@@ -198,6 +229,9 @@ export function createAiExtractionPipeline({
             `${resolvedAttachment.file_name}: OCR PDF-app non eseguito o senza testo (${ocrResult.reason || "Nessun testo OCR restituito."})`
           );
         } catch (error) {
+          recordOcrSummary(result, resolvedAttachment, "pdf_app_failed", {
+            error: error.message || String(error),
+          });
           if (eventId) {
             await updateProcessingEvent(eventId, {}, {
               level: "error",
@@ -236,6 +270,9 @@ export function createAiExtractionPipeline({
           });
         }
         rememberAttachmentText(result, resolvedAttachment, parsed.text, "local_pdf");
+        recordOcrSummary(result, resolvedAttachment, "local_pdf_completed", {
+          text_length: parsed.text?.length || 0,
+        });
         return parsed.text;
       }
     }
@@ -928,6 +965,7 @@ export function createAiExtractionPipeline({
           : "AI extraction completed with missing data",
         data: {
           ready_for_zapier: result.ready_for_zapier,
+          ocr_summary: result.ocr_summary || null,
         },
       }
     );

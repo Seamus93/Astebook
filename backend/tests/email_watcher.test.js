@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { attachmentFilenameMatchesRequired } from "../lib/email_watcher.js";
+import { collectZapierAttachments } from "../lib/attachments.js";
 import { syncMailboxMessages } from "../lib/mailbox_browser.js";
 import {
   collectEmailAddressCandidates,
@@ -33,6 +34,34 @@ test("email watcher treats irrevocable purchase offer as proposal attachment", (
     attachmentFilenameMatchesRequired("PI-SAN-1121295_Offerta Irrevocabile d'Acquisto.pdf", "proposta"),
     true
   );
+});
+
+test("attachment collection ignores proposal templates and keeps the compiled proposal PDF", () => {
+  const attachments = collectZapierAttachments({}, [
+    {
+      fieldname: "email_attachment_1",
+      originalname: "Proposta.pdf",
+      mimetype: "application/pdf",
+      buffer: Buffer.from("%PDF test"),
+    },
+    {
+      fieldname: "email_attachment_2",
+      originalname: "Allegato B_Format Proposta_def_outsourcing_std.docx",
+      mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      buffer: Buffer.from("PK test"),
+    },
+    {
+      fieldname: "email_attachment_3",
+      originalname: "provvigione su raccolta offerte.docx",
+      mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      buffer: Buffer.from("PK test"),
+    },
+  ]);
+
+  const byName = new Map(attachments.map((attachment) => [attachment.file_name, attachment]));
+  assert.equal(byName.get("Proposta.pdf").kind, "proposta");
+  assert.equal(byName.get("Allegato B_Format Proposta_def_outsourcing_std.docx").kind, "ignored");
+  assert.equal(byName.get("provvigione su raccolta offerte.docx").kind, "provvigione");
 });
 
 test("email interceptor accepts direct allowed sender with required attachment", () => {

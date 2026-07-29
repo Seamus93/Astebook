@@ -1,6 +1,11 @@
 function attachmentKind(fileName) {
   const name = String(fileName || "").toLowerCase();
-  if (/privacy|aml|antiriciclaggio|bonifico|distin[gt]a|istinta|codice\s*fiscale|\bcf\b|document[oi]\s+cliente/.test(name)) {
+  if (
+    /privacy|aml|antiriciclaggio|bonifico|distin[gt]a|istinta|codice\s*fiscale|\bcf\b|document[oi]\s+cliente/.test(name) ||
+    /\b(format|formato|modello|fac[\s_-]*simile|template)\b.*\bproposta\b/.test(name) ||
+    /\bproposta\b.*\b(format|formato|modello|fac[\s_-]*simile|template)\b/.test(name) ||
+    /def[\s_-]*outsourcing[\s_-]*std/.test(name)
+  ) {
     return "ignored";
   }
   if (/provvigione|commission|raccolta\s+offerte/.test(name)) return "provvigione";

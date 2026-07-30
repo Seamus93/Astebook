@@ -28,6 +28,7 @@ import {
 } from "./format_utils.js";
 import { mergeAnnuncioProposta } from "./merge_json.js";
 import { createOcrInputFromBuffer, describeOcrInputUrl } from "./ocr_input_store.js";
+import { ocrInputSelfTestEnabled, selfTestOcrInputUrl } from "./ocr_input_self_test.js";
 import { parsePdfBuffer } from "./pdf.js";
 import { ocrFileUrlWithPdfApp } from "./pdf_app.js";
 import { extractImmobiliareAnnouncementUrls, scrapeImmobiliareAnnouncement } from "./immobiliare_scraper.js";
@@ -180,6 +181,13 @@ export function createAiExtractionPipeline({
           contentType: resolvedAttachment.mime_type,
           size: resolvedAttachment.size || resolvedAttachment.buffer?.length || null,
         });
+        if (ocrFileUrl && ocrInputSelfTestEnabled()) {
+          const selfTest = await selfTestOcrInputUrl({
+            url: ocrFileUrl,
+            expectedContentType: resolvedAttachment.mime_type,
+          });
+          ocrUrlDiagnostics.ocr_input_self_test = selfTest;
+        }
         recordOcrSummary(result, resolvedAttachment, ocrFileUrl ? "pdf_app_input_prepared" : "pdf_app_input_unavailable", {
           reason: ocrFileUrl ? null : "public_base_url_missing",
           ...ocrUrlDiagnostics,

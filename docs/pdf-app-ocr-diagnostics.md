@@ -67,6 +67,8 @@ Quando attivo, dopo la generazione dell'URL temporaneo Astebook il sistema prova
 - durata;
 - verifica header `%PDF` per PDF.
 
+Il test usa redirect manuale e non segue automaticamente eventuali risposte `3xx`, cosi un redirect verso login, HTML o proxy risulta visibile in diagnostica senza mascherare il problema.
+
 ## Test Manuale URL Astebook
 
 Da eseguire copiando il full URL temporaneo da una diagnostica admin protetta, non dai log standard:

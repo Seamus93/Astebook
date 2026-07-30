@@ -105,6 +105,67 @@ test("reprocess prunes short local PDF text cache entries", async () => {
   assert.deepEqual(result.attachment_text_cache, {});
 });
 
+test("buffered PDF attachments do not fall back to local parsing when public OCR URL is missing", async () => {
+  const previousProjectUrl = process.env.PROJECT_URL;
+  const previousPublicUrl = process.env.PUBLIC_URL;
+  const previousPublicBaseUrl = process.env.PUBLIC_BASE_URL;
+  const previousOcrPublicBaseUrl = process.env.OCR_PUBLIC_BASE_URL;
+  const previousHealthUrl = process.env.HEALTH_URL;
+  delete process.env.PROJECT_URL;
+  delete process.env.PUBLIC_URL;
+  delete process.env.PUBLIC_BASE_URL;
+  delete process.env.OCR_PUBLIC_BASE_URL;
+  delete process.env.HEALTH_URL;
+
+  const events = new Map([["missing-ocr-url-test", { id: "missing-ocr-url-test", steps: [] }]]);
+  const pipeline = createAiExtractionPipeline({
+    autoSendMergedDocumentEmail: async () => null,
+    getProcessingEvent: async (id) => events.get(id) || null,
+    updateProcessingEvent: async (id, patch = {}, step = null) => {
+      const current = events.get(id) || { id, steps: [] };
+      const next = {
+        ...current,
+        ...patch,
+        steps: step ? [...(current.steps || []), step] : current.steps || [],
+      };
+      events.set(id, next);
+      return next;
+    },
+  });
+
+  try {
+    const result = await pipeline({
+      eventId: "missing-ocr-url-test",
+      body: { subject: "MISSING_OCR_URL_TEST" },
+      files: [
+        {
+          fieldname: "email_attachment_1",
+          originalname: "Proposta senza url pubblico.pdf",
+          mimetype: "application/pdf",
+          buffer: Buffer.from("%PDF scannerizzato"),
+        },
+      ],
+      skipAutoSend: true,
+    });
+
+    const steps = events.get("missing-ocr-url-test").steps;
+    assert.ok(steps.some((step) => step.message === "PDF-app OCR input unavailable"));
+    assert.equal(steps.some((step) => step.message === "Local PDF text extraction started"), false);
+    assert.equal(result.ocr_summary.files["Proposta senza url pubblico.pdf"].status, "pdf_app_input_unavailable");
+  } finally {
+    if (previousProjectUrl === undefined) delete process.env.PROJECT_URL;
+    else process.env.PROJECT_URL = previousProjectUrl;
+    if (previousPublicUrl === undefined) delete process.env.PUBLIC_URL;
+    else process.env.PUBLIC_URL = previousPublicUrl;
+    if (previousPublicBaseUrl === undefined) delete process.env.PUBLIC_BASE_URL;
+    else process.env.PUBLIC_BASE_URL = previousPublicBaseUrl;
+    if (previousOcrPublicBaseUrl === undefined) delete process.env.OCR_PUBLIC_BASE_URL;
+    else process.env.OCR_PUBLIC_BASE_URL = previousOcrPublicBaseUrl;
+    if (previousHealthUrl === undefined) delete process.env.HEALTH_URL;
+    else process.env.HEALTH_URL = previousHealthUrl;
+  }
+});
+
 test("reprocess ignores local PDF cache and runs PDF-app OCR", async () => {
   const previousProjectUrl = process.env.PROJECT_URL;
   const previousPdfKey = process.env.PDF_APP_API_KEY;

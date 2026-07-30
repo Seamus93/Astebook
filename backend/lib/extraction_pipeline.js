@@ -110,6 +110,10 @@ export function createAiExtractionPipeline({
     result.ocr_summary.files = files;
   }
 
+  function localPdfFallbackEnabled() {
+    return ["1", "true", "yes"].includes(String(process.env.ALLOW_LOCAL_PDF_FALLBACK || "").trim().toLowerCase());
+  }
+
   async function extractAttachmentText(resolvedAttachment, eventId, result) {
     const cached = cachedAttachmentText(result, resolvedAttachment);
     if (cached) {
@@ -174,6 +178,13 @@ export function createAiExtractionPipeline({
               url: ocrFileUrl || null,
             },
           });
+        }
+        if (!ocrFileUrl && !localPdfFallbackEnabled()) {
+          addUniqueNote(
+            result,
+            `${resolvedAttachment.file_name}: OCR PDF-app non avviato per URL pubblico mancante; fallback PDF locale disabilitato.`
+          );
+          return "";
         }
       }
 
@@ -248,6 +259,15 @@ export function createAiExtractionPipeline({
             `${resolvedAttachment.file_name}: OCR PDF-app fallito (${error.message || String(error)})`
           );
         }
+      }
+
+      if (!localPdfFallbackEnabled()) {
+        recordOcrSummary(result, resolvedAttachment, "pdf_app_required_no_local_fallback");
+        addUniqueNote(
+          result,
+          `${resolvedAttachment.file_name}: fallback PDF locale disabilitato; usare testo OCR PDF-app.`
+        );
+        return "";
       }
 
       if (resolvedAttachment.format === "pdf") {

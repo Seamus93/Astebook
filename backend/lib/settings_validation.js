@@ -1,3 +1,5 @@
+import { getOcrPublicBaseUrl } from "./ocr_input_store.js";
+
 export function redactSecret(value) {
   if (!value) return "";
   const str = String(value);
@@ -70,6 +72,13 @@ export async function collectPipelineConfigurationIssues({ getEffectiveSetting, 
   }
   if (!String(pdfAppOcrEndpoint || "").trim()) {
     issues.push(configIssue("pdf_app_ocr_endpoint", "PDF-app OCR Endpoint", "Configura l'endpoint OCR PDF-app."));
+  }
+  if (!String(getOcrPublicBaseUrl() || "").trim()) {
+    issues.push(configIssue(
+      "ocr_public_base_url",
+      "OCR Public Base URL",
+      "Configura OCR_PUBLIC_BASE_URL o PROJECT_URL con l'URL pubblico HTTPS di Astebook, necessario per far scaricare gli allegati a PDF-app."
+    ));
   }
   if (!String(documentTemplateUrl || "").trim()) {
     issues.push(configIssue("document_template_url", "Template Documento", "Configura il template Google Doc/DOCX per generare il PDF."));

@@ -13,7 +13,7 @@ function safeFileName(value) {
     .slice(0, 160) || "attachment";
 }
 
-function publicBaseUrl() {
+export function getOcrPublicBaseUrl() {
   const direct = String(
     process.env.OCR_PUBLIC_BASE_URL ||
       process.env.ASTEBOOK_PUBLIC_URL ||
@@ -34,7 +34,7 @@ function publicBaseUrl() {
 
 export async function createOcrInputFromBuffer({ buffer, fileName, mimeType }) {
   if (!buffer?.length) return null;
-  const baseUrl = publicBaseUrl();
+  const baseUrl = getOcrPublicBaseUrl();
   if (!baseUrl) return null;
 
   const token = randomUUID().replace(/-/g, "");

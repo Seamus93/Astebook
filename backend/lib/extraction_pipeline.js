@@ -114,6 +114,14 @@ export function createAiExtractionPipeline({
     return ["1", "true", "yes"].includes(String(process.env.ALLOW_LOCAL_PDF_FALLBACK || "").trim().toLowerCase());
   }
 
+  function urlOrigin(value) {
+    try {
+      return new URL(value).origin;
+    } catch {
+      return null;
+    }
+  }
+
   async function extractAttachmentText(resolvedAttachment, eventId, result) {
     const cached = cachedAttachmentText(result, resolvedAttachment);
     if (cached) {
@@ -168,6 +176,7 @@ export function createAiExtractionPipeline({
         ocrFileUrl = ocrInput?.url || "";
         recordOcrSummary(result, resolvedAttachment, ocrFileUrl ? "pdf_app_input_prepared" : "pdf_app_input_unavailable", {
           reason: ocrFileUrl ? null : "public_base_url_missing",
+          ocr_url_origin: urlOrigin(ocrFileUrl),
         });
         if (eventId) {
           await updateProcessingEvent(eventId, {}, {
@@ -243,6 +252,7 @@ export function createAiExtractionPipeline({
         } catch (error) {
           recordOcrSummary(result, resolvedAttachment, "pdf_app_failed", {
             error: error.message || String(error),
+            ocr_url_origin: urlOrigin(ocrFileUrl),
           });
           if (eventId) {
             await updateProcessingEvent(eventId, {}, {

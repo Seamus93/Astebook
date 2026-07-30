@@ -318,6 +318,65 @@ test("buffered PDF attachments are exposed to PDF-app OCR through a temporary UR
   }
 });
 
+test("PDF-app OCR errors include plain response details", async () => {
+  const previousProjectUrl = process.env.PROJECT_URL;
+  const previousPdfKey = process.env.PDF_APP_API_KEY;
+  const previousPdfEndpoint = process.env.PDF_APP_OCR_ENDPOINT;
+  const previousFetch = globalThis.fetch;
+  process.env.PROJECT_URL = "https://astebook.example";
+  process.env.PDF_APP_API_KEY = "pdf-key";
+  process.env.PDF_APP_OCR_ENDPOINT = "https://pdf-app.example/ocr";
+
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 403,
+    statusText: "Forbidden",
+    text: async () => "Invalid file URL",
+  });
+
+  const events = new Map([["pdf-app-error-detail-test", { id: "pdf-app-error-detail-test", steps: [] }]]);
+  const pipeline = createAiExtractionPipeline({
+    autoSendMergedDocumentEmail: async () => null,
+    getProcessingEvent: async (id) => events.get(id) || null,
+    updateProcessingEvent: async (id, patch = {}, step = null) => {
+      const current = events.get(id) || { id, steps: [] };
+      const next = {
+        ...current,
+        ...patch,
+        steps: step ? [...(current.steps || []), step] : current.steps || [],
+      };
+      events.set(id, next);
+      return next;
+    },
+  });
+
+  try {
+    const result = await pipeline({
+      eventId: "pdf-app-error-detail-test",
+      body: { subject: "PDF_APP_ERROR_DETAIL_TEST" },
+      files: [
+        {
+          fieldname: "email_attachment_1",
+          originalname: "Proposta errore pdf-app.pdf",
+          mimetype: "application/pdf",
+          buffer: Buffer.from("%PDF scannerizzato"),
+        },
+      ],
+      skipAutoSend: true,
+    });
+
+    assert.match(result.ocr_summary.files["Proposta errore pdf-app.pdf"].error, /Invalid file URL/);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousProjectUrl === undefined) delete process.env.PROJECT_URL;
+    else process.env.PROJECT_URL = previousProjectUrl;
+    if (previousPdfKey === undefined) delete process.env.PDF_APP_API_KEY;
+    else process.env.PDF_APP_API_KEY = previousPdfKey;
+    if (previousPdfEndpoint === undefined) delete process.env.PDF_APP_OCR_ENDPOINT;
+    else process.env.PDF_APP_OCR_ENDPOINT = previousPdfEndpoint;
+  }
+});
+
 test("Apify announcement data replaces extracted announcement while keeping AI fallback", async () => {
   const previousProvider = process.env.IMMOBILIARE_SCRAPER_PROVIDER;
   const previousToken = process.env.APIFY_TOKEN;

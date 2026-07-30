@@ -52,11 +52,24 @@ function findJobId(value) {
 }
 
 function authHeaders(apiKey) {
+  const cleanKey = String(apiKey || "").replace(/^Bearer\s+/i, "").trim();
   return {
-    "x-api-key": apiKey,
-    "X-API-Key": apiKey,
-    Authorization: apiKey,
+    "x-api-key": cleanKey,
+    "X-API-Key": cleanKey,
+    Authorization: cleanKey,
   };
+}
+
+function responseErrorDetail(payload, fallback) {
+  return firstString(
+    payload?.error,
+    payload?.message,
+    payload?.detail,
+    payload?.text,
+    payload?.data?.error,
+    payload?.data?.message,
+    fallback
+  );
 }
 
 async function parseJsonResponse(response) {
@@ -87,7 +100,7 @@ async function pollPdfAppJob({ jobId, apiKey, jobEndpoint, timeoutMs = 90000 }) 
 
     const payload = await parseJsonResponse(response);
     if (!response.ok) {
-      throw new Error(`PDF-app job status ${response.status}: ${payload?.error || payload?.message || response.statusText}`);
+      throw new Error(`PDF-app job status ${response.status}: ${responseErrorDetail(payload, response.statusText)}`);
     }
 
     const text = findTextDeep(payload);
@@ -163,7 +176,7 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
   const payload = await parseJsonResponse(response);
 
   if (!response.ok) {
-    throw new Error(`PDF-app OCR status ${response.status}: ${payload?.error || payload?.message || response.statusText}`);
+    throw new Error(`PDF-app OCR status ${response.status}: ${responseErrorDetail(payload, response.statusText)}`);
   }
 
   const text = findTextDeep(payload);

@@ -27,7 +27,7 @@ import {
   toISOFromITDate,
 } from "./format_utils.js";
 import { mergeAnnuncioProposta } from "./merge_json.js";
-import { createOcrInputFromBuffer } from "./ocr_input_store.js";
+import { createOcrInputFromBuffer, describeOcrInputUrl } from "./ocr_input_store.js";
 import { parsePdfBuffer } from "./pdf.js";
 import { ocrFileUrlWithPdfApp } from "./pdf_app.js";
 import { extractImmobiliareAnnouncementUrls, scrapeImmobiliareAnnouncement } from "./immobiliare_scraper.js";
@@ -174,9 +174,15 @@ export function createAiExtractionPipeline({
           mimeType: resolvedAttachment.mime_type,
         });
         ocrFileUrl = ocrInput?.url || "";
+        const ocrUrlDiagnostics = ocrInput?.diagnostics || describeOcrInputUrl({
+          url: ocrFileUrl,
+          fileName: resolvedAttachment.file_name,
+          contentType: resolvedAttachment.mime_type,
+          size: resolvedAttachment.size || resolvedAttachment.buffer?.length || null,
+        });
         recordOcrSummary(result, resolvedAttachment, ocrFileUrl ? "pdf_app_input_prepared" : "pdf_app_input_unavailable", {
           reason: ocrFileUrl ? null : "public_base_url_missing",
-          ocr_url_origin: urlOrigin(ocrFileUrl),
+          ...ocrUrlDiagnostics,
         });
         if (eventId) {
           await updateProcessingEvent(eventId, {}, {
@@ -184,7 +190,7 @@ export function createAiExtractionPipeline({
             data: {
               file_name: resolvedAttachment.file_name,
               reason: ocrFileUrl ? null : "public_base_url_missing",
-              url: ocrFileUrl || null,
+              ...ocrUrlDiagnostics,
             },
           });
         }
@@ -253,6 +259,7 @@ export function createAiExtractionPipeline({
           recordOcrSummary(result, resolvedAttachment, "pdf_app_failed", {
             error: error.message || String(error),
             ocr_url_origin: urlOrigin(ocrFileUrl),
+            pdf_app_diagnostics: error.diagnostics || null,
           });
           if (eventId) {
             await updateProcessingEvent(eventId, {}, {
@@ -261,6 +268,7 @@ export function createAiExtractionPipeline({
               data: {
                 file_name: resolvedAttachment.file_name,
                 error: error.message || String(error),
+                pdf_app_diagnostics: error.diagnostics || null,
               },
             });
           }

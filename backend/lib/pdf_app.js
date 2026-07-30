@@ -1,4 +1,5 @@
 import { getEffectiveSetting } from "./app_config.js";
+import { maskOcrInputUrlPath } from "./ocr_input_store.js";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -70,6 +71,60 @@ function responseErrorDetail(payload, fallback) {
   );
 }
 
+function compactResponseBody(payload) {
+  const value = typeof payload?.text === "string" ? payload.text : JSON.stringify(payload || {});
+  return String(value || "").slice(0, 4000);
+}
+
+function safeFileUrlDiagnostics(fileUrl) {
+  try {
+    const parsed = new URL(fileUrl);
+    return {
+      origin: parsed.origin,
+      scheme: parsed.protocol.replace(/:$/, ""),
+      port: parsed.port || (parsed.protocol === "https:" ? "443" : parsed.protocol === "http:" ? "80" : ""),
+      path: maskOcrInputUrlPath(parsed.href),
+    };
+  } catch {
+    return {
+      origin: null,
+      scheme: null,
+      port: null,
+      path: null,
+    };
+  }
+}
+
+export function buildPdfAppOcrPayload(fileUrl) {
+  return {
+    versionMode: "2",
+    v2rawText: true,
+    v2Layout: false,
+    v2Forms: true,
+    v2Signatures: true,
+    async: false,
+    pdfConvertZoomFactor: 1,
+    zoom_factor_img: 1,
+    fileUrls: [fileUrl],
+  };
+}
+
+export function buildPdfAppErrorDiagnostics({ endpoint, requestBody, response, responsePayload }) {
+  const fileUrls = Array.isArray(requestBody?.fileUrls) ? requestBody.fileUrls : [];
+  const fileUrlDetails = fileUrls.map((fileUrl) => safeFileUrlDiagnostics(fileUrl));
+  return {
+    status: response?.status || null,
+    endpoint,
+    version_mode: requestBody?.versionMode || null,
+    file_urls_count: fileUrls.length,
+    file_url_origins: fileUrlDetails.map((item) => item.origin),
+    file_url_schemes: fileUrlDetails.map((item) => item.scheme),
+    file_url_ports: fileUrlDetails.map((item) => item.port),
+    file_url_paths: fileUrlDetails.map((item) => item.path),
+    response_body: compactResponseBody(responsePayload),
+  };
+}
+
 async function parseJsonResponse(response) {
   const text = await response.text();
   try {
@@ -132,17 +187,7 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
     };
   }
 
-  const body = {
-    versionMode: "2",
-    v2rawText: true,
-    v2Layout: false,
-    v2Forms: true,
-    v2Signatures: true,
-    async: false,
-    pdfConvertZoomFactor: 1,
-    zoom_factor_img: 1,
-    fileUrls: [fileUrl],
-  };
+  const body = buildPdfAppOcrPayload(fileUrl);
 
   const response = await fetch(ocrEndpoint, {
     method: "POST",
@@ -156,7 +201,14 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
   const payload = await parseJsonResponse(response);
 
   if (!response.ok) {
-    throw new Error(`PDF-app OCR status ${response.status}: ${responseErrorDetail(payload, response.statusText)}`);
+    const error = new Error(`PDF-app OCR status ${response.status}: ${responseErrorDetail(payload, response.statusText)}`);
+    error.diagnostics = buildPdfAppErrorDiagnostics({
+      endpoint: ocrEndpoint,
+      requestBody: body,
+      response,
+      responsePayload: payload,
+    });
+    throw error;
   }
 
   const text = findTextDeep(payload);

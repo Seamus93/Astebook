@@ -46,12 +46,18 @@ test("attachment collection ignores proposal templates and keeps the compiled pr
     },
     {
       fieldname: "email_attachment_2",
+      originalname: "Format Proposta DE.CHI_.pdf",
+      mimetype: "application/pdf",
+      buffer: Buffer.from("%PDF filled proposal"),
+    },
+    {
+      fieldname: "email_attachment_3",
       originalname: "Allegato B_Format Proposta_def_outsourcing_std.docx",
       mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       buffer: Buffer.from("PK test"),
     },
     {
-      fieldname: "email_attachment_3",
+      fieldname: "email_attachment_4",
       originalname: "provvigione su raccolta offerte.docx",
       mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       buffer: Buffer.from("PK test"),
@@ -60,6 +66,7 @@ test("attachment collection ignores proposal templates and keeps the compiled pr
 
   const byName = new Map(attachments.map((attachment) => [attachment.file_name, attachment]));
   assert.equal(byName.get("Proposta.pdf").kind, "proposta");
+  assert.equal(byName.get("Format Proposta DE.CHI_.pdf").kind, "proposta");
   assert.equal(byName.get("Allegato B_Format Proposta_def_outsourcing_std.docx").kind, "ignored");
   assert.equal(byName.get("provvigione su raccolta offerte.docx").kind, "provvigione");
 });

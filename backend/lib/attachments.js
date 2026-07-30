@@ -1,10 +1,14 @@
-function attachmentKind(fileName) {
+function attachmentKind(fileName, mimeType = "") {
   const name = String(fileName || "").toLowerCase();
+  const isPdf = isPdfAttachment({ file_name: fileName, mime_type: mimeType });
+  const isDocx = isDocxAttachment({ file_name: fileName, mime_type: mimeType });
+  const isProposalTemplateName =
+    /\b(format|formato|modello|fac[\s_-]*simile|template)\b.*\bproposta\b/.test(name) ||
+    /\bproposta\b.*\b(format|formato|modello|fac[\s_-]*simile|template)\b/.test(name);
   if (
     /privacy|aml|antiriciclaggio|bonifico|distin[gt]a|istinta|codice\s*fiscale|\bcf\b|document[oi]\s+cliente/.test(name) ||
-    /\b(format|formato|modello|fac[\s_-]*simile|template)\b.*\bproposta\b/.test(name) ||
-    /\bproposta\b.*\b(format|formato|modello|fac[\s_-]*simile|template)\b/.test(name) ||
-    /def[\s_-]*outsourcing[\s_-]*std/.test(name)
+    /def[\s_-]*outsourcing[\s_-]*std/.test(name) ||
+    (isProposalTemplateName && isDocx && !isPdf)
   ) {
     return "ignored";
   }
@@ -109,7 +113,7 @@ function normalizeAttachmentDescriptor(raw) {
     mime_type: String(mimeType),
     size: raw?.size || null,
     url: typeof url === "string" && /^https?:\/\//i.test(url) ? url : null,
-    kind: attachmentKind(fileName),
+    kind: attachmentKind(fileName, mimeType),
     supported_by_extraction:
       !isPngAttachment({ file_name: fileName, mime_type: mimeType }) &&
       (isPdfAttachment({
@@ -228,7 +232,7 @@ export async function readAttachment(attachment) {
     ...attachment,
     file_name: fileName,
     mime_type: mimeType,
-    kind: attachment.kind === "unknown" ? attachmentKind(fileName) : attachment.kind,
+    kind: attachment.kind === "unknown" ? attachmentKind(fileName, mimeType) : attachment.kind,
     buffer,
   };
   return {

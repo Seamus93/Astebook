@@ -54,8 +54,6 @@ function findJobId(value) {
 function authHeaders(apiKey) {
   const cleanKey = String(apiKey || "").replace(/^Bearer\s+/i, "").trim();
   return {
-    "x-api-key": cleanKey,
-    "X-API-Key": cleanKey,
     Authorization: cleanKey,
   };
 }
@@ -138,30 +136,12 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
     versionMode: "2",
     v2rawText: true,
     v2Layout: false,
-    v2Forms: false,
-    v2Signatures: false,
+    v2Forms: true,
+    v2Signatures: true,
     async: false,
     pdfConvertZoomFactor: 1,
     zoom_factor_img: 1,
     fileUrls: [fileUrl],
-    file_url: fileUrl,
-    fileUrl,
-    url: fileUrl,
-    urls: [fileUrl],
-    filename: fileName,
-    file_name: fileName,
-    extract_plain_text: true,
-    extractPlainText: true,
-    extract_layout: false,
-    extractLayout: false,
-    extract_forms: false,
-    extractForms: false,
-    extract_tables: false,
-    extractTables: false,
-    detect_signatures: false,
-    detectSignatures: false,
-    async: false,
-    asynchronous: false,
   };
 
   const response = await fetch(ocrEndpoint, {

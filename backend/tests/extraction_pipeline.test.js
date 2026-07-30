@@ -181,7 +181,7 @@ test("reprocess ignores local PDF cache and runs PDF-app OCR", async () => {
   globalThis.fetch = async (_url, options = {}) => {
     pdfAppCalled = true;
     const body = JSON.parse(options.body || "{}");
-    assert.match(body.fileUrl, /^https:\/\/astebook\.example\/api\/v1\/ocr-inputs\//);
+    assert.match(body.fileUrls?.[0], /^https:\/\/astebook\.example\/api\/v1\/ocr-inputs\//);
     return {
       ok: true,
       status: 200,
@@ -261,7 +261,7 @@ test("buffered PDF attachments are exposed to PDF-app OCR through a temporary UR
   let requestedFileUrl = "";
   globalThis.fetch = async (_url, options = {}) => {
     const body = JSON.parse(options.body || "{}");
-    requestedFileUrl = body.fileUrl;
+    requestedFileUrl = body.fileUrls?.[0];
     return {
       ok: true,
       status: 200,

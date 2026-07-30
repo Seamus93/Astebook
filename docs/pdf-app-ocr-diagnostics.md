@@ -97,6 +97,11 @@ node scripts/test_pdf_app_ocr.js
 ```
 
 Lo script usa la stessa `PDF_APP_API_KEY` configurata e invia a PDF-app un PDF HTTPS pubblico noto con lo stesso payload OCR reale.
+Non stampa la API key. Se serve cambiare PDF pubblico:
+
+```bash
+PDF_APP_TEST_PUBLIC_URL='https://example.com/file.pdf' node scripts/test_pdf_app_ocr.js
+```
 
 ## Classificazione Finale
 

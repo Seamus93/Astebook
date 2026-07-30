@@ -36,6 +36,36 @@ function findTextDeep(value, seen = new Set()) {
   return firstString(...Object.values(value).map((item) => findTextDeep(item, seen)));
 }
 
+function orderedTextParts(items = []) {
+  return [...items]
+    .filter((item) => item && typeof item === "object")
+    .sort((a, b) => {
+      const pageDelta = Number(a.page ?? 0) - Number(b.page ?? 0);
+      if (pageDelta) return pageDelta;
+      return Number(a.region_index ?? 0) - Number(b.region_index ?? 0);
+    })
+    .map((item) => firstString(item.result, item.text, item.rawText, item.raw_text, item.content))
+    .filter((text) => text.trim());
+}
+
+export function extractPdfAppText(payload) {
+  const extractionResults = Array.isArray(payload?.extraction_results)
+    ? payload.extraction_results
+    : Array.isArray(payload?.data?.extraction_results)
+    ? payload.data.extraction_results
+    : [];
+
+  const pageTexts = extractionResults.flatMap((fileResult) => {
+    if (Array.isArray(fileResult?.result)) return orderedTextParts(fileResult.result);
+    if (typeof fileResult?.result === "string" && fileResult.result.trim()) return [fileResult.result];
+    if (Array.isArray(fileResult?.results)) return orderedTextParts(fileResult.results);
+    return [];
+  });
+
+  if (pageTexts.length) return pageTexts.join("\n\n");
+  return findTextDeep(payload);
+}
+
 function findJobId(value) {
   if (!value || typeof value !== "object") return "";
   return firstString(
@@ -156,7 +186,7 @@ async function pollPdfAppJob({ jobId, apiKey, jobEndpoint, timeoutMs = 90000 }) 
       throw new Error(`PDF-app job status ${response.status}: ${responseErrorDetail(payload, response.statusText)}`);
     }
 
-    const text = findTextDeep(payload);
+    const text = extractPdfAppText(payload);
     if (text) return { text, payload, attempts: attempt };
 
     const status = String(payload.status || payload.state || payload.data?.status || "").toLowerCase();
@@ -211,7 +241,7 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
     throw error;
   }
 
-  const text = findTextDeep(payload);
+  const text = extractPdfAppText(payload);
   if (text) return { ok: true, text, payload };
 
   const jobId = findJobId(payload);

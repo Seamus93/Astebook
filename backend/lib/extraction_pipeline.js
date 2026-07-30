@@ -33,6 +33,8 @@ import { parsePdfBuffer } from "./pdf.js";
 import { ocrFileUrlWithPdfApp } from "./pdf_app.js";
 import { extractImmobiliareAnnouncementUrls, scrapeImmobiliareAnnouncement } from "./immobiliare_scraper.js";
 
+const pdfAppTextParserVersion = "pdf_app_multi_page_v1";
+
 export function createAiExtractionPipeline({
   autoSendMergedDocumentEmail,
   getProcessingEvent,
@@ -177,6 +179,13 @@ export function createAiExtractionPipeline({
     const textLength = String(entry?.text || "").trim().length;
     const normalizedFormat = String(format || entry?.format || "").toLowerCase();
     if (["pdf", "image"].includes(normalizedFormat) && entry?.source !== "pdf_app") return false;
+    if (
+      ["pdf", "image"].includes(normalizedFormat) &&
+      entry?.source === "pdf_app" &&
+      entry?.parser_version !== pdfAppTextParserVersion
+    ) {
+      return false;
+    }
     const minLength = ["pdf", "image"].includes(normalizedFormat) ? 500 : 1;
     return textLength >= minLength;
   }
@@ -202,6 +211,7 @@ export function createAiExtractionPipeline({
       text: cleanText,
       text_length: cleanText.length,
       source,
+      parser_version: source === "pdf_app" ? pdfAppTextParserVersion : null,
       cached_at: new Date().toISOString(),
     };
     if (!isUsefulCachedAttachmentText(entry)) {

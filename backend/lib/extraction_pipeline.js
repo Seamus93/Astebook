@@ -59,6 +59,7 @@ export function createAiExtractionPipeline({
   function isUsefulCachedAttachmentText(entry, format) {
     const textLength = String(entry?.text || "").trim().length;
     const normalizedFormat = String(format || entry?.format || "").toLowerCase();
+    if (["pdf", "image"].includes(normalizedFormat) && entry?.source !== "pdf_app") return false;
     const minLength = ["pdf", "image"].includes(normalizedFormat) ? 500 : 1;
     return textLength >= minLength;
   }

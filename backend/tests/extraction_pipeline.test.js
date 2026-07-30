@@ -105,6 +105,87 @@ test("reprocess prunes short local PDF text cache entries", async () => {
   assert.deepEqual(result.attachment_text_cache, {});
 });
 
+test("reprocess ignores local PDF cache and runs PDF-app OCR", async () => {
+  const previousProjectUrl = process.env.PROJECT_URL;
+  const previousPdfKey = process.env.PDF_APP_API_KEY;
+  const previousPdfEndpoint = process.env.PDF_APP_OCR_ENDPOINT;
+  const previousFetch = globalThis.fetch;
+  process.env.PROJECT_URL = "https://astebook.example";
+  process.env.PDF_APP_API_KEY = "pdf-key";
+  process.env.PDF_APP_OCR_ENDPOINT = "https://pdf-app.example/ocr";
+
+  const buffer = Buffer.from("%PDF valid cached local parser text");
+  const cacheKey = createHash("sha256").update(buffer).digest("hex");
+  let pdfAppCalled = false;
+  globalThis.fetch = async (_url, options = {}) => {
+    pdfAppCalled = true;
+    const body = JSON.parse(options.body || "{}");
+    assert.match(body.fileUrl, /^https:\/\/astebook\.example\/api\/v1\/ocr-inputs\//);
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        text: "Testo OCR PDF-app prioritario ".repeat(40),
+      }),
+    };
+  };
+
+  const events = new Map([["local-pdf-cache-ignored-test", { id: "local-pdf-cache-ignored-test", steps: [] }]]);
+  const pipeline = createAiExtractionPipeline({
+    autoSendMergedDocumentEmail: async () => null,
+    getProcessingEvent: async (id) => events.get(id) || null,
+    updateProcessingEvent: async (id, patch = {}, step = null) => {
+      const current = events.get(id) || { id, steps: [] };
+      const next = {
+        ...current,
+        ...patch,
+        steps: step ? [...(current.steps || []), step] : current.steps || [],
+      };
+      events.set(id, next);
+      return next;
+    },
+  });
+
+  try {
+    const result = await pipeline({
+      eventId: "local-pdf-cache-ignored-test",
+      body: { subject: "LOCAL_PDF_CACHE_IGNORED_TEST" },
+      files: [
+        {
+          fieldname: "email_attachment_1",
+          originalname: "Proposta cache locale.pdf",
+          mimetype: "application/pdf",
+          buffer,
+        },
+      ],
+      previousResult: {
+        attachment_text_cache: {
+          [cacheKey]: {
+            file_name: "Proposta cache locale.pdf",
+            format: "pdf",
+            text: "Vecchio testo local_pdf ".repeat(80),
+            text_length: "Vecchio testo local_pdf ".repeat(80).length,
+            source: "local_pdf",
+          },
+        },
+      },
+      skipAutoSend: true,
+    });
+
+    assert.equal(pdfAppCalled, true);
+    assert.equal(result.extracted.proposta.raw_length, "Testo OCR PDF-app prioritario ".repeat(40).length);
+    assert.ok(events.get("local-pdf-cache-ignored-test").steps.some((step) => step.message === "PDF-app OCR started"));
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousProjectUrl === undefined) delete process.env.PROJECT_URL;
+    else process.env.PROJECT_URL = previousProjectUrl;
+    if (previousPdfKey === undefined) delete process.env.PDF_APP_API_KEY;
+    else process.env.PDF_APP_API_KEY = previousPdfKey;
+    if (previousPdfEndpoint === undefined) delete process.env.PDF_APP_OCR_ENDPOINT;
+    else process.env.PDF_APP_OCR_ENDPOINT = previousPdfEndpoint;
+  }
+});
+
 test("buffered PDF attachments are exposed to PDF-app OCR through a temporary URL", async () => {
   const previousProjectUrl = process.env.PROJECT_URL;
   const previousPdfKey = process.env.PDF_APP_API_KEY;

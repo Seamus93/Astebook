@@ -97,9 +97,51 @@ test("document fields use admissible minimum offer increased by one thousand", (
 
   assert.equal(fields.prezzo_base_eur, "150.000,00");
   assert.equal(fields.offerta_minima_eur, "151.000,00");
+  assert.equal(fields.prezzo_base, "150.000,00");
+  assert.equal(fields.offerta_minima, "151.000,00");
+  assert.equal(fields.rilancio_minimo, "1.000,00");
 });
 
-test("document fields format dates consistently as dd month yy", () => {
+test("document fields derive admissible minimum offer when it equals base price", () => {
+  const fields = buildDocumentFields({
+    result: {
+      merged: {
+        gara: {
+          offerta_minima: "60.000,00",
+          offerta_minima_ammissibile: "60.000,00",
+          rilancio_minimo: 1000,
+        },
+      },
+    },
+  });
+
+  assert.equal(fields.prezzo_base_eur, "60.000,00");
+  assert.equal(fields.offerta_minima_eur, "61.000,00");
+  assert.equal(fields.rilancio_minimo_eur, "1.000,00");
+});
+
+test("document fields read deposit data from merged output", () => {
+  const fields = buildDocumentFields({
+    result: {
+      merged: {
+        deposito: {
+          iban_beneficiario: "IT60X0542811101000000123456",
+          beneficiario_cauzione: "SAVOY REOCO S.r.l.",
+        },
+      },
+      extracted: {
+        proposta: {},
+      },
+    },
+  });
+
+  assert.equal(fields.iban_cauzione, "IT60X0542811101000000123456");
+  assert.equal(fields.beneficiario_cauzione, "SAVOY REOCO S.r.l.");
+  assert.equal(fields.iban, "IT60X0542811101000000123456");
+  assert.equal(fields.beneficiario, "SAVOY REOCO S.r.l.");
+});
+
+test("document fields format dates consistently with full year", () => {
   const fields = buildDocumentFields({
     result: {
       data_apertura_pubblicazione: "15 luglio 2026",
@@ -119,10 +161,10 @@ test("document fields format dates consistently as dd month yy", () => {
     },
   });
 
-  assert.equal(fields.data_apertura_pubblicazione, "15 luglio 26");
-  assert.equal(fields.data_termine_deposito, "17 luglio 26");
-  assert.equal(fields.data_gara, "20 luglio 26");
-  assert.equal(fields.termine_richieste_visite_data, "16 luglio 26");
+  assert.equal(fields.data_apertura_pubblicazione, "15 luglio 2026");
+  assert.equal(fields.data_termine_deposito, "17 luglio 2026");
+  assert.equal(fields.data_gara, "20 luglio 2026");
+  assert.equal(fields.termine_richieste_visite_data, "16 luglio 2026");
 });
 
 test("document naming uses AI Intrum disciplinary title and procedure code", () => {

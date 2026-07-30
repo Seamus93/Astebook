@@ -20,7 +20,22 @@ test("merge keeps street-only proposal address as address and uses prezzo_base f
   assert.equal(merged.immobile.indirizzo, "Via Quirino Majorana 171");
   assert.equal(merged.immobile.comune, " ");
   assert.equal(merged.gara.offerta_minima, 210000);
-  assert.equal(merged.gara.offerta_minima_ammissibile, 210000);
+  assert.equal(merged.gara.offerta_minima_ammissibile, 211000);
+});
+
+test("merge derives admissible minimum offer from base price and rilancio", () => {
+  const merged = mergeAnnuncioProposta(
+    {
+      offerta_minima: "60.000,00",
+      offerta_minima_ammissibile: "60.000,00",
+      rilancio_minimo: "1.000,00",
+    },
+    {}
+  );
+
+  assert.equal(merged.gara.offerta_minima, "60.000,00");
+  assert.equal(merged.gara.offerta_minima_ammissibile, 61000);
+  assert.equal(merged.gara.rilancio_minimo, "1.000,00");
 });
 
 test("merge splits proposal address with trailing comune and defaults placeholder redazione to Milano", () => {

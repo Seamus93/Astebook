@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { getEffectiveSetting } from "./app_config.js";
-import { toItalianShortTextDate } from "./format_utils.js";
+import { formatMoneyIT, toItalianTextDate } from "./format_utils.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -49,11 +49,17 @@ function money(value) {
   if (value === "-" || value === null || value === undefined || String(value).trim() === "") return " ";
   const number = typeof value === "number" ? value : Number(String(value).replace(/\./g, "").replace(",", "."));
   if (!Number.isFinite(number)) return String(value);
-  return new Intl.NumberFormat("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(number);
+  return formatMoneyIT(number);
+}
+
+function moneyNumber(value) {
+  if (value === "-" || value === null || value === undefined || String(value).trim() === "") return null;
+  const number = typeof value === "number" ? value : Number(String(value).replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(number) ? number : null;
 }
 
 function currentItalianDate() {
-  return toItalianShortTextDate(new Date().toISOString().slice(0, 10));
+  return toItalianTextDate(new Date().toISOString().slice(0, 10));
 }
 
 function catastoLine(voce) {
@@ -100,6 +106,37 @@ export function buildDocumentFields(event) {
     ["merged.immobile.indirizzo", "proposta.indirizzo_immobile", "annuncio.indirizzo", "annuncio.indirizzo_raw"]
   );
   const cap = firstValue({ merged, proposta, annuncio }, ["merged.immobile.cap", "annuncio.cap", "proposta.cap"]);
+  const rilancioMinimoValue = firstValue({ merged, annuncio }, ["merged.gara.rilancio_minimo", "annuncio.rilancio_minimo"], 1000);
+  const prezzoBaseValue = firstValue({ merged, proposta, annuncio }, [
+    "merged.gara.offerta_minima",
+    "annuncio.offerta_minima",
+    "annuncio.prezzo_base",
+    "proposta.prezzo_offerto",
+  ]);
+  const extractedOffertaMinimaValue = firstValue({ merged, annuncio, proposta }, [
+    "merged.gara.offerta_minima_ammissibile",
+    "annuncio.offerta_minima_ammissibile",
+    "proposta.prezzo_offerto",
+  ], null);
+  const prezzoBaseNumber = moneyNumber(prezzoBaseValue);
+  const rilancioMinimoNumber = moneyNumber(rilancioMinimoValue) ?? 1000;
+  const extractedOffertaMinimaNumber = moneyNumber(extractedOffertaMinimaValue);
+  const offertaMinimaValue =
+    prezzoBaseNumber !== null &&
+    (extractedOffertaMinimaNumber === null || extractedOffertaMinimaNumber <= prezzoBaseNumber)
+      ? prezzoBaseNumber + rilancioMinimoNumber
+      : extractedOffertaMinimaValue;
+  const prezzoBaseEur = money(prezzoBaseValue);
+  const offertaMinimaEur = money(offertaMinimaValue);
+  const rilancioMinimoEur = money(rilancioMinimoValue);
+  const ibanCauzione = firstValue({ merged, proposta }, [
+    "merged.deposito.iban_beneficiario",
+    "proposta.iban_beneficiario",
+  ]);
+  const beneficiarioCauzione = firstValue({ merged, proposta }, [
+    "merged.deposito.beneficiario_cauzione",
+    "proposta.beneficiario_cauzione",
+  ]);
 
   return {
     comune,
@@ -117,32 +154,28 @@ export function buildDocumentFields(event) {
     catasto_categoria: firstValue({ proposta, annuncio }, ["proposta.catasto.categoria", "annuncio.categoria_macro"]),
     catasto_identificazione: catastoIdentification(proposta),
     stato_occupazione: firstValue({ annuncio }, ["annuncio.stato"], "non indicato"),
-    prezzo_base_eur: money(firstValue({ merged, proposta, annuncio }, [
-      "merged.gara.offerta_minima",
-      "annuncio.offerta_minima",
-      "annuncio.prezzo_base",
-      "proposta.prezzo_offerto",
-    ])),
-    offerta_minima_eur: money(firstValue({ merged, annuncio, proposta }, [
-      "merged.gara.offerta_minima_ammissibile",
-      "annuncio.offerta_minima_ammissibile",
-      "proposta.prezzo_offerto",
-    ])),
-    rilancio_minimo_eur: money(firstValue({ merged, annuncio }, ["merged.gara.rilancio_minimo", "annuncio.rilancio_minimo"], 1000)),
-    iban_cauzione: firstValue({ proposta }, ["proposta.iban_beneficiario"]),
-    beneficiario_cauzione: firstValue({ proposta }, ["proposta.beneficiario_cauzione"]),
+    prezzo_base: prezzoBaseEur,
+    prezzo_base_eur: prezzoBaseEur,
+    offerta_minima: offertaMinimaEur,
+    offerta_minima_eur: offertaMinimaEur,
+    rilancio_minimo: rilancioMinimoEur,
+    rilancio_minimo_eur: rilancioMinimoEur,
+    iban: ibanCauzione,
+    iban_cauzione: ibanCauzione,
+    beneficiario: beneficiarioCauzione,
+    beneficiario_cauzione: beneficiarioCauzione,
     codice_pratica: codicePratica,
     proviggione: firstValue({ annuncio }, ["annuncio.provvigione_percentuale"], 3),
-    data_apertura_pubblicazione: toItalianShortTextDate(firstValue({ result }, ["result.data_apertura_pubblicazione"], currentItalianDate())),
-    data_termine_deposito: toItalianShortTextDate(firstValue({ merged, annuncio }, [
+    data_apertura_pubblicazione: toItalianTextDate(firstValue({ result }, ["result.data_apertura_pubblicazione"], currentItalianDate())),
+    data_termine_deposito: toItalianTextDate(firstValue({ merged, annuncio }, [
       "merged.deposito.data_termine_deposito",
       "annuncio.data_termine_deposito",
     ])),
     ora_termine_deposito: firstValue({ annuncio }, ["annuncio.ora_termine_deposito"], "12:00"),
-    data_gara: toItalianShortTextDate(firstValue({ merged, annuncio }, ["merged.gara.data_gara", "annuncio.data_vendita"])),
+    data_gara: toItalianTextDate(firstValue({ merged, annuncio }, ["merged.gara.data_gara", "annuncio.data_vendita"])),
     ora_gara_inizio: firstValue({ merged, annuncio }, ["merged.gara.ora_inizio", "annuncio.ora_gara_inizio"], "09:00"),
     ora_gara_fine: firstValue({ merged, annuncio }, ["merged.gara.ora_fine", "annuncio.ora_gara_fine"], "12:00"),
-    termine_richieste_visite_data: toItalianShortTextDate(firstValue({ merged, annuncio }, [
+    termine_richieste_visite_data: toItalianTextDate(firstValue({ merged, annuncio }, [
       "merged.visite.termine_data",
       "annuncio.termine_richieste_visite_data",
     ])),

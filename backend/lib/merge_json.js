@@ -15,6 +15,22 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
     );
   };
   const firstClean = (...values) => values.find((value) => !isBlankPlaceholder(value)) ?? null;
+  const toNumber = (value) => {
+    if (value === null || value === undefined || value === "-") return null;
+    const number = typeof value === "number" ? value : Number(String(value).replace(/\./g, "").replace(",", "."));
+    return Number.isFinite(number) ? number : null;
+  };
+  const rilancioMinimo = get(annuncio, "rilancio_minimo", null) ?? 1000;
+  const prezzoBase = get(annuncio, "offerta_minima", null) || get(annuncio, "prezzo_base", null);
+  const offertaMinimaAmmissibileRaw = get(annuncio, "offerta_minima_ammissibile", null);
+  const prezzoBaseNumber = toNumber(prezzoBase);
+  const offertaMinimaAmmissibileNumber = toNumber(offertaMinimaAmmissibileRaw);
+  const rilancioMinimoNumber = toNumber(rilancioMinimo) ?? 1000;
+  const offertaMinimaAmmissibile =
+    prezzoBaseNumber !== null &&
+    (offertaMinimaAmmissibileNumber === null || offertaMinimaAmmissibileNumber <= prezzoBaseNumber)
+      ? prezzoBaseNumber + rilancioMinimoNumber
+      : offertaMinimaAmmissibileRaw;
 
   // separa indirizzo e comune, gestendo formati senza virgole (es. "Foligno (PG) Via ...")
   const splitIndirizzoComune = (val) => {
@@ -144,12 +160,9 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
       ora: get(annuncio, "ora_vendita", null),
     },
     gara: {
-      offerta_minima: get(annuncio, "offerta_minima", null) || get(annuncio, "prezzo_base", null),
-      offerta_minima_ammissibile:
-        get(annuncio, "offerta_minima_ammissibile", null) ||
-        get(annuncio, "offerta_minima", null) ||
-        get(annuncio, "prezzo_base", null),
-      rilancio_minimo: get(annuncio, "rilancio_minimo", null),
+      offerta_minima: prezzoBase,
+      offerta_minima_ammissibile: offertaMinimaAmmissibile,
+      rilancio_minimo: rilancioMinimo,
       ora_inizio: get(annuncio, "ora_gara_inizio", null) || get(annuncio, "ora_vendita", null) || null,
       ora_fine: get(annuncio, "ora_gara_fine", null),
     },

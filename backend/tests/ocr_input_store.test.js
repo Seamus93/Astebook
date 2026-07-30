@@ -24,6 +24,12 @@ test("OCR input store exposes buffered attachments through an unguessable public
     });
 
     assert.match(input.url, /^https:\/\/astebook\.example\/api\/v1\/ocr-inputs\/[a-f0-9]{32}\/Polis_Proposta_test\.pdf$/);
+    assert.equal(input.diagnostics.ocr_url_origin, "https://astebook.example");
+    assert.equal(input.diagnostics.ocr_url_path.includes(input.token), false);
+    assert.match(input.diagnostics.ocr_url_path, /^\/api\/v1\/ocr-inputs\/[a-f0-9]{4}\*\*\*[a-f0-9]{4}\/Polis_Proposta_test\.pdf$/);
+    assert.equal(input.diagnostics.ocr_content_type, "application/pdf");
+    assert.equal(input.diagnostics.ocr_file_size, Buffer.from("%PDF cached").length);
+    assert.ok(input.diagnostics.ocr_url_expires_at);
 
     const read = await readOcrInput({
       token: input.token,

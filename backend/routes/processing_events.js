@@ -41,7 +41,42 @@ function publicResult(result) {
   if (!result || typeof result !== "object") return result;
   const next = { ...result };
   delete next.attachment_text_cache;
+  delete next.extraction_diagnostics;
   return next;
+}
+
+function textDebugSnapshot(text, maxChars = 12000) {
+  const value = String(text || "");
+  if (value.length <= maxChars) {
+    return {
+      text: value,
+      text_truncated: false,
+      text_length: value.length,
+    };
+  }
+  const chunk = Math.floor(maxChars / 2);
+  return {
+    text: null,
+    text_truncated: true,
+    text_length: value.length,
+    text_head: value.slice(0, chunk),
+    text_tail: value.slice(-chunk),
+  };
+}
+
+function attachmentTextCacheDebug(cache) {
+  return Object.entries(cache || {}).map(([cacheKey, entry]) => ({
+    cache_key: cacheKey,
+    file_name: entry.file_name || null,
+    kind: entry.kind || null,
+    source: entry.source || null,
+    format: entry.format || null,
+    mime_type: entry.mime_type || null,
+    size: entry.size || null,
+    text_length: entry.text_length || String(entry.text || "").length,
+    cached_at: entry.cached_at || null,
+    text: textDebugSnapshot(entry.text || ""),
+  }));
 }
 
 function publicEvent(event) {
@@ -105,6 +140,24 @@ export function registerProcessingEventRoutes(app, {
       return;
     }
     res.json({ ok: true, event: publicEvent(event) });
+  });
+
+  app.get("/api/v1/processing-events/:id/extraction-debug", requireProcessingUiToken, async (req, res) => {
+    const event = await getProcessingEvent(req.params.id);
+    if (!event) {
+      res.status(404).json({ ok: false, error: "Processing event not found" });
+      return;
+    }
+    const result = event.result || {};
+    res.json({
+      ok: true,
+      event_id: event.id,
+      codice_pratica: result.codice_pratica || null,
+      ready_for_zapier: result.ready_for_zapier === true,
+      attachment_text_cache: attachmentTextCacheDebug(result.attachment_text_cache),
+      extraction_diagnostics: result.extraction_diagnostics || null,
+      missing_fields: result.missing_fields || event.error?.missing_fields || [],
+    });
   });
 
   app.delete("/api/v1/processing-events/:id", requireProcessingUiToken, async (req, res) => {

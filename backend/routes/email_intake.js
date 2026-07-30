@@ -9,6 +9,7 @@ export function createEmailIntakeHandlers({
     if (!result || typeof result !== "object") return result;
     const next = { ...result };
     delete next.attachment_text_cache;
+    delete next.extraction_diagnostics;
     return next;
   }
 

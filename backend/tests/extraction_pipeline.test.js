@@ -305,6 +305,11 @@ test("buffered PDF attachments are exposed to PDF-app OCR through a temporary UR
     assert.match(requestedFileUrl, /^https:\/\/astebook\.example\/api\/v1\/ocr-inputs\/[a-f0-9]{32}\/Polis_Proposta_test\.pdf$/);
     assert.equal(result.extracted.proposta.raw_length, "Proposta OCR vera ".repeat(80).length);
     assert.ok(Object.values(result.attachment_text_cache).some((entry) => entry.source === "pdf_app"));
+    assert.equal(result.extraction_diagnostics.ocr_texts[0].file_name, "Polis Proposta test.pdf");
+    assert.equal(result.extraction_diagnostics.ocr_texts[0].source, "pdf_app");
+    assert.equal(result.extraction_diagnostics.proposta_agent_runs[0].agent_id, "proposta");
+    assert.equal(result.extraction_diagnostics.proposta_agent_runs[0].schema_name, "PropostaSchema");
+    assert.ok(Array.isArray(result.extraction_diagnostics.proposta_field_matrix));
   } finally {
     globalThis.fetch = previousFetch;
     if (previousProjectUrl === undefined) delete process.env.PROJECT_URL;

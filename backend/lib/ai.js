@@ -154,6 +154,62 @@ async function buildAiMemoryContext(scope) {
   return buildExtractionFeedbackContext({ scope, limit });
 }
 
+function textDiagnosticSnapshot(text, maxChars = 12000) {
+  const value = String(text || "");
+  if (value.length <= maxChars) {
+    return {
+      text: value,
+      text_truncated: false,
+      text_length: value.length,
+    };
+  }
+  const chunk = Math.floor(maxChars / 2);
+  return {
+    text: null,
+    text_truncated: true,
+    text_length: value.length,
+    text_head: value.slice(0, chunk),
+    text_tail: value.slice(-chunk),
+  };
+}
+
+function requiredSchemaPaths(schema, prefix = "") {
+  if (!schema || typeof schema !== "object") return [];
+  const required = Array.isArray(schema.required) ? schema.required : [];
+  const paths = required.map((key) => (prefix ? `${prefix}.${key}` : key));
+  for (const [key, child] of Object.entries(schema.properties || {})) {
+    const childPrefix = prefix ? `${prefix}.${key}` : key;
+    paths.push(...requiredSchemaPaths(child, childPrefix));
+    if (child?.items) paths.push(...requiredSchemaPaths(child.items, `${childPrefix}[]`));
+  }
+  return paths;
+}
+
+function schemaValidationDiagnostics(value, schema) {
+  if (!value || typeof value !== "object") {
+    return ["Risposta non oggetto JSON."];
+  }
+  return requiredSchemaPaths(schema)
+    .filter((path) => !path.includes("[]"))
+    .filter((path) => {
+      const found = path.split(".").reduce((current, key) => current?.[key], value);
+      return found === undefined;
+    })
+    .map((path) => `Campo richiesto mancante nel JSON: ${path}`);
+}
+
+function parseJsonResponseContent(raw) {
+  try {
+    return { json: JSON.parse(raw), parse_error: null, parse_strategy: "json_parse" };
+  } catch (error) {
+    const m = String(raw || "").match(/\{[\s\S]*\}$/);
+    if (m) {
+      return { json: JSON.parse(m[0]), parse_error: error.message || String(error), parse_strategy: "json_object_suffix" };
+    }
+    return { json: {}, parse_error: error.message || String(error), parse_strategy: "failed" };
+  }
+}
+
 /* ---------------- SCHEMI ---------------- */
 
 export const schemaAnnuncio = {
@@ -321,12 +377,44 @@ export const schemaCodicePratica = {
 
 /* --------------- CALLERS (Responses API corretto) --------------- */
 
-async function callJsonSchema({ prompt, content, fileName, schema, feedbackContext = "" }) {
+async function callJsonSchema({ prompt, content, fileName, schema, feedbackContext = "", diagnostics = null }) {
   if (process.env.ASTEBOOK_AI_MOCK === "1") {
-    return mockJsonFromSchema(schema.schema, { content, fileName });
+    const json = mockJsonFromSchema(schema.schema, { content, fileName });
+    if (diagnostics) {
+      diagnostics.mock = true;
+      diagnostics.schema_name = schema.name;
+      diagnostics.raw_response = JSON.stringify(json);
+      diagnostics.output_json = structuredClone(json);
+      diagnostics.schema_validation_errors = schemaValidationDiagnostics(json, schema.schema);
+    }
+    return json;
   }
 
   const model = await getEffectiveAiModel();
+  const userContent = `${prompt}
+
+${feedbackContext ? `Memoria di correzioni umane:\n${feedbackContext}\n` : ""}
+
+Schema JSON richiesto:
+${JSON.stringify(schema.schema)}
+
+[file_pdf=${fileName ?? "file.pdf"}]
+
+${content}`;
+
+  if (diagnostics) {
+    diagnostics.model = model;
+    diagnostics.prompt_name = diagnostics.prompt_name || schema.name;
+    diagnostics.schema_name = schema.name;
+    diagnostics.schema = schema.schema;
+    diagnostics.feedback_context_length = String(feedbackContext || "").length;
+    diagnostics.feedback_context = textDiagnosticSnapshot(feedbackContext || "");
+    diagnostics.input_text_length = String(content || "").length;
+    diagnostics.input_text = textDiagnosticSnapshot(content || "");
+    diagnostics.sent_user_message_length = userContent.length;
+    diagnostics.sent_user_message = textDiagnosticSnapshot(userContent);
+  }
+
   const resp = await createChatCompletion({
     model,
     temperature: 0,
@@ -338,28 +426,23 @@ async function callJsonSchema({ prompt, content, fileName, schema, feedbackConte
       },
       {
         role: "user",
-        content: `${prompt}
-
-${feedbackContext ? `Memoria di correzioni umane:\n${feedbackContext}\n` : ""}
-
-Schema JSON richiesto:
-${JSON.stringify(schema.schema)}
-
-[file_pdf=${fileName ?? "file.pdf"}]
-
-${content}`,
+        content: userContent,
       },
     ],
   });
 
   const raw = resp.choices?.[0]?.message?.content ?? "";
+  const parsed = parseJsonResponseContent(raw);
 
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const m = raw.match(/\{[\s\S]*\}$/);
-    return m ? JSON.parse(m[0]) : {};
+  if (diagnostics) {
+    diagnostics.raw_response = raw;
+    diagnostics.parse_error = parsed.parse_error;
+    diagnostics.parse_strategy = parsed.parse_strategy;
+    diagnostics.output_json = structuredClone(parsed.json);
+    diagnostics.schema_validation_errors = schemaValidationDiagnostics(parsed.json, schema.schema);
   }
+
+  return parsed.json;
 }
 
 export async function aiExtractProvvigionePercentuale({ text, fileName }) {
@@ -446,7 +529,7 @@ export async function aiExtractIndirizzo({ address, context = "" }) {
   return json;
 }
 
-export async function aiExtractProposta({ text, fileName }) {
+export async function aiExtractProposta({ text, fileName, diagnostics = null }) {
   const content = clampText(text || "");
   const red = preExtractRedazione(content);
   const ibanGuess = preExtractIban(content);
@@ -454,6 +537,19 @@ export async function aiExtractProposta({ text, fileName }) {
   const catastoVociGuess = preExtractPropostaCatastoVoci(content);
   const indirizzoGuess = preExtractPropostaIndirizzo(content);
   const feedbackContext = await buildAiMemoryContext("proposta");
+  if (diagnostics) {
+    diagnostics.agent_id = "proposta";
+    diagnostics.file_name = fileName || "proposta.pdf";
+    diagnostics.prompt_name = "PROMPT_PROPOSTA";
+    diagnostics.normalizations = [
+      { name: "clampText", max_chars: 120000, input_length: String(text || "").length, output_length: content.length },
+      { name: "deterministic_redazione_fallback", value: red },
+      { name: "deterministic_iban_fallback", value: ibanGuess },
+      { name: "deterministic_catasto_fallback", value: catastoGuess },
+      { name: "deterministic_catasto_voci_fallback", count: catastoVociGuess.length, value: catastoVociGuess },
+      { name: "deterministic_indirizzo_fallback", value: indirizzoGuess },
+    ];
+  }
 
   const json = await callJsonSchema({
     prompt: PROMPT_PROPOSTA,
@@ -461,6 +557,7 @@ export async function aiExtractProposta({ text, fileName }) {
     fileName: fileName || "proposta.pdf",
     schema: schemaProposta,
     feedbackContext,
+    diagnostics,
   });
 
   json.raw_length = content.length;
@@ -475,6 +572,10 @@ export async function aiExtractProposta({ text, fileName }) {
   json.catasto = normalizePropostaCatasto(json.catasto, catastoGuess);
   if (!Array.isArray(json.catasto_voci) || json.catasto_voci.length === 0) {
     json.catasto_voci = catastoVociGuess.length ? catastoVociGuess : null;
+  }
+
+  if (diagnostics) {
+    diagnostics.output_after_fallbacks = structuredClone(json);
   }
 
   return json;

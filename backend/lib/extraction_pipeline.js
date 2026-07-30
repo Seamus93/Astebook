@@ -38,6 +38,122 @@ export function createAiExtractionPipeline({
   getProcessingEvent,
   updateProcessingEvent,
 }) {
+  const proposalDebugFields = [
+    { path: "extracted.proposta.proponente.nominativo", label: "Proponente - Nominativo", aliases: ["proponente", "offerente", "nominativo", "sottoscritto"] },
+    { path: "extracted.proposta.indirizzo_immobile", label: "Indirizzo Immobile", aliases: ["immobile", "indirizzo", "via", "viale", "piazza", "corso"] },
+    { path: "extracted.proposta.prezzo_offerto", label: "Prezzo Offerto", aliases: ["prezzo offerto", "importo", "offerta", "euro"] },
+    { path: "extracted.proposta.iban_beneficiario", label: "IBAN Beneficiario", aliases: ["iban", "beneficiario"] },
+    { path: "extracted.proposta.catasto.foglio", label: "Catasto - Foglio", aliases: ["foglio", "fg"] },
+    { path: "extracted.proposta.catasto.particella", label: "Catasto - Particella", aliases: ["particella", "part.", "mappale", "mapp."] },
+    { path: "extracted.proposta.catasto.subalterno", label: "Catasto - Subalterno", aliases: ["subalterno", "sub."] },
+  ];
+
+  function cloneDiagnostic(value) {
+    if (value === undefined) return null;
+    return structuredClone(value);
+  }
+
+  function valueAtDiagnosticPath(obj, path) {
+    return String(path || "")
+      .split(".")
+      .filter(Boolean)
+      .reduce((current, key) => current?.[key], obj);
+  }
+
+  function textDiagnosticSnapshot(text, maxChars = 12000) {
+    const value = String(text || "");
+    if (value.length <= maxChars) {
+      return {
+        text: value,
+        text_truncated: false,
+        text_length: value.length,
+      };
+    }
+    const chunk = Math.floor(maxChars / 2);
+    return {
+      text: null,
+      text_truncated: true,
+      text_length: value.length,
+      text_head: value.slice(0, chunk),
+      text_tail: value.slice(-chunk),
+    };
+  }
+
+  function ensureExtractionDiagnostics(result) {
+    result.extraction_diagnostics = result.extraction_diagnostics || {
+      ocr_texts: [],
+      proposta_agent_runs: [],
+      proposta_field_matrix: [],
+    };
+    return result.extraction_diagnostics;
+  }
+
+  function recordOcrTextDiagnostics(result, resolvedAttachment, text, source, transformations = []) {
+    if (resolvedAttachment?.kind !== "proposta") return;
+    const diagnostics = ensureExtractionDiagnostics(result);
+    diagnostics.ocr_texts.push({
+      file_name: resolvedAttachment.file_name,
+      kind: resolvedAttachment.kind || null,
+      source,
+      format: resolvedAttachment.format || null,
+      text_length: String(text || "").length,
+      text: textDiagnosticSnapshot(text),
+      transformations,
+    });
+  }
+
+  function fieldPresentInOcr(text, aliases = []) {
+    const normalized = String(text || "").toLowerCase();
+    return aliases.some((alias) => normalized.includes(String(alias).toLowerCase()));
+  }
+
+  function classifyProposalLoss({ ocrPresent, agentValue, mergedValue, finalValue, finalMissing }) {
+    if (!ocrPresent) return "A. dato assente nel PDF oppure non riconoscibile nel testo OCR";
+    if (isMissingValue(agentValue)) return "C. dato presente nel testo OCR ma non estratto dal Proposta Agent";
+    if (!isMissingValue(agentValue) && isMissingValue(mergedValue)) return "D. AI lo estrae ma il merge lo perde";
+    if (!isMissingValue(mergedValue) && isMissingValue(finalValue)) return "E. merge corretto ma validazione/finale lo annulla";
+    if (finalMissing) return "F. campo richiesto per ready_for_zapier ma non disponibile nel finale";
+    return "ok";
+  }
+
+  function buildProposalFieldMatrix({ ocrText, agentOutput, mergedResult, finalResult }) {
+    const missingPaths = new Set((finalResult.missing_fields || []).map((field) => field.path));
+    return proposalDebugFields.map((field) => {
+      const agentPath = field.path.replace(/^extracted\.proposta\./, "");
+      const agentValue = valueAtDiagnosticPath(agentOutput, agentPath);
+      const mergedValue = valueAtDiagnosticPath(mergedResult, field.path);
+      const finalValue = valueAtDiagnosticPath(finalResult, field.path);
+      const ocrPresent = fieldPresentInOcr(ocrText, field.aliases);
+      const finalMissing = missingPaths.has(field.path);
+      return {
+        campo: field.label,
+        path: field.path,
+        ocr_presente: ocrPresent,
+        proposta_agent: agentValue === undefined ? null : agentValue,
+        merged: mergedValue === undefined ? null : mergedValue,
+        finale: finalValue === undefined ? null : finalValue,
+        motivo_perdita: classifyProposalLoss({
+          ocrPresent,
+          agentValue,
+          mergedValue,
+          finalValue,
+          finalMissing,
+        }),
+      };
+    });
+  }
+
+  function finalResultDiagnosticSnapshot(result) {
+    const snapshot = cloneDiagnostic({
+      ready_for_zapier: result.ready_for_zapier,
+      missing_fields: result.missing_fields || [],
+      extracted: result.extracted || {},
+      merged: result.merged || null,
+      zapier_response: result.zapier_response || null,
+    });
+    return snapshot;
+  }
+
   function attachmentTextCacheKey(resolvedAttachment) {
     const hash = resolvedAttachment?.buffer?.length
       ? createHash("sha256").update(resolvedAttachment.buffer).digest("hex")
@@ -94,6 +210,9 @@ export function createAiExtractionPipeline({
     }
     result.attachment_text_cache = result.attachment_text_cache || {};
     result.attachment_text_cache[key] = entry;
+    recordOcrTextDiagnostics(result, resolvedAttachment, cleanText, source, [
+      { name: source === "pdf_app" ? "PDF-app OCR raw text" : `${source} text extraction`, changed_text: false },
+    ]);
   }
 
   function recordOcrSummary(result, resolvedAttachment, status, data = {}) {
@@ -353,18 +472,49 @@ export function createAiExtractionPipeline({
   }
 
   async function extractPropostaAiFirst({ text, fileName, eventId, result }) {
+    const diagnostics = ensureExtractionDiagnostics(result);
+    const agentRun = {
+      agent_id: "proposta",
+      file_name: fileName,
+      started_at: new Date().toISOString(),
+      input_text_length: String(text || "").length,
+    };
+    diagnostics.proposta_agent_runs.push(agentRun);
     try {
       await updateProcessingEvent(eventId, {}, {
         message: "Proposal AI extraction started",
-        data: { file_name: fileName, text_length: String(text || "").length },
+        data: {
+          file_name: fileName,
+          text_length: String(text || "").length,
+          agent_id: "proposta",
+        },
       });
-      const extracted = await aiExtractProposta({ text, fileName });
+      const extracted = await aiExtractProposta({ text, fileName, diagnostics: agentRun });
+      agentRun.completed_at = new Date().toISOString();
+      agentRun.raw_output_json = cloneDiagnostic(agentRun.output_json);
+      agentRun.normalized_output_json = cloneDiagnostic(agentRun.output_after_fallbacks);
+      agentRun.null_fields = Object.entries(extracted || {})
+        .filter(([, value]) => value === null)
+        .map(([key]) => key);
       await updateProcessingEvent(eventId, {}, {
         message: "Proposal AI extraction completed",
-        data: { file_name: fileName },
+        data: {
+          file_name: fileName,
+          agent_id: "proposta",
+          model: agentRun.model || null,
+          prompt_name: agentRun.prompt_name || null,
+          schema_name: agentRun.schema_name || null,
+          input_text_length: agentRun.input_text_length,
+          feedback_context_length: agentRun.feedback_context_length || 0,
+          parse_error: agentRun.parse_error || null,
+          schema_validation_errors: agentRun.schema_validation_errors || [],
+          output_json: agentRun.normalized_output_json,
+        },
       });
       return extracted;
     } catch (error) {
+      agentRun.failed_at = new Date().toISOString();
+      agentRun.error = error.message || String(error);
       await updateProcessingEvent(eventId, {}, {
         level: "error",
         message: "Proposal AI extraction failed",
@@ -752,7 +902,16 @@ export function createAiExtractionPipeline({
         result,
       });
       extractedProposta.source_format = "text";
+      const diagnostics = ensureExtractionDiagnostics(result);
+      const agentRun = diagnostics.proposta_agent_runs.at(-1);
+      if (agentRun) {
+        agentRun.before_merge_result_proposta = cloneDiagnostic(result.extracted.proposta);
+        agentRun.proposta_agent_for_merge = cloneDiagnostic(extractedProposta);
+      }
       result.extracted.proposta = mergeExtractedProposta(result.extracted.proposta, extractedProposta);
+      if (agentRun) {
+        agentRun.after_merge_result_proposta = cloneDiagnostic(result.extracted.proposta);
+      }
       await updateProcessingEvent(event.id, { result }, {
         message: "Proposal body OCR extracted",
         data: extractedProposta,
@@ -942,7 +1101,16 @@ export function createAiExtractionPipeline({
             result,
           });
           extractedProposta.source_format = resolvedAttachment.format;
+          const diagnostics = ensureExtractionDiagnostics(result);
+          const agentRun = diagnostics.proposta_agent_runs.at(-1);
+          if (agentRun) {
+            agentRun.before_merge_result_proposta = cloneDiagnostic(result.extracted.proposta);
+            agentRun.proposta_agent_for_merge = cloneDiagnostic(extractedProposta);
+          }
           result.extracted.proposta = mergeExtractedProposta(result.extracted.proposta, extractedProposta);
+          if (agentRun) {
+            agentRun.after_merge_result_proposta = cloneDiagnostic(result.extracted.proposta);
+          }
           await updateProcessingEvent(event.id, { result }, {
             message: "Proposal extracted",
             data: extractedProposta,
@@ -1015,6 +1183,23 @@ export function createAiExtractionPipeline({
     finalizeZapierResult(result);
     result.merged = await buildMergedFromExtractionResult(result);
     result.zapier_response.merged = result.merged;
+    if (result.extraction_diagnostics?.proposta_agent_runs?.length) {
+      const diagnostics = ensureExtractionDiagnostics(result);
+      const lastProposalRun = diagnostics.proposta_agent_runs.at(-1);
+      const ocrText = diagnostics.ocr_texts.at(-1)?.text?.text ||
+        [
+          diagnostics.ocr_texts.at(-1)?.text?.text_head,
+          diagnostics.ocr_texts.at(-1)?.text?.text_tail,
+        ].filter(Boolean).join("\n");
+      diagnostics.final_result = finalResultDiagnosticSnapshot(result);
+      diagnostics.proposta_field_matrix = buildProposalFieldMatrix({
+        ocrText,
+        agentOutput: lastProposalRun?.proposta_agent_for_merge || lastProposalRun?.normalized_output_json || {},
+        mergedResult: result,
+        finalResult: result,
+      });
+      lastProposalRun.final_missing_fields = cloneDiagnostic(result.missing_fields || []);
+    }
     const extractionError = buildMissingFieldsError(result);
 
     await updateProcessingEvent(

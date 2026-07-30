@@ -44,6 +44,14 @@ export function registerAdminSettingsRoutes(app, {
           process.env.PDF_APP_OCR_ENDPOINT || settings.pdf_app_ocr_endpoint || "",
         pdf_app_job_endpoint:
           process.env.PDF_APP_JOB_ENDPOINT || settings.pdf_app_job_endpoint || "",
+        ocr_public_base_url:
+          process.env.OCR_PUBLIC_BASE_URL ||
+          process.env.ASTEBOOK_PUBLIC_URL ||
+          process.env.PROJECT_URL ||
+          process.env.PUBLIC_BASE_URL ||
+          process.env.PUBLIC_URL ||
+          settings.ocr_public_base_url ||
+          "",
         document_template_url:
           process.env.DOCUMENT_TEMPLATE_URL || settings.document_template_url || "",
         document_send_to:
@@ -107,6 +115,7 @@ export function registerAdminSettingsRoutes(app, {
     assignIfFilled("pdf_app_api_key");
     assignIfFilled("pdf_app_ocr_endpoint");
     assignIfFilled("pdf_app_job_endpoint");
+    assignIfFilled("ocr_public_base_url");
     assignIfFilled("document_template_url");
     assignIfFilled("smtp_host");
     assignIfFilled("smtp_port");

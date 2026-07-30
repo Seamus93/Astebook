@@ -28,6 +28,7 @@ const defaultConfig = {
     pdf_app_api_key: "",
     pdf_app_ocr_endpoint: "",
     pdf_app_job_endpoint: "",
+    ocr_public_base_url: "",
     document_template_url: "",
     document_send_to: "",
     smtp_host: "",

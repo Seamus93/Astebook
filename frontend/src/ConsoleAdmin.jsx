@@ -102,6 +102,7 @@ const settingsSections = [
           ["pdfAppApiKey", "pdf_app_api_key", "PDF-app API Key", "API key PDF-app.net", "off", "password", "Chiave API usata per inviare PDF e immagini al servizio OCR."],
           ["pdfAppOcrEndpoint", "pdf_app_ocr_endpoint", "PDF-app OCR Endpoint", "Endpoint OCR 2.0 PDF-app.net", "off", "text", "Endpoint usato per avviare l'OCR sui documenti ricevuti."],
           ["pdfAppJobEndpoint", "pdf_app_job_endpoint", "PDF-app Job Endpoint", "Endpoint polling job async, opzionale", "off", "text", "Endpoint opzionale usato per controllare lo stato dei job OCR asincroni."],
+          ["ocrPublicBaseUrl", "ocr_public_base_url", "OCR Public Base URL", "https://tuo-dominio.it", "off", "text", "URL pubblico HTTPS di Astebook usato da PDF-app per scaricare temporaneamente gli allegati OCR."],
         ],
       },
     ],

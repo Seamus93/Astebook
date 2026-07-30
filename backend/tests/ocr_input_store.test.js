@@ -14,7 +14,9 @@ test("OCR input store exposes buffered attachments through an unguessable public
   process.env.PROJECT_URL = "https://astebook.example";
 
   try {
-    const { createOcrInputFromBuffer, readOcrInput } = await import(`../lib/ocr_input_store.js?test=${Date.now()}`);
+    const { createOcrInputFromBuffer, getOcrPublicBaseUrl, readOcrInput } =
+      await import(`../lib/ocr_input_store.js?test=${Date.now()}`);
+    assert.equal(await getOcrPublicBaseUrl(), "https://astebook.example");
     const input = await createOcrInputFromBuffer({
       buffer: Buffer.from("%PDF cached"),
       fileName: "Polis Proposta test.pdf",

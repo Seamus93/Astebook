@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, join } from "node:path";
+import { getEffectiveSetting } from "./app_config.js";
 
 const runtimeDir = process.env.RUNTIME_DIR || join(process.cwd(), "runtime");
 const ocrInputRoot = process.env.OCR_INPUT_DIR || join(runtimeDir, "ocr-inputs");
@@ -13,13 +14,14 @@ function safeFileName(value) {
     .slice(0, 160) || "attachment";
 }
 
-export function getOcrPublicBaseUrl() {
+export async function getOcrPublicBaseUrl() {
   const direct = String(
     process.env.OCR_PUBLIC_BASE_URL ||
       process.env.ASTEBOOK_PUBLIC_URL ||
       process.env.PROJECT_URL ||
       process.env.PUBLIC_BASE_URL ||
       process.env.PUBLIC_URL ||
+      (await getEffectiveSetting("OCR_PUBLIC_BASE_URL", "ocr_public_base_url")) ||
       ""
   ).trim();
   if (direct) return direct.replace(/\/$/, "");
@@ -34,7 +36,7 @@ export function getOcrPublicBaseUrl() {
 
 export async function createOcrInputFromBuffer({ buffer, fileName, mimeType }) {
   if (!buffer?.length) return null;
-  const baseUrl = getOcrPublicBaseUrl();
+  const baseUrl = await getOcrPublicBaseUrl();
   if (!baseUrl) return null;
 
   const token = randomUUID().replace(/-/g, "");

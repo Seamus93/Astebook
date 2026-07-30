@@ -18,6 +18,7 @@ const settingsInputIds = {
   pdf_app_api_key: "pdfAppApiKey",
   pdf_app_ocr_endpoint: "pdfAppOcrEndpoint",
   pdf_app_job_endpoint: "pdfAppJobEndpoint",
+  ocr_public_base_url: "ocrPublicBaseUrl",
   document_template_url: "documentTemplateUrl",
   document_send_to: "documentSendTo",
   smtp_host: "smtpHost",

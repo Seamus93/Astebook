@@ -73,7 +73,7 @@ export async function collectPipelineConfigurationIssues({ getEffectiveSetting, 
   if (!String(pdfAppOcrEndpoint || "").trim()) {
     issues.push(configIssue("pdf_app_ocr_endpoint", "PDF-app OCR Endpoint", "Configura l'endpoint OCR PDF-app."));
   }
-  if (!String(getOcrPublicBaseUrl() || "").trim()) {
+  if (!String((await getOcrPublicBaseUrl()) || "").trim()) {
     issues.push(configIssue(
       "ocr_public_base_url",
       "OCR Public Base URL",

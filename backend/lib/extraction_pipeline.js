@@ -770,6 +770,9 @@ export function createAiExtractionPipeline({
         resolvedAttachment = await readAttachment(attachment);
       } catch (error) {
         result.notes.push(`${attachment.file_name}: download fallito (${error.message || String(error)})`);
+        recordOcrSummary(result, attachment, "read_failed", {
+          error: error.message || String(error),
+        });
         await updateProcessingEvent(event.id, { result }, {
           level: "error",
           message: "Attachment read failed",
@@ -783,6 +786,9 @@ export function createAiExtractionPipeline({
 
       if (!resolvedAttachment?.buffer) {
         addUniqueNote(result, `${attachment.file_name}: contenuto allegato non disponibile.`);
+        recordOcrSummary(result, attachment, "skipped", {
+          reason: "missing_buffer",
+        });
         await updateProcessingEvent(event.id, { result }, {
           level: "error",
           message: "Attachment skipped",
@@ -810,6 +816,9 @@ export function createAiExtractionPipeline({
       if (existingIndex >= 0) result.attachments[existingIndex] = safeDescriptor;
 
       if (resolvedAttachment.kind === "ignored") {
+        recordOcrSummary(result, resolvedAttachment, "skipped", {
+          reason: "ignored_attachment",
+        });
         await updateProcessingEvent(event.id, { result }, {
           message: "Attachment skipped",
           data: {
@@ -824,6 +833,9 @@ export function createAiExtractionPipeline({
 
       if (resolvedAttachment.format === "png") {
         addUniqueNote(result, `${resolvedAttachment.file_name}: PNG escluso da OCR e analisi AI.`);
+        recordOcrSummary(result, resolvedAttachment, "skipped", {
+          reason: "png_excluded",
+        });
         await updateProcessingEvent(event.id, { result }, {
           message: "Attachment skipped",
           data: {
@@ -838,6 +850,9 @@ export function createAiExtractionPipeline({
 
       if (!["pdf", "docx", "image"].includes(resolvedAttachment.format)) {
         result.notes.push(`Formato non supportato: ${resolvedAttachment.file_name}`);
+        recordOcrSummary(result, resolvedAttachment, "skipped", {
+          reason: "unsupported_format",
+        });
         await updateProcessingEvent(event.id, { result }, {
           message: "Attachment skipped",
           data: {
@@ -927,6 +942,9 @@ export function createAiExtractionPipeline({
       }
 
       result.notes.push(`Allegato non classificato: ${resolvedAttachment.file_name}`);
+      recordOcrSummary(result, resolvedAttachment, "skipped", {
+        reason: "unclassified_attachment",
+      });
       await updateProcessingEvent(event.id, { result }, {
         message: "Attachment skipped",
         data: {

@@ -1,4 +1,17 @@
 ﻿// lib/merge_json.js
+const TECHNICAL_LISTING_STATES = new Set(["attivo", "active", "pubblicato", "published", "online"]);
+
+export function normalizeOccupancyState(state, ...texts) {
+  const combinedText = texts.filter(Boolean).join("\n").toLowerCase();
+  if (/\boccupat[oaie]\s+senza\s+titolo\b/.test(combinedText)) return "occupato senza titolo";
+  if (/\boccupat[oaie]\b/.test(combinedText)) return "occupato";
+  if (/\bliber[oaie]\b/.test(combinedText)) return "libero";
+
+  const clean = String(state || "").trim();
+  if (!clean || TECHNICAL_LISTING_STATES.has(clean.toLowerCase())) return null;
+  return clean;
+}
+
 export function mergeAnnuncioProposta(annuncio, proposta) {
   // helper safe getter
   const get = (o, p, d = null) =>
@@ -171,7 +184,12 @@ export function mergeAnnuncioProposta(annuncio, proposta) {
       termine_ora: get(annuncio, "termine_richieste_visite_ora", null),
     },
     caratteristiche: {
-      stato: get(annuncio, "stato", null) || "libero",
+      stato:
+        normalizeOccupancyState(
+          get(annuncio, "stato", null),
+          get(annuncio, "descrizione", null),
+          get(proposta, "descrizione_immobile", null)
+        ) || "libero",
     },
     catasto: {
       foglio: get(proposta, "catasto.foglio", null),

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { mergeAnnuncioProposta } from "../lib/merge_json.js";
+import { mergeAnnuncioProposta, normalizeOccupancyState } from "../lib/merge_json.js";
 
 test("merge keeps street-only proposal address as address and uses prezzo_base fallback", () => {
   const merged = mergeAnnuncioProposta(
@@ -69,4 +69,21 @@ test("merge ignores proposal address template placeholders", () => {
   assert.equal(merged.immobile.indirizzo, " ");
   assert.equal(merged.immobile.comune, " ");
   assert.equal(merged.immobile.provincia, " ");
+});
+
+test("merge derives occupancy from description instead of technical listing state", () => {
+  const merged = mergeAnnuncioProposta(
+    {
+      stato: "attivo",
+      descrizione: "Immobile attualmente occupato senza titolo. Prezzo Base: Euro 160.000,00",
+    },
+    {}
+  );
+
+  assert.equal(merged.caratteristiche.stato, "occupato senza titolo");
+});
+
+test("occupancy normalization ignores active listing state and detects free property", () => {
+  assert.equal(normalizeOccupancyState("attivo", "Attualmente l'immobile e' libero."), "libero");
+  assert.equal(normalizeOccupancyState("attivo", ""), null);
 });

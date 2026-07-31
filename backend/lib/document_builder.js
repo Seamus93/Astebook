@@ -7,6 +7,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { getEffectiveSetting } from "./app_config.js";
 import { formatMoneyIT, toItalianTextDate } from "./format_utils.js";
+import { normalizeOccupancyState } from "./merge_json.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -153,7 +154,10 @@ export function buildDocumentFields(event) {
     catasto_sub: firstValue({ proposta }, ["proposta.catasto.subalterno"]),
     catasto_categoria: firstValue({ proposta, annuncio }, ["proposta.catasto.categoria", "annuncio.categoria_macro"]),
     catasto_identificazione: catastoIdentification(proposta),
-    stato_occupazione: firstValue({ annuncio }, ["annuncio.stato"], "non indicato"),
+    stato_occupazione:
+      firstValue({ merged }, ["merged.caratteristiche.stato"], null) ||
+      normalizeOccupancyState(annuncio.stato, annuncio.descrizione, proposta.descrizione_immobile) ||
+      "non indicato",
     prezzo_base: prezzoBaseEur,
     prezzo_base_eur: prezzoBaseEur,
     offerta_minima: offertaMinimaEur,

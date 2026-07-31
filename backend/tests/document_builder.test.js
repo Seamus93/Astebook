@@ -141,6 +141,26 @@ test("document fields read deposit data from merged output", () => {
   assert.equal(fields.beneficiario, "SAVOY REOCO S.r.l.");
 });
 
+test("document fields prefer normalized occupancy over technical listing state", () => {
+  const fields = buildDocumentFields({
+    result: {
+      merged: {
+        caratteristiche: {
+          stato: "occupato senza titolo",
+        },
+      },
+      extracted: {
+        annuncio: {
+          stato: "attivo",
+          descrizione: "Immobile attualmente occupato senza titolo.",
+        },
+      },
+    },
+  });
+
+  assert.equal(fields.stato_occupazione, "occupato senza titolo");
+});
+
 test("document fields format dates consistently with full year", () => {
   const fields = buildDocumentFields({
     result: {

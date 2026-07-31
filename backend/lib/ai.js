@@ -651,6 +651,7 @@ export async function aiExtractAnnuncio({ text, fileName }) {
 
   // Fallback ai deterministici se mancanti
   for (const k of Object.keys(extras)) if (json[k] == null) json[k] = extras[k];
+  sanitizeAnnuncioGaraTimesFromText(json, content);
   if (json.indirizzo == null && indirizzoGuess) json.indirizzo = indirizzoGuess;
   json.provvigione_percentuale = normalizePercent(json.provvigione_percentuale);
   if (json.provvigione_percentuale == null) json.provvigione_percentuale = provvigioneGuess;
@@ -658,6 +659,18 @@ export async function aiExtractAnnuncio({ text, fileName }) {
   if (json.descrizione == null) json.descrizione = descrFB || null;
 
   return json;
+}
+
+export function sanitizeAnnuncioGaraTimesFromText(annuncio = {}, text = "") {
+  if (hasExplicitAnnuncioGaraTime(text)) return annuncio;
+  annuncio.ora_gara_inizio = null;
+  annuncio.ora_gara_fine = null;
+  return annuncio;
+}
+
+function hasExplicitAnnuncioGaraTime(text) {
+  const T = text || "";
+  return /(?:gar[ao]|asta|vendita)[\s\w]{0,50}?dalle\s*(?:ore|h)?\s*([01]?\d|2[0-3])[:\.]([0-5]\d)\s*(?:alle|fino\s+alle)\s*(?:ore|h)?\s*([01]?\d|2[0-3])[:\.]([0-5]\d)/i.test(T);
 }
 
 
@@ -888,7 +901,7 @@ function preExtractPropostaCatasto(text) {
 function preExtractAnnuncioGara(text) {
   const T = text || "";
   let ora_gara_inizio = null, ora_gara_fine = null;
-  const m1 = T.match(/gar[ao][\s\w]{0,50}?dalle\s*([01]?\d|2[0-3])[:\.]([0-5]\d)\s*(?:alle|fino\s+alle)\s*([01]?\d|2[0-3])[:\.]([0-5]\d)/i);
+  const m1 = T.match(/(?:gar[ao]|asta|vendita)[\s\w]{0,50}?dalle\s*(?:ore|h)?\s*([01]?\d|2[0-3])[:\.]([0-5]\d)\s*(?:alle|fino\s+alle)\s*(?:ore|h)?\s*([01]?\d|2[0-3])[:\.]([0-5]\d)/i);
   if (m1) { ora_gara_inizio = `${s2(m1[1])}:${s2(m1[2])}`; ora_gara_fine = `${s2(m1[3])}:${s2(m1[4])}`; }
 
   let termine_richieste_visite_data = null, termine_richieste_visite_ora = null;

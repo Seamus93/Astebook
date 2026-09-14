@@ -1,4 +1,4 @@
-﻿// lib/merge_json.js
+// lib/merge_json.js
 const TECHNICAL_LISTING_STATES = new Set(["attivo", "active", "pubblicato", "published", "online"]);
 
 export function normalizeOccupancyState(state, ...texts) {

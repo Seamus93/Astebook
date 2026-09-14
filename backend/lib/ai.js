@@ -1,4 +1,4 @@
-﻿// lib/ai.js
+// lib/ai.js
 // lib/ai.js
 import OpenAI from "openai";
 import dotenv from "dotenv";

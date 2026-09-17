@@ -383,6 +383,177 @@ test("PDF-app OCR errors include plain response details", async () => {
   }
 });
 
+test("empty PDF-app OCR does not call proposal AI", async () => {
+  const previousProjectUrl = process.env.PROJECT_URL;
+  const previousPdfKey = process.env.PDF_APP_API_KEY;
+  const previousPdfEndpoint = process.env.PDF_APP_OCR_ENDPOINT;
+  const previousPdfAsyncMode = process.env.PDF_APP_ASYNC_MODE;
+  const previousRetryBaseDelay = process.env.PDF_APP_RETRY_BASE_DELAY_MS;
+  const previousFetch = globalThis.fetch;
+  process.env.PROJECT_URL = "https://astebook.example";
+  process.env.PDF_APP_API_KEY = "pdf-key";
+  process.env.PDF_APP_OCR_ENDPOINT = "https://pdf-app.example/ocr";
+  process.env.PDF_APP_ASYNC_MODE = "false";
+  process.env.PDF_APP_RETRY_BASE_DELAY_MS = "0";
+
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({ extraction_results: [{ result: [{ page: 1, region_index: 0, result: "   " }] }] }),
+  });
+
+  const events = new Map([["empty-ocr-test", { id: "empty-ocr-test", steps: [] }]]);
+  const pipeline = createAiExtractionPipeline({
+    autoSendMergedDocumentEmail: async () => null,
+    getProcessingEvent: async (id) => events.get(id) || null,
+    updateProcessingEvent: async (id, patch = {}, step = null) => {
+      const current = events.get(id) || { id, steps: [] };
+      const next = {
+        ...current,
+        ...patch,
+        steps: step ? [...(current.steps || []), step] : current.steps || [],
+      };
+      events.set(id, next);
+      return next;
+    },
+  });
+
+  try {
+    const result = await pipeline({
+      eventId: "empty-ocr-test",
+      body: { subject: "EMPTY_OCR_TEST" },
+      files: [
+        {
+          fieldname: "email_attachment_1",
+          originalname: "Proposta vuota.pdf",
+          mimetype: "application/pdf",
+          buffer: Buffer.from("%PDF scannerizzato"),
+        },
+      ],
+      skipAutoSend: true,
+    });
+
+    assert.equal(result.extracted.proposta, null);
+    assert.equal(result.ocr_summary.files["Proposta vuota.pdf"].status, "pdf_app_empty");
+    assert.equal(result.ocr_summary.files["Proposta vuota.pdf"].ocr_final_status, "ocr_empty");
+    assert.equal(result.extraction_diagnostics?.proposta_agent_runs?.length || 0, 0);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousProjectUrl === undefined) delete process.env.PROJECT_URL;
+    else process.env.PROJECT_URL = previousProjectUrl;
+    if (previousPdfKey === undefined) delete process.env.PDF_APP_API_KEY;
+    else process.env.PDF_APP_API_KEY = previousPdfKey;
+    if (previousPdfEndpoint === undefined) delete process.env.PDF_APP_OCR_ENDPOINT;
+    else process.env.PDF_APP_OCR_ENDPOINT = previousPdfEndpoint;
+    if (previousPdfAsyncMode === undefined) delete process.env.PDF_APP_ASYNC_MODE;
+    else process.env.PDF_APP_ASYNC_MODE = previousPdfAsyncMode;
+    if (previousRetryBaseDelay === undefined) delete process.env.PDF_APP_RETRY_BASE_DELAY_MS;
+    else process.env.PDF_APP_RETRY_BASE_DELAY_MS = previousRetryBaseDelay;
+  }
+});
+
+test("async PDF-app OCR populates attachment text cache with full multi-page text", async () => {
+  const previousProjectUrl = process.env.PROJECT_URL;
+  const previousPdfKey = process.env.PDF_APP_API_KEY;
+  const previousPdfEndpoint = process.env.PDF_APP_OCR_ENDPOINT;
+  const previousPdfJobEndpoint = process.env.PDF_APP_JOB_ENDPOINT;
+  const previousPollInterval = process.env.PDF_APP_POLL_INTERVAL_BASE_MS;
+  const previousRetryBaseDelay = process.env.PDF_APP_RETRY_BASE_DELAY_MS;
+  const previousFetch = globalThis.fetch;
+  process.env.PROJECT_URL = "https://astebook.example";
+  process.env.PDF_APP_API_KEY = "pdf-key";
+  process.env.PDF_APP_OCR_ENDPOINT = "https://pdf-app.example/ocr";
+  process.env.PDF_APP_JOB_ENDPOINT = "https://pdf-app.example/jobs/{jobId}";
+  process.env.PDF_APP_POLL_INTERVAL_BASE_MS = "0";
+  process.env.PDF_APP_RETRY_BASE_DELAY_MS = "0";
+
+  globalThis.fetch = async (_url, options = {}) => {
+    if (options.method === "POST") {
+      const body = JSON.parse(options.body || "{}");
+      assert.equal(body.async, true);
+      return {
+        ok: true,
+        status: 202,
+        text: async () => JSON.stringify({ job_id: "job-cache-1", status: "accepted" }),
+      };
+    }
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        status: "completed",
+        extraction_results: [
+          {
+            result: [
+              { page: 2, region_index: 0, result: "Pagina due prezzo Euro 150.000. ".repeat(12) },
+              { page: 1, region_index: 0, result: "Pagina uno proponente Laura Bianchi. ".repeat(12) },
+              { page: 3, region_index: 0, result: "Pagina tre IBAN IT60X0542811101000000123456. ".repeat(12) },
+            ],
+          },
+        ],
+      }),
+    };
+  };
+
+  const events = new Map([["async-cache-test", { id: "async-cache-test", steps: [] }]]);
+  const pipeline = createAiExtractionPipeline({
+    autoSendMergedDocumentEmail: async () => null,
+    getProcessingEvent: async (id) => events.get(id) || null,
+    updateProcessingEvent: async (id, patch = {}, step = null) => {
+      const current = events.get(id) || { id, steps: [] };
+      const next = {
+        ...current,
+        ...patch,
+        steps: step ? [...(current.steps || []), step] : current.steps || [],
+      };
+      events.set(id, next);
+      return next;
+    },
+  });
+
+  try {
+    const result = await pipeline({
+      eventId: "async-cache-test",
+      body: { subject: "ASYNC_CACHE_TEST" },
+      files: [
+        {
+          fieldname: "email_attachment_1",
+          originalname: "Proposta async.pdf",
+          mimetype: "application/pdf",
+          buffer: Buffer.from("%PDF scannerizzato async"),
+        },
+      ],
+      skipAutoSend: true,
+    });
+
+    const cacheEntry = Object.values(result.attachment_text_cache).find((entry) => entry.file_name === "Proposta async.pdf");
+    assert.ok(cacheEntry);
+    assert.equal(cacheEntry.source, "pdf_app");
+    assert.equal(cacheEntry.parser_version, "pdf_app_multi_page_v1");
+    assert.match(cacheEntry.text, /Pagina uno/);
+    assert.match(cacheEntry.text, /Pagina due/);
+    assert.match(cacheEntry.text, /Pagina tre/);
+    assert.equal(cacheEntry.text.indexOf("Pagina uno") < cacheEntry.text.indexOf("Pagina due"), true);
+    assert.equal(cacheEntry.text.indexOf("Pagina due") < cacheEntry.text.indexOf("Pagina tre"), true);
+    assert.equal(result.ocr_summary.files["Proposta async.pdf"].pdf_app_diagnostics.mode, "async");
+    assert.equal(typeof result.ocr_summary.files["Proposta async.pdf"].pdf_app_diagnostics.total_duration_ms, "number");
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousProjectUrl === undefined) delete process.env.PROJECT_URL;
+    else process.env.PROJECT_URL = previousProjectUrl;
+    if (previousPdfKey === undefined) delete process.env.PDF_APP_API_KEY;
+    else process.env.PDF_APP_API_KEY = previousPdfKey;
+    if (previousPdfEndpoint === undefined) delete process.env.PDF_APP_OCR_ENDPOINT;
+    else process.env.PDF_APP_OCR_ENDPOINT = previousPdfEndpoint;
+    if (previousPdfJobEndpoint === undefined) delete process.env.PDF_APP_JOB_ENDPOINT;
+    else process.env.PDF_APP_JOB_ENDPOINT = previousPdfJobEndpoint;
+    if (previousPollInterval === undefined) delete process.env.PDF_APP_POLL_INTERVAL_BASE_MS;
+    else process.env.PDF_APP_POLL_INTERVAL_BASE_MS = previousPollInterval;
+    if (previousRetryBaseDelay === undefined) delete process.env.PDF_APP_RETRY_BASE_DELAY_MS;
+    else process.env.PDF_APP_RETRY_BASE_DELAY_MS = previousRetryBaseDelay;
+  }
+});
+
 test("Apify announcement data replaces extracted announcement while keeping AI fallback", async () => {
   const previousProvider = process.env.IMMOBILIARE_SCRAPER_PROVIDER;
   const previousToken = process.env.APIFY_TOKEN;

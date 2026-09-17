@@ -240,6 +240,44 @@ export function createAiExtractionPipeline({
     result.ocr_summary.files = files;
   }
 
+  function ocrQualityForText(text, format) {
+    const value = String(text || "");
+    const cleanText = value.trim();
+    const nonWhitespaceLength = cleanText.replace(/\s/g, "").length;
+    if (!cleanText) {
+      return {
+        final_status: "ocr_empty",
+        quality: "empty",
+        reason: "ocr_text_empty",
+        text_length: value.length,
+        non_whitespace_length: nonWhitespaceLength,
+      };
+    }
+    if (["pdf", "image"].includes(format) && nonWhitespaceLength < 100) {
+      return {
+        final_status: "ocr_suspicious",
+        quality: "suspicious",
+        reason: "ocr_text_short",
+        text_length: value.length,
+        non_whitespace_length: nonWhitespaceLength,
+      };
+    }
+    return {
+      final_status: "ocr_completed",
+      quality: "ok",
+      reason: null,
+      text_length: value.length,
+      non_whitespace_length: nonWhitespaceLength,
+    };
+  }
+
+  function hasUsableAttachmentText(result, resolvedAttachment, text) {
+    const quality = ocrQualityForText(text, resolvedAttachment.format);
+    if (quality.final_status !== "ocr_empty") return true;
+    addUniqueNote(result, `${resolvedAttachment.file_name}: OCR completato senza testo utilizzabile; AI non avviata.`);
+    return false;
+  }
+
   function localPdfFallbackEnabled() {
     return ["1", "true", "yes"].includes(String(process.env.ALLOW_LOCAL_PDF_FALLBACK || "").trim().toLowerCase());
   }
@@ -357,9 +395,16 @@ export function createAiExtractionPipeline({
             fileName: resolvedAttachment.file_name,
           });
           if (ocrResult.ok && ocrResult.text) {
+            const quality = ocrResult.quality || ocrQualityForText(ocrResult.text, resolvedAttachment.format);
             recordOcrSummary(result, resolvedAttachment, "pdf_app_completed", {
               text_length: ocrResult.text.length,
               job_id: ocrResult.job_id || null,
+              ocr_final_status: quality.status || quality.final_status || "ocr_completed",
+              quality: quality.quality || null,
+              reason: quality.reason || null,
+              non_whitespace_length: quality.non_whitespace_length || null,
+              page_count: quality.page_count || null,
+              pdf_app_diagnostics: ocrResult.diagnostics || null,
             });
             if (eventId) {
               await updateProcessingEvent(eventId, {}, {
@@ -368,6 +413,8 @@ export function createAiExtractionPipeline({
                   file_name: resolvedAttachment.file_name,
                   text_length: ocrResult.text.length,
                   job_id: ocrResult.job_id || null,
+                  ocr_final_status: quality.status || quality.final_status || "ocr_completed",
+                  pdf_app_diagnostics: ocrResult.diagnostics || null,
                 },
               });
             }
@@ -377,6 +424,11 @@ export function createAiExtractionPipeline({
           recordOcrSummary(result, resolvedAttachment, "pdf_app_empty", {
             reason: ocrResult.reason || "Nessun testo OCR restituito.",
             job_id: ocrResult.job_id || null,
+            ocr_final_status: ocrResult.quality?.status || "ocr_empty",
+            quality: ocrResult.quality?.quality || "empty",
+            non_whitespace_length: ocrResult.quality?.non_whitespace_length || 0,
+            page_count: ocrResult.quality?.page_count || null,
+            pdf_app_diagnostics: ocrResult.diagnostics || null,
           });
           if (eventId) {
             await updateProcessingEvent(eventId, {}, {
@@ -385,6 +437,8 @@ export function createAiExtractionPipeline({
                 file_name: resolvedAttachment.file_name,
                 reason: ocrResult.reason || "Nessun testo OCR restituito.",
                 job_id: ocrResult.job_id || null,
+                ocr_final_status: ocrResult.quality?.status || "ocr_empty",
+                pdf_app_diagnostics: ocrResult.diagnostics || null,
               },
             });
           }
@@ -396,6 +450,7 @@ export function createAiExtractionPipeline({
           recordOcrSummary(result, resolvedAttachment, "pdf_app_failed", {
             error: error.message || String(error),
             ocr_url_origin: urlOrigin(ocrFileUrl),
+            ocr_final_status: error.diagnostics?.final_status || "ocr_failed",
             pdf_app_diagnostics: error.diagnostics || null,
           });
           if (eventId) {
@@ -417,7 +472,13 @@ export function createAiExtractionPipeline({
       }
 
       if (!localPdfFallbackEnabled()) {
-        recordOcrSummary(result, resolvedAttachment, "pdf_app_required_no_local_fallback");
+        const existingOcrStatus = result.ocr_summary?.files?.[resolvedAttachment.file_name]?.status;
+        recordOcrSummary(
+          result,
+          resolvedAttachment,
+          existingOcrStatus || "pdf_app_required_no_local_fallback",
+          { local_fallback_disabled: true }
+        );
         addUniqueNote(
           result,
           `${resolvedAttachment.file_name}: fallback PDF locale disabilitato; usare testo OCR PDF-app.`
@@ -1084,6 +1145,7 @@ export function createAiExtractionPipeline({
       try {
         if (resolvedAttachment.kind === "provvigione") {
           const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
+          if (!hasUsableAttachmentText(result, resolvedAttachment, attachmentText)) continue;
           const provvigionePercentuale = await extractProvvigioneAiFirst({
             text: attachmentText,
             fileName: resolvedAttachment.file_name,
@@ -1104,6 +1166,7 @@ export function createAiExtractionPipeline({
 
         if (resolvedAttachment.kind === "proposta") {
           const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
+          if (!hasUsableAttachmentText(result, resolvedAttachment, attachmentText)) continue;
           const extractedProposta = await extractPropostaAiFirst({
             text: attachmentText,
             fileName: resolvedAttachment.file_name,
@@ -1130,6 +1193,7 @@ export function createAiExtractionPipeline({
 
         if (resolvedAttachment.kind === "annuncio") {
           const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
+          if (!hasUsableAttachmentText(result, resolvedAttachment, attachmentText)) continue;
           const extractedAnnuncio = await extractAnnuncioAiFirst({
             text: attachmentText,
             fileName: resolvedAttachment.file_name,

@@ -112,9 +112,23 @@ Key settings include:
 - `pdf_app_api_key`
 - `pdf_app_ocr_endpoint`
 - `pdf_app_job_endpoint`
+- `pdf_app_async_mode`
+- `pdf_app_poll_timeout_ms`
+- `pdf_app_poll_interval_base_ms`
+- `pdf_app_retry_count`
+- `pdf_app_retry_base_delay_ms`
 - `document_template_url`
 - `document_send_to`
 - `smtp_host`, `smtp_port`, `smtp_secure`, `smtp_user`, `smtp_password`, `smtp_from`
+
+## PDF-app OCR
+
+- `backend/lib/pdf_app.js` builds OCR payloads with PDF-app v2 options and preserves `extractPdfAppText()` multi-page parsing via `extraction_results[].result[]`, sorted by `page` and `region_index`; cache entries use parser version `pdf_app_multi_page_v1`.
+- Async mode defaults to `auto`: Astebook sends `async:true` only when `PDF_APP_JOB_ENDPOINT` / `pdf_app_job_endpoint` is configured. `PDF_APP_ASYNC_MODE=true` forces async and `false` forces sync.
+- Async polling uses `PDF_APP_JOB_ENDPOINT`, replacing `{jobId}` when present or appending the job id to the endpoint path.
+- Diagnostics include request duration, attempts, mode and final OCR status. PDF-app HTTP/network failures use `error_type: ocr_infrastructure`. Async diagnostics also include initial request duration, poll attempts, poll duration and total duration.
+- Retry is bounded to transient `502`, `503`, `504` and network timeout/reset errors. `400`, `401`, `403` and config/input errors are not retried.
+- OCR quality statuses are `ocr_completed`, `ocr_empty`, `ocr_failed` and `ocr_suspicious`. `ocr_empty` prevents downstream AI extraction for that attachment; `ocr_suspicious` is a non-blocking warning.
 
 ## Geocoding
 

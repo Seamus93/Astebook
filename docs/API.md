@@ -161,6 +161,7 @@ Updates runtime settings for:
 - `geocoder_provider`: address enrichment provider. Supported values are `nominatim`, `google` and `none`.
 - `nominatim_base_url`, `nominatim_user_agent`: Nominatim endpoint and identifying User-Agent used when `geocoder_provider=nominatim`.
 - `pdf_app_api_key`, `pdf_app_ocr_endpoint`, `pdf_app_job_endpoint`: OCR provider settings.
+- `pdf_app_async_mode`, `pdf_app_poll_timeout_ms`, `pdf_app_poll_interval_base_ms`, `pdf_app_retry_count`, `pdf_app_retry_base_delay_ms`: optional PDF-app async, polling and retry controls.
 - `document_template_url`: Google Docs/DOCX template URL used for document generation.
 - `document_send_to`: comma, semicolon or newline separated default recipients for document PDF emails.
 - `smtp_host`, `smtp_port`, `smtp_secure`, `smtp_user`, `smtp_password`, `smtp_from`: SMTP delivery settings used when matching environment variables are not set.

@@ -44,6 +44,16 @@ export function registerAdminSettingsRoutes(app, {
           process.env.PDF_APP_OCR_ENDPOINT || settings.pdf_app_ocr_endpoint || "",
         pdf_app_job_endpoint:
           process.env.PDF_APP_JOB_ENDPOINT || settings.pdf_app_job_endpoint || "",
+        pdf_app_async_mode:
+          process.env.PDF_APP_ASYNC_MODE || settings.pdf_app_async_mode || "auto",
+        pdf_app_poll_timeout_ms:
+          process.env.PDF_APP_POLL_TIMEOUT_MS || settings.pdf_app_poll_timeout_ms || "90000",
+        pdf_app_poll_interval_base_ms:
+          process.env.PDF_APP_POLL_INTERVAL_BASE_MS || settings.pdf_app_poll_interval_base_ms || "1000",
+        pdf_app_retry_count:
+          process.env.PDF_APP_RETRY_COUNT || settings.pdf_app_retry_count || "2",
+        pdf_app_retry_base_delay_ms:
+          process.env.PDF_APP_RETRY_BASE_DELAY_MS || settings.pdf_app_retry_base_delay_ms || "1000",
         ocr_public_base_url:
           process.env.OCR_PUBLIC_BASE_URL ||
           process.env.ASTEBOOK_PUBLIC_URL ||
@@ -115,6 +125,11 @@ export function registerAdminSettingsRoutes(app, {
     assignIfFilled("pdf_app_api_key");
     assignIfFilled("pdf_app_ocr_endpoint");
     assignIfFilled("pdf_app_job_endpoint");
+    assignIfFilled("pdf_app_async_mode");
+    assignIfFilled("pdf_app_poll_timeout_ms");
+    assignIfFilled("pdf_app_poll_interval_base_ms");
+    assignIfFilled("pdf_app_retry_count");
+    assignIfFilled("pdf_app_retry_base_delay_ms");
     assignIfFilled("ocr_public_base_url");
     assignIfFilled("document_template_url");
     assignIfFilled("smtp_host");

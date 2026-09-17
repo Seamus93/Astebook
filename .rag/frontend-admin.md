@@ -83,6 +83,15 @@ Current modules:
 - The login page uses the Astebook admin visual language: black brand bar, serif wordmark, white surfaces, magenta accent and compact operational copy.
 - Keep authentication behavior in `backend/routes/admin_auth.js`; do not move login into the React admin shell unless the server-side protection model changes.
 
+## UI Design Handoff
+
+- `docs/UI_DESIGN_HANDOFF.md` defines the standard Figma -> Bolt -> GitHub workflow for UI/UX experiments.
+- Figma should provide separate named frames for desktop, mobile and key states; links must be copied with `Copy link to selection` from the frame.
+- Desktop and mobile frames for the same feature should be imported into one Bolt project as responsive breakpoints, not separate apps.
+- Bolt output must go to a dedicated branch such as `figma-ui-prototype`, `ui-redesign-experiment` or `figma-admin-refresh`; never push generated UI directly to `main`.
+- Integrate manually into `frontend/src`, preserving backend, server-side admin auth, API clients, processing pipeline and existing controller behavior.
+- Treat Bolt as a prototyping and UI extraction tool, not as the authority for Astebook production architecture.
+
 ## Frontend Verification
 
 - Build: `npm run build`.

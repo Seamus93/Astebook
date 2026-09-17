@@ -60,6 +60,43 @@ Quando una configurazione supera pochi campi:
 - distinguere secret da campi non sensibili;
 - rendere le azioni distruttive esplicite e reversibili dove possibile.
 
+## Figma to Bolt UI Handoff
+
+Per nuove UI/UX operative usare il flusso standard:
+
+```text
+Figma design
+-> Bolt prototype
+-> GitHub branch dedicata
+-> integrazione manuale nel frontend reale
+-> review, build, test
+-> merge
+```
+
+Regole:
+
+- creare frame Figma separati per desktop, mobile e stati chiave;
+- copiare i link con `Copy link to selection` dal frame, non dal file;
+- importare desktop e mobile nello stesso progetto Bolt come breakpoint della stessa app;
+- non creare due app separate per desktop e mobile;
+- usare Bolt per prototipare layout, componenti e CSS;
+- non trattare l'output Bolt come sorgente autoritativa del progetto finale;
+- non pushare codice generato direttamente su `main`;
+- usare branch dedicate come `figma-ui-prototype`, `ui-redesign-experiment` o `figma-admin-refresh`;
+- integrare manualmente nel repository reale solo componenti, classi, spaziature, stati responsive e pattern visuali utili;
+- preservare backend, autenticazione, API client, pipeline, routing e controller esistenti.
+
+Prompt base per Bolt:
+
+```text
+Lavora sul progetto come console admin B2B.
+Usa il frame Figma importato come riferimento visivo, ma conserva la struttura reale del progetto.
+Non sostituire backend, autenticazione, API client o pipeline.
+Implementa solo UI/CSS compatibile con il frontend esistente.
+Usa dati mock solo nel prototipo, non nel repository finale.
+Prepara componenti riutilizzabili e responsive.
+```
+
 ## Verification
 
 Per modifiche frontend:

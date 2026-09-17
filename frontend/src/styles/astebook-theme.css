@@ -345,6 +345,70 @@ body {
   padding: 8px 36px 36px;
 }
 
+.admin-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 8px 36px 28px;
+  padding: 16px 0 0;
+  border-top: 1px solid var(--line);
+  color: #70707a;
+}
+
+.admin-footer-brand {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+}
+
+.admin-footer-brand strong {
+  color: #111111;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 18px;
+  font-weight: 400;
+  line-height: 1.2;
+}
+
+.admin-footer-brand span {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.admin-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.admin-footer-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 0 10px;
+  color: #111111;
+  font-size: 12px;
+  font-weight: 900;
+  text-decoration: none;
+}
+
+.admin-footer-links a:hover,
+.admin-footer-links a:focus-visible {
+  border-color: #f0bdd4;
+  background: var(--accent-soft);
+  color: var(--accent);
+  outline: 0;
+}
+
+.settings-footer {
+  margin: 0 20px 24px;
+}
+
 .panel {
   border: 1px solid var(--line);
   border-radius: var(--radius);

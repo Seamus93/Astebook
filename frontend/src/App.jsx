@@ -102,6 +102,18 @@ const adminMarkup = String.raw`
           )
           .join("")}
       </section>
+
+      <footer class="admin-footer" aria-label="Informazioni Astebook">
+        <div class="admin-footer-brand">
+          <strong>Astebook®</strong>
+          <span>Marchio registrato</span>
+        </div>
+        <nav class="admin-footer-links" aria-label="Link Astebook">
+          <a href="https://www.astebook.it/" target="_blank" rel="noreferrer">Site</a>
+          <a href="https://github.com/Seamus93/Astebook/" target="_blank" rel="noreferrer">GitHub</a>
+          <a href="mailto:simonefioroni93@gmail.com">Mail</a>
+        </nav>
+      </footer>
     </section>
 
     <nav class="mobile-bottom-nav" aria-label="Navigazione mobile">

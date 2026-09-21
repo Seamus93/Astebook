@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildPdfAppErrorDiagnostics,
+  buildPdfAppJobPollRequest,
   buildPdfAppOcrPayload,
   extractPdfAppText,
   ocrFileUrlWithPdfApp,
@@ -281,6 +282,187 @@ test("PDF-app OCR 401 is not retried", async () => {
       }
     );
   });
+});
+
+test("PDF-app async start posts async payload and extracts job id", async () => {
+  await withPdfAppEnv({
+    PDF_APP_API_KEY: "pdf-key",
+    PDF_APP_OCR_ENDPOINT: "https://api.pdf-app.net/ocr",
+    PDF_APP_JOB_ENDPOINT: "https://api.pdf-app.net/async_jobid_check",
+    PDF_APP_POLL_INTERVAL_BASE_MS: "0",
+  }, async () => {
+    const calls = [];
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url, options });
+      if (options.method === "POST") {
+        const body = JSON.parse(options.body || "{}");
+        assert.equal(body.async, true);
+        return jsonResponse(202, {
+          message: "Async job started, check job_id status later",
+          job_id: "job-123",
+        });
+      }
+      return jsonResponse(200, {
+        status: "success",
+        extraction_results: [{ result: [{ page: 1, result: "Testo OCR async valido ".repeat(20) }] }],
+      });
+    };
+
+    const result = await ocrFileUrlWithPdfApp({
+      fileUrl: "https://astebook.example/api/v1/ocr-inputs/aaaaaaaaaaaaaaaabbbbbbbbbbbbbbbb/file.pdf",
+      fileName: "file.pdf",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.job_id, "job-123");
+    assert.equal(calls.filter((call) => call.options.method === "POST").length, 1);
+  });
+});
+
+test("PDF-app polling request uses verified GET JSON body contract", () => {
+  const request = buildPdfAppJobPollRequest({
+    jobEndpoint: "https://api.pdf-app.net/async_jobid_check",
+    jobId: "job-123",
+    apiKey: "pdf-key",
+  });
+
+  assert.equal(request.endpoint, "https://api.pdf-app.net/async_jobid_check");
+  assert.equal(request.options.method, "GET");
+  assert.deepEqual(JSON.parse(request.options.body), { job_id: "job-123" });
+  assert.equal(request.options.headers.Authorization, "pdf-key");
+  assert.equal(request.options.headers.Authorization.startsWith("Bearer "), false);
+  assert.equal(request.endpoint.includes("/async_jobid_check/job-123"), false);
+});
+
+test("PDF-app async pending then success does not create a second OCR job", async () => {
+  await withPdfAppEnv({
+    PDF_APP_API_KEY: "pdf-key",
+    PDF_APP_OCR_ENDPOINT: "https://api.pdf-app.net/ocr",
+    PDF_APP_JOB_ENDPOINT: "https://api.pdf-app.net/async_jobid_check",
+    PDF_APP_POLL_INTERVAL_BASE_MS: "0",
+    PDF_APP_RETRY_BASE_DELAY_MS: "0",
+  }, async () => {
+    const calls = [];
+    globalThis.fetch = async (url, options = {}) => {
+      calls.push({ url, options });
+      if (options.method === "POST") return jsonResponse(202, { job_id: "job-123" });
+      if (calls.filter((call) => call.options.method === "GET").length === 1) {
+        return jsonResponse(200, { status: "processing" });
+      }
+      return jsonResponse(200, {
+        status: "success",
+        extraction_results: [{ result: [{ page: 1, result: "Testo OCR finale ".repeat(20) }] }],
+      });
+    };
+
+    const result = await ocrFileUrlWithPdfApp({
+      fileUrl: "https://astebook.example/api/v1/ocr-inputs/aaaaaaaaaaaaaaaabbbbbbbbbbbbbbbb/file.pdf",
+      fileName: "file.pdf",
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(calls.filter((call) => call.options.method === "POST").length, 1);
+    assert.equal(calls.filter((call) => call.options.method === "GET").length, 2);
+    assert.deepEqual(JSON.parse(calls[1].options.body), { job_id: "job-123" });
+  });
+});
+
+test("PDF-app extraction preserves sanitized Scandolara multi-page OCR text", () => {
+  const payload = {
+    status: "success",
+    extraction_results: [
+      {
+        file: "PROPOSTA SCANDOLARA.pdf",
+        v2: true,
+        result: [
+          {
+            page: 6,
+            result: "conto corrente intestato a Savoy\nIBAN IT48 T030 6912 7111 0000 0012 823",
+          },
+          { page: 2, result: "test pagina 2" },
+          {
+            page: 1,
+            result: [
+              "Proposta irrevocabile di acquisto",
+              "identificato al Catasto Fabbricati al Foglio 6,",
+              "Particella 305, Sub 501",
+              "La sottoscritta LI JIN",
+              "il prezzo offerto Euro 25.000,00",
+              "Proprietà SAVOY REOCO S.r.l.",
+            ].join("\n"),
+          },
+        ],
+      },
+    ],
+  };
+
+  const text = extractPdfAppText(payload);
+
+  assert.match(text, /Foglio 6/);
+  assert.match(text, /Particella 305/);
+  assert.match(text, /Sub 501/);
+  assert.match(text, /IT48 T030 6912 7111 0000 0012 823/);
+  assert.equal(text.indexOf("Foglio 6") < text.indexOf("test pagina 2"), true);
+  assert.equal(text.indexOf("test pagina 2") < text.indexOf("IT48 T030"), true);
+});
+
+test("PDF-app async success with empty OCR is not valid", async () => {
+  await withPdfAppEnv({
+    PDF_APP_API_KEY: "pdf-key",
+    PDF_APP_OCR_ENDPOINT: "https://api.pdf-app.net/ocr",
+    PDF_APP_JOB_ENDPOINT: "https://api.pdf-app.net/async_jobid_check",
+    PDF_APP_POLL_INTERVAL_BASE_MS: "0",
+  }, async () => {
+    globalThis.fetch = async (_url, options = {}) => {
+      if (options.method === "POST") return jsonResponse(202, { job_id: "job-empty" });
+      return jsonResponse(200, {
+        status: "success",
+        extraction_results: [{ result: [{ page: 1, result: "   \n " }] }],
+      });
+    };
+
+    const result = await ocrFileUrlWithPdfApp({
+      fileUrl: "https://astebook.example/api/v1/ocr-inputs/aaaaaaaaaaaaaaaabbbbbbbbbbbbbbbb/file.pdf",
+      fileName: "file.pdf",
+    });
+
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, "ocr_empty_result");
+    assert.equal(result.diagnostics.ocr_status, "failed");
+    assert.equal(result.diagnostics.reason, "ocr_empty_result");
+  });
+});
+
+test("PDF-app async terminal failure stops polling without a new OCR job", async () => {
+  for (const status of ["failed", "error", "cancelled", "canceled"]) {
+    await withPdfAppEnv({
+      PDF_APP_API_KEY: "pdf-key",
+      PDF_APP_OCR_ENDPOINT: "https://api.pdf-app.net/ocr",
+      PDF_APP_JOB_ENDPOINT: "https://api.pdf-app.net/async_jobid_check",
+      PDF_APP_POLL_INTERVAL_BASE_MS: "0",
+      PDF_APP_RETRY_BASE_DELAY_MS: "0",
+    }, async () => {
+      const calls = [];
+      globalThis.fetch = async (url, options = {}) => {
+        calls.push({ url, options });
+        if (options.method === "POST") return jsonResponse(202, { job_id: `job-${status}` });
+        return jsonResponse(200, { status, message: "job failed" });
+      };
+
+      await assert.rejects(
+        () => ocrFileUrlWithPdfApp({
+          fileUrl: "https://astebook.example/api/v1/ocr-inputs/aaaaaaaaaaaaaaaabbbbbbbbbbbbbbbb/file.pdf",
+          fileName: "file.pdf",
+        }),
+        (error) => {
+          assert.equal(error.diagnostics.ocr_final_status, status);
+          assert.equal(calls.filter((call) => call.options.method === "POST").length, 1);
+          assert.equal(calls.filter((call) => call.options.method === "GET").length, 1);
+          return true;
+        }
+      );
+    });
+  }
 });
 
 test("PDF-app OCR 504 then success records per-attempt diagnostics", async () => {

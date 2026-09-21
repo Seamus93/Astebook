@@ -1,5 +1,7 @@
 import { getEffectiveSetting } from "./app_config.js";
 import { maskOcrInputUrlPath } from "./ocr_input_store.js";
+import http from "node:http";
+import https from "node:https";
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -71,7 +73,7 @@ export function extractPdfAppText(payload) {
     return [];
   });
 
-  if (pageTexts.length) return pageTexts.join("\n\n");
+  if (extractionResults.length) return pageTexts.join("\n\n");
   return findTextDeep(payload);
 }
 
@@ -146,6 +148,15 @@ function classifyHttpStatus(status) {
   return status ? `http_${Number(status)}` : null;
 }
 
+function mapPublicOcrStatus(status) {
+  const value = String(status || "").toLowerCase();
+  if (value.includes("completed")) return "completed";
+  if (value.includes("empty")) return "failed";
+  if (value.includes("failed") || value.includes("error")) return "failed";
+  if (value.includes("suspicious") || value.includes("short")) return "completed";
+  return value || null;
+}
+
 function retryAfterMs(response) {
   const value = response?.headers?.get?.("retry-after");
   if (!value) return null;
@@ -161,6 +172,66 @@ function retryDelayMs(attempt, baseDelayMs, maxDelayMs = DEFAULT_RETRY_MAX_DELAY
   const exponential = Math.min(baseDelayMs * 2 ** Math.max(0, attempt - 1), maxDelayMs);
   const jitter = Math.floor(Math.random() * Math.min(250, Math.max(1, Math.floor(exponential * 0.15))));
   return Math.min(exponential + jitter, maxDelayMs);
+}
+
+function isNativeFetchImplementation() {
+  return /\[native code\]|\blazyUndici\b|\binternal\/deps\/undici\b/.test(String(globalThis.fetch || ""));
+}
+
+function headerLookup(headers = {}) {
+  const entries = new Map(
+    Object.entries(headers).map(([key, value]) => [String(key).toLowerCase(), value])
+  );
+  return {
+    get: (name) => entries.get(String(name || "").toLowerCase()) ?? null,
+  };
+}
+
+function nodeHttpJsonRequest(endpoint, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(endpoint);
+    const client = parsed.protocol === "http:" ? http : https;
+    const body = options.body ? String(options.body) : "";
+    const headers = {
+      ...(options.headers || {}),
+    };
+    if (body && !Object.keys(headers).some((key) => key.toLowerCase() === "content-length")) {
+      headers["Content-Length"] = Buffer.byteLength(body);
+    }
+    const request = client.request(
+      parsed,
+      {
+        method: options.method || "GET",
+        headers,
+        signal: options.signal,
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          resolve({
+            ok: response.statusCode >= 200 && response.statusCode < 300,
+            status: response.statusCode,
+            statusText: response.statusMessage || "",
+            headers: headerLookup(response.headers),
+            text: async () => text,
+          });
+        });
+      }
+    );
+    request.on("error", reject);
+    if (body) request.write(body);
+    request.end();
+  });
+}
+
+async function httpJsonRequest(endpoint, options = {}) {
+  const method = String(options?.method || "GET").toUpperCase();
+  if (method === "GET" && options?.body && isNativeFetchImplementation()) {
+    return nodeHttpJsonRequest(endpoint, options);
+  }
+  return fetch(endpoint, options);
 }
 
 async function fetchJsonWithDiagnostics({
@@ -187,7 +258,7 @@ async function fetchJsonWithDiagnostics({
     timeout?.unref?.();
     try {
       console.info(`${label} attempt ${attempt}/${attemptsLimit}`);
-      const response = await fetch(endpoint, {
+      const response = await httpJsonRequest(endpoint, {
         ...options,
         signal: controller?.signal || options?.signal,
       });
@@ -323,7 +394,7 @@ export function assessPdfAppOcrQuality(text, payload = null) {
     return {
       status: "ocr_empty",
       quality: "empty",
-      reason: "ocr_text_empty",
+      reason: "ocr_empty_result",
       text_length: value.length,
       non_whitespace_length: nonWhitespaceLength,
       page_count: pageCount,
@@ -438,6 +509,48 @@ async function parseJsonResponse(response) {
   }
 }
 
+export function buildPdfAppJobPollRequest({ jobEndpoint, jobId, apiKey }) {
+  const endpoint = String(jobEndpoint || "");
+  const pdfAppAsyncJobEndpoint = (() => {
+    try {
+      const parsed = new URL(endpoint);
+      return parsed.hostname === "api.pdf-app.net" && parsed.pathname.replace(/\/+$/, "") === "/async_jobid_check";
+    } catch {
+      return false;
+    }
+  })();
+
+  if (pdfAppAsyncJobEndpoint) {
+    return {
+      endpoint,
+      options: {
+        method: "GET",
+        headers: {
+          Authorization: authHeaders(apiKey).Authorization,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ job_id: jobId }),
+      },
+      contract: "pdf_app_async_jobid_check",
+    };
+  }
+
+  const genericEndpoint = endpoint.includes("{jobId}")
+    ? endpoint.replaceAll("{jobId}", encodeURIComponent(jobId))
+    : `${endpoint.replace(/\/$/, "")}/${encodeURIComponent(jobId)}`;
+  return {
+    endpoint: genericEndpoint,
+    options: {
+      headers: {
+        accept: "application/json",
+        ...authHeaders(apiKey),
+      },
+    },
+    contract: "generic_job_endpoint",
+  };
+}
+
 async function pollPdfAppJob({
   jobId,
   apiKey,
@@ -457,17 +570,11 @@ async function pollPdfAppJob({
 
   while (Date.now() - startedAt < timeoutMs) {
     attempt += 1;
-    const endpoint = jobEndpoint.includes("{jobId}")
-      ? jobEndpoint.replaceAll("{jobId}", encodeURIComponent(jobId))
-      : `${jobEndpoint.replace(/\/$/, "")}/${encodeURIComponent(jobId)}`;
+    const pollRequest = buildPdfAppJobPollRequest({ jobEndpoint, jobId, apiKey });
+    const endpoint = pollRequest.endpoint;
     const fetchResult = await fetchJsonWithDiagnostics({
       endpoint,
-      options: {
-        headers: {
-          accept: "application/json",
-          ...authHeaders(apiKey),
-        },
-      },
+      options: pollRequest.options,
       retryCount,
       maxAttempts,
       retryBaseDelayMs,
@@ -521,17 +628,20 @@ async function pollPdfAppJob({
     }
 
     const text = extractPdfAppText(payload);
-    if (text) {
+    const status = String(payload.status || payload.state || payload.data?.status || "").toLowerCase();
+    const hasExtractionResults = Array.isArray(payload?.extraction_results) || Array.isArray(payload?.data?.extraction_results);
+    if (text.trim()) {
       return {
         text,
         payload,
         attempts: attempt,
         http_attempts: httpAttempts,
         poll_duration_ms: Date.now() - startedAt,
+        final_status: status || null,
+        credits_consumed: payload.CreditzConsumed ?? payload.credits_consumed ?? payload.data?.CreditzConsumed ?? null,
       };
     }
 
-    const status = String(payload.status || payload.state || payload.data?.status || "").toLowerCase();
     if (["failed", "error", "cancelled", "canceled"].includes(status)) {
       const error = new Error(`PDF-app OCR job failed: ${payload.error || payload.message || status}`);
       error.diagnostics = {
@@ -542,9 +652,22 @@ async function pollPdfAppJob({
         poll_attempts: attempt,
         poll_http_attempts: httpAttempts,
         poll_duration_ms: Date.now() - startedAt,
+        ocr_final_status: status,
         error: payload.error || payload.message || status,
       };
       throw error;
+    }
+
+    if (status === "success" && hasExtractionResults) {
+      return {
+        text: "",
+        payload,
+        attempts: attempt,
+        http_attempts: httpAttempts,
+        poll_duration_ms: Date.now() - startedAt,
+        final_status: status,
+        credits_consumed: payload.CreditzConsumed ?? payload.credits_consumed ?? payload.data?.CreditzConsumed ?? null,
+      };
     }
 
     const pollDelay = Math.min(pollIntervalBaseMs * attempt, 5000);
@@ -697,6 +820,15 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
       quality,
       diagnostics: {
         mode,
+        ocr_provider: "pdf-app",
+        ocr_mode: mode,
+        ocr_start_status: response.status,
+        ocr_final_status: payload.status || payload.state || quality.status,
+        ocr_text_length: text.length,
+        ocr_pages: quality.page_count,
+        credits_consumed: payload.CreditzConsumed ?? payload.credits_consumed ?? null,
+        ocr_duration_ms: Date.now() - totalStartedAt,
+        ocr_status: quality.status === "ocr_completed" ? "completed" : mapPublicOcrStatus(quality.status),
         final_status: quality.status,
         request_duration_ms: initial.request_duration_ms,
         initial_request_duration_ms: initial.request_duration_ms,
@@ -724,16 +856,29 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
       requestTimeoutMs: ocrTimeoutMs,
     });
     const quality = assessPdfAppOcrQuality(job.text, job.payload);
+    const ok = quality.status === "ocr_completed" || quality.status === "ocr_suspicious";
     return {
-      ok: true,
+      ok,
       text: job.text,
       payload: job.payload,
       job_id: jobId,
+      reason: ok ? null : quality.reason,
       attempts: initial.attempts,
       poll_attempts: job.attempts,
       quality,
       diagnostics: {
         mode: "async",
+        ocr_provider: "pdf-app",
+        ocr_mode: "async",
+        ocr_start_status: response.status,
+        ocr_job_id: jobId,
+        ocr_poll_attempts: job.attempts,
+        ocr_final_status: job.final_status || job.payload?.status || quality.status,
+        ocr_text_length: job.text.length,
+        ocr_pages: quality.page_count,
+        credits_consumed: job.credits_consumed,
+        ocr_duration_ms: Date.now() - totalStartedAt,
+        ocr_status: ok ? "completed" : "failed",
         final_status: quality.status,
         request_duration_ms: initial.request_duration_ms,
         initial_request_duration_ms: initial.request_duration_ms,
@@ -754,12 +899,22 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
     ok: false,
     reason: jobId
       ? "PDF-app ha restituito un job asincrono ma PDF_APP_JOB_ENDPOINT non e configurato."
-      : "PDF-app non ha restituito testo OCR.",
+      : quality.reason,
     payload,
     job_id: jobId || null,
     quality,
     diagnostics: {
       mode,
+      ocr_provider: "pdf-app",
+      ocr_mode: mode,
+      ocr_start_status: response.status,
+      ocr_job_id: jobId || null,
+      ocr_final_status: payload.status || payload.state || quality.status,
+      ocr_text_length: 0,
+      ocr_pages: quality.page_count,
+      credits_consumed: payload.CreditzConsumed ?? payload.credits_consumed ?? null,
+      ocr_duration_ms: Date.now() - totalStartedAt,
+      ocr_status: "failed",
       final_status: quality.status,
       request_duration_ms: initial.request_duration_ms,
       initial_request_duration_ms: initial.request_duration_ms,

@@ -555,6 +555,128 @@ test("async PDF-app OCR populates attachment text cache with full multi-page tex
   }
 });
 
+test("async PDF-app OCR text reaches Proposal Agent with Scandolara fields", async () => {
+  const previousProjectUrl = process.env.PROJECT_URL;
+  const previousPdfKey = process.env.PDF_APP_API_KEY;
+  const previousPdfEndpoint = process.env.PDF_APP_OCR_ENDPOINT;
+  const previousPdfJobEndpoint = process.env.PDF_APP_JOB_ENDPOINT;
+  const previousAsyncMode = process.env.PDF_APP_ASYNC_MODE;
+  const previousPollInterval = process.env.PDF_APP_POLL_INTERVAL_BASE_MS;
+  const previousRetryBaseDelay = process.env.PDF_APP_RETRY_BASE_DELAY_MS;
+  const previousFetch = globalThis.fetch;
+  process.env.PROJECT_URL = "https://astebook.example";
+  process.env.PDF_APP_API_KEY = "pdf-key";
+  process.env.PDF_APP_OCR_ENDPOINT = "https://api.pdf-app.net/ocr";
+  process.env.PDF_APP_JOB_ENDPOINT = "https://api.pdf-app.net/async_jobid_check";
+  process.env.PDF_APP_ASYNC_MODE = "true";
+  process.env.PDF_APP_POLL_INTERVAL_BASE_MS = "0";
+  process.env.PDF_APP_RETRY_BASE_DELAY_MS = "0";
+
+  const page1 = [
+    "Proposta irrevocabile di acquisto dell'immobile",
+    "identificato al Catasto Fabbricati al Foglio 6,",
+    "Particella 305, Sub 501",
+    "La sottoscritta LI JIN quale Proponente Acquirente",
+    "il prezzo offerto per l'acquisto e Euro 25.000,00",
+    "Proprietà SAVOY REOCO S.r.l.",
+  ].join("\n");
+  const page6 = [
+    "conto corrente intestato a Savoy",
+    "IBAN IT48 T030 6912 7111 0000 0012 823",
+    "Condizioni, dichiarazioni e allegati della proposta di acquisto.".repeat(8),
+  ].join("\n");
+  const ocrText = [page1, "test pagina 2", page6].join("\n\n");
+
+  globalThis.fetch = async (_url, options = {}) => {
+    if (options.method === "POST") return {
+      ok: true,
+      status: 202,
+      text: async () => JSON.stringify({
+        message: "Async job started, check job_id status later",
+        job_id: "job-scandolara",
+      }),
+    };
+    assert.equal(options.method, "GET");
+    assert.deepEqual(JSON.parse(options.body || "{}"), { job_id: "job-scandolara" });
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({
+        URLs: [],
+        CreditzConsumed: 47.63,
+        statusCode: 200,
+        status: "success",
+        message: "OCR completed successfully.",
+        job_id: "job-scandolara",
+        extraction_results: [
+          {
+            file: "PROPOSTA SCANDOLARA.pdf",
+            v2: true,
+            result: [
+              { page: 6, result: page6 },
+              { page: 2, result: "test pagina 2" },
+              { page: 1, result: page1 },
+            ],
+          },
+        ],
+      }),
+    };
+  };
+
+  const events = new Map([["async-scandolara-proposal-agent-test", { id: "async-scandolara-proposal-agent-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  try {
+    const result = await pipeline({
+      eventId: "async-scandolara-proposal-agent-test",
+      body: { subject: "ASYNC_SCANDOLARA_PROPOSAL_AGENT_TEST" },
+      files: [
+        {
+          fieldname: "email_attachment_1",
+          originalname: "PROPOSTA SCANDOLARA.pdf",
+          mimetype: "application/pdf",
+          buffer: Buffer.from("%PDF scanned proposal async Scandolara"),
+        },
+      ],
+      skipAutoSend: true,
+    });
+
+    const diagnostic = result.extraction_diagnostics.attachments.find((item) => item.file_name === "PROPOSTA SCANDOLARA.pdf");
+    const agentRun = result.extraction_diagnostics.proposta_agent_runs[0];
+    const ocrDiagnostic = result.extraction_diagnostics.ocr_texts.find((item) => item.file_name === "PROPOSTA SCANDOLARA.pdf");
+    const observedOcrText = ocrDiagnostic.text.text;
+    const cachedText = Object.values(result.attachment_text_cache || {}).find((entry) => entry.file_name === "PROPOSTA SCANDOLARA.pdf")?.text || "";
+
+    assert.equal(diagnostic.passed_to_ai, true);
+    assert.equal(agentRun.input_text_length, observedOcrText.length);
+    assert.equal(agentRun.input_text_length, ocrText.length);
+    assert.equal(cachedText, observedOcrText);
+    assert.match(observedOcrText, /LI JIN/);
+    assert.match(observedOcrText, /Euro 25\.000,00/);
+    assert.match(observedOcrText, /Foglio 6/);
+    assert.match(observedOcrText, /Particella 305/);
+    assert.match(observedOcrText, /Sub 501/);
+    assert.match(observedOcrText, /IBAN IT48 T030 6912 7111 0000 0012 823/);
+    assert.equal(result.ocr_summary.files["PROPOSTA SCANDOLARA.pdf"].pdf_app_diagnostics.credits_consumed, 47.63);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previousProjectUrl === undefined) delete process.env.PROJECT_URL;
+    else process.env.PROJECT_URL = previousProjectUrl;
+    if (previousPdfKey === undefined) delete process.env.PDF_APP_API_KEY;
+    else process.env.PDF_APP_API_KEY = previousPdfKey;
+    if (previousPdfEndpoint === undefined) delete process.env.PDF_APP_OCR_ENDPOINT;
+    else process.env.PDF_APP_OCR_ENDPOINT = previousPdfEndpoint;
+    if (previousPdfJobEndpoint === undefined) delete process.env.PDF_APP_JOB_ENDPOINT;
+    else process.env.PDF_APP_JOB_ENDPOINT = previousPdfJobEndpoint;
+    if (previousAsyncMode === undefined) delete process.env.PDF_APP_ASYNC_MODE;
+    else process.env.PDF_APP_ASYNC_MODE = previousAsyncMode;
+    if (previousPollInterval === undefined) delete process.env.PDF_APP_POLL_INTERVAL_BASE_MS;
+    else process.env.PDF_APP_POLL_INTERVAL_BASE_MS = previousPollInterval;
+    if (previousRetryBaseDelay === undefined) delete process.env.PDF_APP_RETRY_BASE_DELAY_MS;
+    else process.env.PDF_APP_RETRY_BASE_DELAY_MS = previousRetryBaseDelay;
+  }
+});
+
 test("Apify announcement data replaces extracted announcement while keeping AI fallback", async () => {
   const previousProvider = process.env.IMMOBILIARE_SCRAPER_PROVIDER;
   const previousToken = process.env.APIFY_TOKEN;

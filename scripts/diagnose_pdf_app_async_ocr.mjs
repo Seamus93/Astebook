@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 import "dotenv/config";
 import { readFile, stat } from "node:fs/promises";
+import http from "node:http";
+import https from "node:https";
 import { basename, resolve } from "node:path";
 import { getEffectiveSetting } from "../backend/lib/app_config.js";
 import { createOcrInputFromBuffer } from "../backend/lib/ocr_input_store.js";
-import { buildPdfAppOcrPayload, findJobId } from "../backend/lib/pdf_app.js";
+import { buildPdfAppOcrPayload, extractPdfAppText, findJobId } from "../backend/lib/pdf_app.js";
 
 const defaultEndpoint = "https://api.pdf-app.net/ocr";
+const defaultJobEndpoint = "https://api.pdf-app.net/async_jobid_check";
 const defaultPdfPath = "PROPOSTA SCANDOLARA.pdf";
 
 function authHeaders(apiKey) {
@@ -101,6 +104,54 @@ function findLikelyPollingUrl(body, headers) {
   );
 }
 
+function nodeHttpRequest(endpoint, options = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(endpoint);
+    const client = parsed.protocol === "http:" ? http : https;
+    const body = options.body ? String(options.body) : "";
+    const headers = { ...(options.headers || {}) };
+    if (body) headers["Content-Length"] = Buffer.byteLength(body);
+    const request = client.request(
+      parsed,
+      {
+        method: options.method || "GET",
+        headers,
+      },
+      (response) => {
+        const chunks = [];
+        response.on("data", (chunk) => chunks.push(chunk));
+        response.on("end", () => {
+          const text = Buffer.concat(chunks).toString("utf8");
+          resolve({
+            ok: response.statusCode >= 200 && response.statusCode < 300,
+            status: response.statusCode,
+            statusText: response.statusMessage,
+            headers: {
+              entries: () => Object.entries(response.headers),
+            },
+            text: async () => text,
+          });
+        });
+      }
+    );
+    request.on("error", reject);
+    if (body) request.write(body);
+    request.end();
+  });
+}
+
+function countPages(body) {
+  const results = Array.isArray(body?.extraction_results) ? body.extraction_results : [];
+  const pages = new Set();
+  for (const fileResult of results) {
+    const items = Array.isArray(fileResult?.result) ? fileResult.result : [];
+    for (const item of items) {
+      if (item?.page !== undefined && item?.page !== null) pages.add(String(item.page));
+    }
+  }
+  return pages.size;
+}
+
 async function main() {
   const pdfPath = resolve(process.argv[2] || defaultPdfPath);
   const fileInfo = await stat(pdfPath);
@@ -111,6 +162,8 @@ async function main() {
   const apiKey = await getEffectiveSetting("PDF_APP_API_KEY", "pdf_app_api_key");
   const endpoint =
     (await getEffectiveSetting("PDF_APP_OCR_ENDPOINT", "pdf_app_ocr_endpoint")) || defaultEndpoint;
+  const jobEndpoint =
+    (await getEffectiveSetting("PDF_APP_JOB_ENDPOINT", "pdf_app_job_endpoint")) || defaultJobEndpoint;
   if (!apiKey) {
     throw new Error("PDF_APP_API_KEY non configurata in env o runtime settings.");
   }
@@ -176,6 +229,45 @@ async function main() {
   console.log("");
   console.log("body:");
   console.log(JSON.stringify(sanitizedBody, null, 2));
+
+  if (!jobId) return;
+
+  const pollStartedAt = Date.now();
+  const pollResponse = await nodeHttpRequest(jobEndpoint, {
+    method: "GET",
+    headers: {
+      ...authHeaders(apiKey),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ job_id: jobId }),
+  });
+  const pollDurationMs = Date.now() - pollStartedAt;
+  const pollText = await pollResponse.text();
+  const pollBody = parseResponseBody(pollText);
+  const ocrText = extractPdfAppText(pollBody);
+
+  console.log("");
+  console.log("poll:");
+  console.log(
+    JSON.stringify(
+      sanitizeValue({
+        endpoint: jobEndpoint,
+        method: "GET",
+        body: { job_id: jobId },
+        http_status: pollResponse.status,
+        duration_ms: pollDurationMs,
+        status: findLikelyStatus(pollBody),
+        job_id: findJobId(pollBody) || jobId,
+        text_length: String(ocrText || "").trim().length,
+        pages: countPages(pollBody),
+        credits_consumed: pollBody?.CreditzConsumed ?? null,
+        message: pollBody?.message || null,
+      }),
+      null,
+      2
+    )
+  );
 }
 
 main().catch((error) => {

@@ -17,7 +17,10 @@ Documento temporaneo per isolare il `403 Forbidden` restituito da PDF-app OCR se
 - Content-Type restituito: `backend/server.js` usa `input.mime_type` letto dal metadata file.
 - Autenticazione route OCR input: nessuna autenticazione applicativa, perche PDF-app deve poter scaricare il file dal solo URL temporaneo.
 - Gestione errori PDF-app: `backend/lib/pdf_app.js`; su risposta non 2xx viene sollevato errore con diagnostica sicura, senza API key e senza token completo.
-- Retry PDF-app: limitato a `502`, `503`, `504` e timeout/reset di rete. Non viene fatto retry su `400`, `401`, `403` o errori di configurazione.
+- Timeout OCR: la POST iniziale a PDF-app usa `PDF_APP_OCR_TIMEOUT_MS`, default `120000`. Un timeout locale viene diagnosticato come `client_timeout`, distinto da una risposta reale `HTTP 504` diagnosticata come `http_504`.
+- Retry PDF-app: limitato a `408`, `429`, `500`, `502`, `503`, `504`, timeout client e reset di rete. Non viene fatto retry su `400`, `401`, `403`, `404` o errori di configurazione/schema chiaramente permanenti.
+- Backoff PDF-app: exponential backoff con jitter leggero; se PDF-app restituisce `Retry-After` su una risposta retryable, Astebook lo rispetta entro un limite massimo prudente.
+- Single-flight OCR: nello stesso processo Node, richieste concorrenti per lo stesso hash allegato condividono la stessa chiamata PDF-app. Non e un lock distribuito fra piu processi/container.
 - Polling async: dopo un job id, Astebook chiama `PDF_APP_JOB_ENDPOINT`, sostituendo `{jobId}` se presente oppure accodando il job id al path.
 
 ## Diagnostica Sicura Nei Log
@@ -46,8 +49,11 @@ file_url_paths: ["/api/v1/ocr-inputs/abcd***91ef/file.pdf"]
 response_body: "..."
 request_duration_ms: 1234
 attempts: 3
+ocr_attempt_count: 3
+ocr_attempts: [{ attempt: 1, result: "http_504", duration_ms: 30000, retryable: true, retry_delay_ms: 2100 }]
 mode: "sync"
-final_status: "ocr_failed"
+final_status: "ocr_failed" | "ocr_retry_exhausted"
+final_error_type: "http_504" | "client_timeout" | "network_reset"
 error_type: "ocr_infrastructure"
 ```
 
@@ -65,6 +71,8 @@ final_status: "ocr_completed" | "ocr_empty" | "ocr_suspicious" | "ocr_failed"
 initial_request_duration_ms: 123
 request_duration_ms: 123
 attempts: 1
+ocr_attempt_count: 1
+ocr_attempts: []
 poll_attempts: 2
 poll_http_attempts: 2
 poll_duration_ms: 2500
@@ -90,6 +98,10 @@ Variabili/supporti runtime:
 - `PDF_APP_POLL_INTERVAL_BASE_MS` / `pdf_app_poll_interval_base_ms`: default `1000`.
 - `PDF_APP_RETRY_COUNT` / `pdf_app_retry_count`: default `2`, quindi massimo 3 tentativi totali.
 - `PDF_APP_RETRY_BASE_DELAY_MS` / `pdf_app_retry_base_delay_ms`: default `1000`.
+- `PDF_APP_OCR_TIMEOUT_MS` / `pdf_app_ocr_timeout_ms`: timeout locale della singola richiesta HTTP OCR, default `120000`.
+- `PDF_APP_OCR_MAX_ATTEMPTS` / `pdf_app_ocr_max_attempts`: massimo tentativi OCR totali, default `3`. Ha precedenza sul conteggio legacy.
+- `PDF_APP_OCR_RETRY_BASE_MS` / `pdf_app_ocr_retry_base_ms`: base backoff OCR, default derivato da `PDF_APP_RETRY_BASE_DELAY_MS` o `1000`.
+- `PDF_APP_OCR_RETRY_MAX_MS` / `pdf_app_ocr_retry_max_ms`: cap del backoff OCR, default `30000`.
 
 ## Self-Test URL Astebook
 

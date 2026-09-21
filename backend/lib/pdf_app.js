@@ -7,6 +7,10 @@ const DEFAULT_POLL_TIMEOUT_MS = 90000;
 const DEFAULT_POLL_INTERVAL_BASE_MS = 1000;
 const DEFAULT_RETRY_COUNT = 2;
 const DEFAULT_RETRY_BASE_DELAY_MS = 1000;
+const DEFAULT_OCR_TIMEOUT_MS = 120000;
+const DEFAULT_OCR_MAX_ATTEMPTS = 3;
+const DEFAULT_RETRY_MAX_DELAY_MS = 30000;
+const MAX_RETRY_AFTER_MS = 30000;
 
 function firstString(...values) {
   return values.find((value) => typeof value === "string" && value.trim()) || "";
@@ -88,6 +92,7 @@ export function findJobId(value) {
 }
 
 function clampNumber(value, fallback, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
+  if (value === undefined || value === null || String(value).trim() === "") return fallback;
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(min, Math.min(max, parsed));
@@ -108,65 +113,145 @@ async function getPdfAppAsyncMode(jobEndpoint) {
 }
 
 function isTransientHttpStatus(status) {
-  return [502, 503, 504].includes(Number(status));
+  return [408, 429, 500, 502, 503, 504].includes(Number(status));
+}
+
+function classifyNetworkError(error) {
+  const name = String(error?.name || "");
+  const message = String(error?.message || error || "").toLowerCase();
+  const code = String(error?.code || error?.cause?.code || "").toUpperCase();
+  if (name === "AbortError" || code === "ABORT_ERR") return "client_timeout";
+  if (["ETIMEDOUT", "ECONNABORTED", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT"].includes(code)) {
+    return "client_timeout";
+  }
+  if (["ECONNRESET", "EPIPE"].includes(code) || message.includes("socket hang up") || message.includes("econnreset")) {
+    return "network_reset";
+  }
+  if (
+    message.includes("timeout") ||
+    message.includes("timed out") ||
+    message.includes("headers timeout") ||
+    message.includes("connect timeout")
+  ) {
+    return "client_timeout";
+  }
+  return "network_error";
 }
 
 function isTransientNetworkError(error) {
-  const message = String(error?.message || error || "").toLowerCase();
-  const code = String(error?.code || error?.cause?.code || "").toUpperCase();
-  return (
-    ["ECONNRESET", "ETIMEDOUT", "ECONNABORTED", "UND_ERR_CONNECT_TIMEOUT", "UND_ERR_HEADERS_TIMEOUT"].includes(code) ||
-    message.includes("timeout") ||
-    message.includes("timed out") ||
-    message.includes("socket hang up") ||
-    message.includes("econnreset")
-  );
+  return ["client_timeout", "network_reset"].includes(classifyNetworkError(error));
 }
 
-function retryDelayMs(attempt, baseDelayMs) {
+function classifyHttpStatus(status) {
+  return status ? `http_${Number(status)}` : null;
+}
+
+function retryAfterMs(response) {
+  const value = response?.headers?.get?.("retry-after");
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) return Math.max(0, Math.min(seconds * 1000, MAX_RETRY_AFTER_MS));
+  const dateMs = Date.parse(value);
+  if (!Number.isFinite(dateMs)) return null;
+  return Math.max(0, Math.min(dateMs - Date.now(), MAX_RETRY_AFTER_MS));
+}
+
+function retryDelayMs(attempt, baseDelayMs, maxDelayMs = DEFAULT_RETRY_MAX_DELAY_MS) {
   if (!baseDelayMs) return 0;
-  return Math.min(baseDelayMs * 2 ** Math.max(0, attempt - 1), 5000);
+  const exponential = Math.min(baseDelayMs * 2 ** Math.max(0, attempt - 1), maxDelayMs);
+  const jitter = Math.floor(Math.random() * Math.min(250, Math.max(1, Math.floor(exponential * 0.15))));
+  return Math.min(exponential + jitter, maxDelayMs);
 }
 
-async function fetchJsonWithDiagnostics({ endpoint, options, retryCount, retryBaseDelayMs, retryTransient = true }) {
+async function fetchJsonWithDiagnostics({
+  endpoint,
+  options,
+  retryCount,
+  maxAttempts,
+  retryBaseDelayMs,
+  retryMaxDelayMs = DEFAULT_RETRY_MAX_DELAY_MS,
+  timeoutMs = 0,
+  retryTransient = true,
+  label = "PDF-app request",
+}) {
+  const attemptsLimit = Math.max(1, Number.isFinite(maxAttempts) ? maxAttempts : Number(retryCount || 0) + 1);
   let attempt = 0;
   let lastNetworkError = null;
+  const attemptDiagnostics = [];
 
-  while (attempt <= retryCount) {
+  while (attempt < attemptsLimit) {
     attempt += 1;
     const startedAt = Date.now();
+    const controller = timeoutMs > 0 ? new AbortController() : null;
+    const timeout = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    timeout?.unref?.();
     try {
-      const response = await fetch(endpoint, options);
+      console.info(`${label} attempt ${attempt}/${attemptsLimit}`);
+      const response = await fetch(endpoint, {
+        ...options,
+        signal: controller?.signal || options?.signal,
+      });
       const durationMs = Date.now() - startedAt;
+      if (timeout) clearTimeout(timeout);
       const payload = await parseJsonResponse(response);
-      const shouldRetry = retryTransient && isTransientHttpStatus(response.status) && attempt <= retryCount;
+      const retryable = retryTransient && isTransientHttpStatus(response.status);
+      const retryAfterDelay = retryAfterMs(response);
+      const shouldRetry = retryable && attempt < attemptsLimit;
+      const delay = shouldRetry
+        ? retryAfterDelay ?? retryDelayMs(attempt, retryBaseDelayMs, retryMaxDelayMs)
+        : null;
+      attemptDiagnostics.push({
+        attempt,
+        result: response.ok ? "completed" : classifyHttpStatus(response.status),
+        http_status: response.status,
+        duration_ms: durationMs,
+        retryable,
+        retry_delay_ms: delay,
+        retry_after_used: shouldRetry && retryAfterDelay !== null,
+      });
       if (shouldRetry) {
-        const delay = retryDelayMs(attempt, retryBaseDelayMs);
+        console.warn(`${label} attempt ${attempt}/${attemptsLimit} -> HTTP ${response.status}; retry in ${delay}ms`);
         if (delay) await sleep(delay);
         continue;
       }
+      console.info(`${label} attempt ${attempt}/${attemptsLimit} -> ${response.ok ? "success" : `HTTP ${response.status}`}`);
       return {
         response,
         payload,
         attempts: attempt,
+        attempt_diagnostics: attemptDiagnostics,
         request_duration_ms: durationMs,
         transient_retried: attempt > 1,
       };
     } catch (error) {
       const durationMs = Date.now() - startedAt;
+      if (timeout) clearTimeout(timeout);
       lastNetworkError = error;
-      const shouldRetry = retryTransient && isTransientNetworkError(error) && attempt <= retryCount;
+      const result = classifyNetworkError(error);
+      const retryable = retryTransient && isTransientNetworkError(error);
+      const shouldRetry = retryable && attempt < attemptsLimit;
+      const delay = shouldRetry ? retryDelayMs(attempt, retryBaseDelayMs, retryMaxDelayMs) : null;
+      attemptDiagnostics.push({
+        attempt,
+        result,
+        duration_ms: durationMs,
+        retryable,
+        retry_delay_ms: delay,
+      });
       if (!shouldRetry) {
+        console.warn(`${label} attempt ${attempt}/${attemptsLimit} -> ${result}`);
         return {
           response: null,
           payload: {},
           attempts: attempt,
+          attempt_diagnostics: attemptDiagnostics,
           request_duration_ms: durationMs,
           network_error: error,
+          final_error_type: result,
           transient_retried: attempt > 1,
         };
       }
-      const delay = retryDelayMs(attempt, retryBaseDelayMs);
+      console.warn(`${label} attempt ${attempt}/${attemptsLimit} -> ${result}; retry in ${delay}ms`);
       if (delay) await sleep(delay);
     }
   }
@@ -175,8 +260,10 @@ async function fetchJsonWithDiagnostics({ endpoint, options, retryCount, retryBa
     response: null,
     payload: {},
     attempts: attempt,
+    attempt_diagnostics: attemptDiagnostics,
     request_duration_ms: null,
     network_error: lastNetworkError,
+    final_error_type: lastNetworkError ? classifyNetworkError(lastNetworkError) : null,
     transient_retried: attempt > 1,
   };
 }
@@ -305,17 +392,31 @@ export function buildPdfAppErrorDiagnostics({
   attempts = null,
   mode = null,
   error = null,
+  attemptDiagnostics = [],
+  finalErrorType = null,
 }) {
   const fileUrls = Array.isArray(requestBody?.fileUrls) ? requestBody.fileUrls : [];
   const fileUrlDetails = fileUrls.map((fileUrl) => safeFileUrlDiagnostics(fileUrl));
+  const finalAttempt = Array.isArray(attemptDiagnostics) ? attemptDiagnostics.at(-1) : null;
+  const retryExhausted = Array.isArray(attemptDiagnostics) &&
+    attemptDiagnostics.length > 1 &&
+    finalAttempt?.retryable;
+  const computedFinalErrorType =
+    finalErrorType ||
+    (response?.status ? classifyHttpStatus(response.status) : null) ||
+    finalAttempt?.result ||
+    null;
   return {
     status: response?.status || null,
-    final_status: "ocr_failed",
+    final_status: retryExhausted ? "ocr_retry_exhausted" : "ocr_failed",
     error_type: "ocr_infrastructure",
+    final_error_type: computedFinalErrorType,
     http_status: response?.status || null,
     error: error || responseErrorDetail(responsePayload, response?.statusText || "PDF-app OCR request failed"),
     request_duration_ms: requestDurationMs,
     attempts,
+    ocr_attempt_count: attempts,
+    ocr_attempts: attemptDiagnostics,
     endpoint,
     mode,
     version_mode: requestBody?.versionMode || null,
@@ -344,7 +445,10 @@ async function pollPdfAppJob({
   timeoutMs = DEFAULT_POLL_TIMEOUT_MS,
   pollIntervalBaseMs = DEFAULT_POLL_INTERVAL_BASE_MS,
   retryCount = DEFAULT_RETRY_COUNT,
+  maxAttempts = DEFAULT_OCR_MAX_ATTEMPTS,
   retryBaseDelayMs = DEFAULT_RETRY_BASE_DELAY_MS,
+  retryMaxDelayMs = DEFAULT_RETRY_MAX_DELAY_MS,
+  requestTimeoutMs = DEFAULT_OCR_TIMEOUT_MS,
 }) {
   if (!jobId || !jobEndpoint) return null;
   const startedAt = Date.now();
@@ -365,7 +469,11 @@ async function pollPdfAppJob({
         },
       },
       retryCount,
+      maxAttempts,
       retryBaseDelayMs,
+      retryMaxDelayMs,
+      timeoutMs: requestTimeoutMs,
+      label: "PDF-app OCR job poll",
     });
     httpAttempts += fetchResult.attempts;
     if (fetchResult.network_error) {
@@ -379,7 +487,10 @@ async function pollPdfAppJob({
         poll_http_attempts: httpAttempts,
         poll_duration_ms: Date.now() - startedAt,
         attempts: fetchResult.attempts,
+        ocr_attempt_count: fetchResult.attempts,
+        ocr_attempts: fetchResult.attempt_diagnostics || [],
         request_duration_ms: fetchResult.request_duration_ms,
+        final_error_type: fetchResult.final_error_type || classifyNetworkError(fetchResult.network_error),
         error: error.message,
       };
       throw error;
@@ -397,9 +508,12 @@ async function pollPdfAppJob({
         poll_http_attempts: httpAttempts,
         poll_duration_ms: Date.now() - startedAt,
         attempts: fetchResult.attempts,
+        ocr_attempt_count: fetchResult.attempts,
+        ocr_attempts: fetchResult.attempt_diagnostics || [],
         request_duration_ms: fetchResult.request_duration_ms,
         http_status: response.status,
         status: response.status,
+        final_error_type: classifyHttpStatus(response.status),
         error: responseErrorDetail(payload, response.statusText),
         response_body: compactResponseBody(payload),
       };
@@ -459,11 +573,35 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
     min: 0,
     max: 5,
   });
-  const retryBaseDelayMs = await getNumericSetting(
+  const maxAttempts = await getNumericSetting(
+    "PDF_APP_OCR_MAX_ATTEMPTS",
+    "pdf_app_ocr_max_attempts",
+    retryCount + 1 || DEFAULT_OCR_MAX_ATTEMPTS,
+    { min: 1, max: 6 }
+  );
+  const legacyRetryBaseDelayMs = await getNumericSetting(
     "PDF_APP_RETRY_BASE_DELAY_MS",
     "pdf_app_retry_base_delay_ms",
     DEFAULT_RETRY_BASE_DELAY_MS,
     { min: 0, max: 30000 }
+  );
+  const retryBaseDelayMs = await getNumericSetting(
+    "PDF_APP_OCR_RETRY_BASE_MS",
+    "pdf_app_ocr_retry_base_ms",
+    legacyRetryBaseDelayMs,
+    { min: 0, max: 30000 }
+  );
+  const retryMaxDelayMs = await getNumericSetting(
+    "PDF_APP_OCR_RETRY_MAX_MS",
+    "pdf_app_ocr_retry_max_ms",
+    DEFAULT_RETRY_MAX_DELAY_MS,
+    { min: 0, max: 120000 }
+  );
+  const ocrTimeoutMs = await getNumericSetting(
+    "PDF_APP_OCR_TIMEOUT_MS",
+    "pdf_app_ocr_timeout_ms",
+    DEFAULT_OCR_TIMEOUT_MS,
+    { min: 1000, max: 600000 }
   );
   const pollTimeoutMs = await getNumericSetting(
     "PDF_APP_POLL_TIMEOUT_MS",
@@ -507,7 +645,11 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
       body: JSON.stringify(body),
     },
     retryCount,
+    maxAttempts,
     retryBaseDelayMs,
+    retryMaxDelayMs,
+    timeoutMs: ocrTimeoutMs,
+    label: "PDF-app OCR",
   });
   if (initial.network_error) {
     const message = initial.network_error.message || String(initial.network_error);
@@ -521,6 +663,8 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
       attempts: initial.attempts,
       mode,
       error: message,
+      attemptDiagnostics: initial.attempt_diagnostics || [],
+      finalErrorType: initial.final_error_type || classifyNetworkError(initial.network_error),
     });
     throw error;
   }
@@ -537,6 +681,8 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
       requestDurationMs: initial.request_duration_ms,
       attempts: initial.attempts,
       mode,
+      attemptDiagnostics: initial.attempt_diagnostics || [],
+      finalErrorType: classifyHttpStatus(response.status),
     });
     throw error;
   }
@@ -555,6 +701,8 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
         request_duration_ms: initial.request_duration_ms,
         initial_request_duration_ms: initial.request_duration_ms,
         attempts: initial.attempts,
+        ocr_attempt_count: initial.attempts,
+        ocr_attempts: initial.attempt_diagnostics || [],
         total_duration_ms: Date.now() - totalStartedAt,
         ...quality,
       },
@@ -570,7 +718,10 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
       timeoutMs: pollTimeoutMs,
       pollIntervalBaseMs,
       retryCount,
+      maxAttempts,
       retryBaseDelayMs,
+      retryMaxDelayMs,
+      requestTimeoutMs: ocrTimeoutMs,
     });
     const quality = assessPdfAppOcrQuality(job.text, job.payload);
     return {
@@ -587,6 +738,8 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
         request_duration_ms: initial.request_duration_ms,
         initial_request_duration_ms: initial.request_duration_ms,
         attempts: initial.attempts,
+        ocr_attempt_count: initial.attempts,
+        ocr_attempts: initial.attempt_diagnostics || [],
         poll_attempts: job.attempts,
         poll_http_attempts: job.http_attempts,
         poll_duration_ms: job.poll_duration_ms,
@@ -611,6 +764,8 @@ export async function ocrFileUrlWithPdfApp({ fileUrl, fileName }) {
       request_duration_ms: initial.request_duration_ms,
       initial_request_duration_ms: initial.request_duration_ms,
       attempts: initial.attempts,
+      ocr_attempt_count: initial.attempts,
+      ocr_attempts: initial.attempt_diagnostics || [],
       total_duration_ms: Date.now() - totalStartedAt,
       ...quality,
     },

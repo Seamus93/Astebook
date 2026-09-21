@@ -54,6 +54,14 @@ export function registerAdminSettingsRoutes(app, {
           process.env.PDF_APP_RETRY_COUNT || settings.pdf_app_retry_count || "2",
         pdf_app_retry_base_delay_ms:
           process.env.PDF_APP_RETRY_BASE_DELAY_MS || settings.pdf_app_retry_base_delay_ms || "1000",
+        pdf_app_ocr_timeout_ms:
+          process.env.PDF_APP_OCR_TIMEOUT_MS || settings.pdf_app_ocr_timeout_ms || "120000",
+        pdf_app_ocr_max_attempts:
+          process.env.PDF_APP_OCR_MAX_ATTEMPTS || settings.pdf_app_ocr_max_attempts || "3",
+        pdf_app_ocr_retry_base_ms:
+          process.env.PDF_APP_OCR_RETRY_BASE_MS || settings.pdf_app_ocr_retry_base_ms || "1000",
+        pdf_app_ocr_retry_max_ms:
+          process.env.PDF_APP_OCR_RETRY_MAX_MS || settings.pdf_app_ocr_retry_max_ms || "30000",
         ocr_public_base_url:
           process.env.OCR_PUBLIC_BASE_URL ||
           process.env.ASTEBOOK_PUBLIC_URL ||
@@ -130,6 +138,10 @@ export function registerAdminSettingsRoutes(app, {
     assignIfFilled("pdf_app_poll_interval_base_ms");
     assignIfFilled("pdf_app_retry_count");
     assignIfFilled("pdf_app_retry_base_delay_ms");
+    assignIfFilled("pdf_app_ocr_timeout_ms");
+    assignIfFilled("pdf_app_ocr_max_attempts");
+    assignIfFilled("pdf_app_ocr_retry_base_ms");
+    assignIfFilled("pdf_app_ocr_retry_max_ms");
     assignIfFilled("ocr_public_base_url");
     assignIfFilled("document_template_url");
     assignIfFilled("smtp_host");

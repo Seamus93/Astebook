@@ -34,6 +34,7 @@ import { ocrFileUrlWithPdfApp } from "./pdf_app.js";
 import { extractImmobiliareAnnouncementUrls, scrapeImmobiliareAnnouncement } from "./immobiliare_scraper.js";
 
 const pdfAppTextParserVersion = "pdf_app_multi_page_v1";
+const inFlightOcrRequests = new Map();
 
 export function createAiExtractionPipeline({
   autoSendMergedDocumentEmail,
@@ -109,9 +110,12 @@ export function createAiExtractionPipeline({
       ocr_required: resolvedAttachment?.text_acquisition?.ocr_required ?? null,
       ocr_attempted: resolvedAttachment?.text_acquisition?.ocr_attempted ?? null,
       ocr_status: resolvedAttachment?.text_acquisition?.ocr_status ?? null,
+      ocr_attempt_count: resolvedAttachment?.text_acquisition?.ocr_attempt_count ?? null,
+      ocr_attempts: resolvedAttachment?.text_acquisition?.ocr_attempts ?? null,
       ocr_text_length: resolvedAttachment?.text_acquisition?.ocr_text_length ?? null,
       text_source: resolvedAttachment?.text_acquisition?.text_source || null,
       unusable_reason: resolvedAttachment?.text_acquisition?.unusable_reason || null,
+      final_error_type: resolvedAttachment?.text_acquisition?.final_error_type || null,
       template_filename_evidence: resolvedAttachment?.template_filename_evidence ?? null,
       placeholder_evidence: resolvedAttachment?.placeholder_evidence ?? null,
       compiled_value_evidence: resolvedAttachment?.compiled_value_evidence ?? null,
@@ -358,13 +362,34 @@ export function createAiExtractionPipeline({
 
   function mapOcrStatus(statusOrReason) {
     const value = String(statusOrReason || "").toLowerCase();
-    if (value.includes("timeout") || value.includes("504")) return "timeout";
+    if (value.includes("retry_exhausted")) return "retry_exhausted";
+    if (value.includes("client_timeout") || value.includes("abort")) return "client_timeout";
+    if (value.includes("http_504") || value === "504") return "http_504";
+    if (value.includes("timeout")) return "client_timeout";
     if (value.includes("empty")) return "empty";
     if (value.includes("short") || value.includes("suspicious")) return "short";
     if (value.includes("completed")) return "completed";
     if (value.includes("unavailable")) return "unavailable";
     if (value.includes("failed") || value.includes("error")) return "error";
     return value || null;
+  }
+
+  function ocrUnusableReason(status) {
+    if (status === "retry_exhausted") return "ocr_retry_exhausted";
+    if (status === "client_timeout") return "ocr_client_timeout";
+    if (status === "http_504") return "ocr_http_504";
+    return "ocr_error";
+  }
+
+  async function runSingleFlightOcr(cacheKey, fn) {
+    if (!cacheKey) return await fn();
+    const existing = inFlightOcrRequests.get(cacheKey);
+    if (existing) return await existing;
+    const promise = fn().finally(() => {
+      inFlightOcrRequests.delete(cacheKey);
+    });
+    inFlightOcrRequests.set(cacheKey, promise);
+    return await promise;
   }
 
   function nativePdfTextSufficient(text) {
@@ -652,10 +677,11 @@ export function createAiExtractionPipeline({
               },
             });
           }
-          const ocrResult = await ocrFileUrlWithPdfApp({
+          const ocrCacheKey = attachmentTextCacheKey(resolvedAttachment);
+          const ocrResult = await runSingleFlightOcr(ocrCacheKey, () => ocrFileUrlWithPdfApp({
             fileUrl: ocrFileUrl,
             fileName: resolvedAttachment.file_name,
-          });
+          }));
           if (ocrResult.ok && ocrResult.text) {
             const quality = ocrResult.quality || ocrQualityForText(ocrResult.text, resolvedAttachment.format);
             const mappedStatus = mapOcrStatus(quality.status || quality.final_status || "ocr_completed");
@@ -664,6 +690,8 @@ export function createAiExtractionPipeline({
               ocr_required: true,
               ocr_attempted: true,
               ocr_status: mappedStatus,
+              ocr_attempt_count: ocrResult.diagnostics?.ocr_attempt_count || ocrResult.diagnostics?.attempts || null,
+              ocr_attempts: ocrResult.diagnostics?.ocr_attempts || null,
               ocr_text_length: ocrResult.text.length,
               text_source: "pdf_app_ocr",
               text_length: ocrResult.text.length,
@@ -692,7 +720,9 @@ export function createAiExtractionPipeline({
                 },
               });
             }
-            rememberAttachmentText(result, resolvedAttachment, ocrResult.text, "pdf_app");
+            if (mappedStatus === "completed") {
+              rememberAttachmentText(result, resolvedAttachment, ocrResult.text, "pdf_app");
+            }
             return ocrResult.text;
           }
           recordOcrSummary(result, resolvedAttachment, "pdf_app_empty", {
@@ -709,6 +739,8 @@ export function createAiExtractionPipeline({
             ocr_required: true,
             ocr_attempted: true,
             ocr_status: "empty",
+            ocr_attempt_count: ocrResult.diagnostics?.ocr_attempt_count || ocrResult.diagnostics?.attempts || null,
+            ocr_attempts: ocrResult.diagnostics?.ocr_attempts || null,
             ocr_text_length: 0,
             text_length: 0,
             usable_text: false,
@@ -731,16 +763,23 @@ export function createAiExtractionPipeline({
             `${resolvedAttachment.file_name}: OCR PDF-app non eseguito o senza testo (${ocrResult.reason || "Nessun testo OCR restituito."})`
           );
         } catch (error) {
-          const status = mapOcrStatus(error.diagnostics?.http_status || error.diagnostics?.error || error.message || "ocr_failed");
+          const status = mapOcrStatus(
+            error.diagnostics?.final_status === "ocr_retry_exhausted"
+              ? "ocr_retry_exhausted"
+              : error.diagnostics?.final_error_type || error.diagnostics?.http_status || error.diagnostics?.error || error.message || "ocr_failed"
+          );
           setTextAcquisition(resolvedAttachment, {
             native_text_length: resolvedAttachment.text_acquisition?.native_text_length ?? 0,
             ocr_required: true,
             ocr_attempted: true,
             ocr_status: status || "error",
+            ocr_attempt_count: error.diagnostics?.ocr_attempt_count || error.diagnostics?.attempts || null,
+            ocr_attempts: error.diagnostics?.ocr_attempts || null,
             ocr_text_length: 0,
             text_length: 0,
             usable_text: false,
-            unusable_reason: status === "timeout" ? "ocr_timeout" : "ocr_error",
+            unusable_reason: ocrUnusableReason(status),
+            final_error_type: error.diagnostics?.final_error_type || null,
           });
           recordOcrSummary(result, resolvedAttachment, "pdf_app_failed", {
             error: error.message || String(error),

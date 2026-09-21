@@ -36,13 +36,13 @@ jobs:
 
       - name: Checkout source project
         if: steps.source.outputs.skip != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           path: source-project
 
       - name: Checkout Template
         if: steps.source.outputs.skip != 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Seamus93/Template
           token: ${{ secrets.STANDARDS_SYNC_TOKEN }}

@@ -67,7 +67,10 @@ test("attachment collection ignores proposal templates and keeps the compiled pr
   const byName = new Map(attachments.map((attachment) => [attachment.file_name, attachment]));
   assert.equal(byName.get("Proposta.pdf").kind, "proposta");
   assert.equal(byName.get("Format Proposta DE.CHI_.pdf").kind, "proposta");
-  assert.equal(byName.get("Allegato B_Format Proposta_def_outsourcing_std.docx").kind, "ignored");
+  assert.equal(byName.get("Allegato B_Format Proposta_def_outsourcing_std.docx").kind, "proposta");
+  assert.equal(byName.get("Allegato B_Format Proposta_def_outsourcing_std.docx").document_type, "proposta");
+  assert.equal(byName.get("Allegato B_Format Proposta_def_outsourcing_std.docx").document_role, "template");
+  assert.equal(byName.get("Allegato B_Format Proposta_def_outsourcing_std.docx").proposal_candidate, false);
   assert.equal(byName.get("provvigione su raccolta offerte.docx").kind, "provvigione");
 });
 

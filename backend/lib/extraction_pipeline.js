@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { aiExtractAnnuncio, aiExtractCodicePratica, aiExtractProposta, aiExtractProvvigionePercentuale } from "./ai.js";
-import { collectZapierAttachments, readAttachment } from "./attachments.js";
+import { collectZapierAttachments, readAttachment, refineProposalClassificationWithText } from "./attachments.js";
 import { parseDocxBuffer } from "./docx.js";
 import { fetchIbanInfo, formatMergedOutput, geocodeAddress } from "./extraction_enrichment.js";
 import {
@@ -86,8 +86,41 @@ export function createAiExtractionPipeline({
       ocr_texts: [],
       proposta_agent_runs: [],
       proposta_field_matrix: [],
+      attachments: [],
+      proposal_selection: null,
     };
+    result.extraction_diagnostics.attachments = result.extraction_diagnostics.attachments || [];
+    result.extraction_diagnostics.proposal_selection ??= null;
     return result.extraction_diagnostics;
+  }
+
+  function attachmentDiagnostic(resolvedAttachment, extra = {}) {
+    return {
+      file_name: resolvedAttachment?.file_name || null,
+      basename: resolvedAttachment?.basename || null,
+      extension: resolvedAttachment?.extension || null,
+      mime_type: resolvedAttachment?.mime_type || null,
+      format: resolvedAttachment?.format || null,
+      format_detection: resolvedAttachment?.format_detection || null,
+      kind: resolvedAttachment?.kind || null,
+      document_type: resolvedAttachment?.document_type || resolvedAttachment?.kind || null,
+      document_role: resolvedAttachment?.document_role || null,
+      classification_reason: resolvedAttachment?.classification_reason || [],
+      proposal_candidate: Boolean(resolvedAttachment?.proposal_candidate),
+      ...extra,
+    };
+  }
+
+  function upsertAttachmentDiagnostic(result, resolvedAttachment, extra = {}) {
+    const diagnostics = ensureExtractionDiagnostics(result);
+    const snapshot = attachmentDiagnostic(resolvedAttachment, extra);
+    const index = diagnostics.attachments.findIndex((item) =>
+      (snapshot.file_name && item.file_name === snapshot.file_name) ||
+      (resolvedAttachment?.url && item.url === resolvedAttachment.url)
+    );
+    if (index >= 0) diagnostics.attachments[index] = { ...diagnostics.attachments[index], ...snapshot };
+    else diagnostics.attachments.push(snapshot);
+    return snapshot;
   }
 
   function recordOcrTextDiagnostics(result, resolvedAttachment, text, source, transformations = []) {
@@ -96,6 +129,8 @@ export function createAiExtractionPipeline({
     diagnostics.ocr_texts.push({
       file_name: resolvedAttachment.file_name,
       kind: resolvedAttachment.kind || null,
+      document_type: resolvedAttachment.document_type || null,
+      document_role: resolvedAttachment.document_role || null,
       source,
       format: resolvedAttachment.format || null,
       text_length: String(text || "").length,
@@ -207,6 +242,8 @@ export function createAiExtractionPipeline({
       mime_type: resolvedAttachment.mime_type || null,
       size: resolvedAttachment.size || null,
       kind: resolvedAttachment.kind || null,
+      document_type: resolvedAttachment.document_type || null,
+      document_role: resolvedAttachment.document_role || null,
       format: resolvedAttachment.format || null,
       text: cleanText,
       text_length: cleanText.length,
@@ -233,6 +270,8 @@ export function createAiExtractionPipeline({
       ...(files[fileName] || {}),
       file_name: fileName,
       kind: resolvedAttachment?.kind || null,
+      document_type: resolvedAttachment?.document_type || resolvedAttachment?.kind || null,
+      document_role: resolvedAttachment?.document_role || null,
       format: resolvedAttachment?.format || null,
       status,
       ...data,
@@ -276,6 +315,76 @@ export function createAiExtractionPipeline({
     if (quality.final_status !== "ocr_empty") return true;
     addUniqueNote(result, `${resolvedAttachment.file_name}: OCR completato senza testo utilizzabile; AI non avviata.`);
     return false;
+  }
+
+  function proposalSelectionScore(candidate) {
+    const compiledScore = Number(candidate.resolvedAttachment?.content_score?.compiled_score || 0);
+    const templateScore = Number(candidate.resolvedAttachment?.content_score?.template_score || 0);
+    const textLengthScore = Math.min(5, Math.floor(String(candidate.text || "").trim().length / 1500));
+    return compiledScore * 10 + textLengthScore - templateScore * 4;
+  }
+
+  function selectProposalCandidates(result, candidates) {
+    const proposalDiagnostics = candidates.map((candidate) => ({
+      ...attachmentDiagnostic(candidate.resolvedAttachment, {
+        text_extracted: candidate.text_extracted,
+        text_length: String(candidate.text || "").length,
+        usable_text: candidate.usable_text,
+        proposal_candidate: Boolean(candidate.resolvedAttachment?.proposal_candidate && candidate.usable_text),
+        selection_score: proposalSelectionScore(candidate),
+      }),
+    }));
+    const usableSources = candidates
+      .filter((candidate) => candidate.usable_text && candidate.resolvedAttachment?.proposal_candidate)
+      .sort((a, b) => proposalSelectionScore(b) - proposalSelectionScore(a));
+    const diagnostics = ensureExtractionDiagnostics(result);
+
+    if (!usableSources.length) {
+      diagnostics.proposal_selection = {
+        status: "no_source_candidate",
+        candidates: proposalDiagnostics,
+      };
+      return [];
+    }
+
+    const topScore = proposalSelectionScore(usableSources[0]);
+    const tied = usableSources.filter((candidate) => proposalSelectionScore(candidate) === topScore);
+    const selected = usableSources;
+    selected.forEach((candidate, index) => {
+      candidate.proposal_primary = index === 0;
+      candidate.selection_reason = index === 0 ? "compiled_proposal_candidate" : "additional_compiled_proposal_candidate";
+      candidate.resolvedAttachment.proposal_primary = candidate.proposal_primary;
+      candidate.resolvedAttachment.selection_reason = candidate.selection_reason;
+      upsertAttachmentDiagnostic(result, candidate.resolvedAttachment, {
+        text_extracted: candidate.text_extracted,
+        text_length: String(candidate.text || "").length,
+        usable_text: candidate.usable_text,
+        proposal_primary: candidate.proposal_primary,
+        selection_reason: candidate.selection_reason,
+        selection_score: proposalSelectionScore(candidate),
+      });
+    });
+
+    if (tied.length > 1) {
+      addUniqueNote(
+        result,
+        `Più proposte compilate con pari priorità: ${tied.map((candidate) => candidate.resolvedAttachment.file_name).join(", ")}.`
+      );
+    }
+
+    diagnostics.proposal_selection = {
+      status: tied.length > 1 ? "ambiguous_sources" : "selected",
+      primary_file_name: usableSources[0].resolvedAttachment.file_name,
+      selection_reason: "compiled_proposal_candidate",
+      selected_file_names: selected.map((candidate) => candidate.resolvedAttachment.file_name),
+      ambiguous_file_names: tied.length > 1 ? tied.map((candidate) => candidate.resolvedAttachment.file_name) : [],
+      candidates: proposalDiagnostics.map((candidate) => ({
+        ...candidate,
+        proposal_primary: candidate.file_name === usableSources[0].resolvedAttachment.file_name,
+        selection_reason: candidate.file_name === usableSources[0].resolvedAttachment.file_name ? "compiled_proposal_candidate" : null,
+      })),
+    };
+    return selected;
   }
 
   function localPdfFallbackEnabled() {
@@ -868,6 +977,16 @@ export function createAiExtractionPipeline({
       zapier_response: null,
       notes: [],
     };
+    ensureExtractionDiagnostics(result);
+    attachmentInputs.forEach((attachment) => {
+      upsertAttachmentDiagnostic(result, attachment, {
+        received: true,
+        classified: true,
+        read: false,
+        text_extracted: false,
+        passed_to_ai: false,
+      });
+    });
 
     await updateProcessingEvent(
       event.id,
@@ -1041,6 +1160,8 @@ export function createAiExtractionPipeline({
 
     await updateProcessingEvent(event.id, { status: "extracting" }, { message: "AI extraction started" });
 
+    const proposalCandidates = [];
+
     for (const attachment of attachmentInputs) {
       let resolvedAttachment = null;
       try {
@@ -1080,17 +1201,31 @@ export function createAiExtractionPipeline({
       const safeDescriptor = {
         field_name: resolvedAttachment.field_name,
         file_name: resolvedAttachment.file_name,
+        basename: resolvedAttachment.basename,
+        extension: resolvedAttachment.extension,
         mime_type: resolvedAttachment.mime_type,
         size: resolvedAttachment.size,
         url: resolvedAttachment.url,
         kind: resolvedAttachment.kind,
+        document_type: resolvedAttachment.document_type,
+        document_role: resolvedAttachment.document_role,
+        classification_reason: resolvedAttachment.classification_reason,
+        proposal_candidate: resolvedAttachment.proposal_candidate,
         supported_by_extraction: ["pdf", "docx", "image"].includes(resolvedAttachment.format),
         format: resolvedAttachment.format,
+        format_detection: resolvedAttachment.format_detection,
       };
       const existingIndex = result.attachments.findIndex(
         (item) => item.url === safeDescriptor.url || item.file_name === attachment.file_name
       );
       if (existingIndex >= 0) result.attachments[existingIndex] = safeDescriptor;
+      upsertAttachmentDiagnostic(result, resolvedAttachment, {
+        received: true,
+        classified: true,
+        read: true,
+        text_extracted: false,
+        passed_to_ai: false,
+      });
 
       if (resolvedAttachment.kind === "ignored") {
         recordOcrSummary(result, resolvedAttachment, "skipped", {
@@ -1166,27 +1301,46 @@ export function createAiExtractionPipeline({
 
         if (resolvedAttachment.kind === "proposta") {
           const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
-          if (!hasUsableAttachmentText(result, resolvedAttachment, attachmentText)) continue;
-          const extractedProposta = await extractPropostaAiFirst({
-            text: attachmentText,
-            fileName: resolvedAttachment.file_name,
-            eventId: event.id,
-            result,
+          const usableText = hasUsableAttachmentText(result, resolvedAttachment, attachmentText);
+          const classifiedAttachment = refineProposalClassificationWithText(resolvedAttachment, attachmentText);
+          Object.assign(resolvedAttachment, classifiedAttachment);
+          const updatedDescriptor = {
+            field_name: resolvedAttachment.field_name,
+            file_name: resolvedAttachment.file_name,
+            basename: resolvedAttachment.basename,
+            extension: resolvedAttachment.extension,
+            mime_type: resolvedAttachment.mime_type,
+            size: resolvedAttachment.size,
+            url: resolvedAttachment.url,
+            kind: resolvedAttachment.kind,
+            document_type: resolvedAttachment.document_type,
+            document_role: resolvedAttachment.document_role,
+            classification_reason: resolvedAttachment.classification_reason,
+            proposal_candidate: resolvedAttachment.proposal_candidate,
+            supported_by_extraction: ["pdf", "docx", "image"].includes(resolvedAttachment.format),
+            format: resolvedAttachment.format,
+            format_detection: resolvedAttachment.format_detection,
+          };
+          if (existingIndex >= 0) result.attachments[existingIndex] = updatedDescriptor;
+          upsertAttachmentDiagnostic(result, resolvedAttachment, {
+            text_extracted: Boolean(attachmentText),
+            text_length: String(attachmentText || "").length,
+            usable_text: usableText,
+            passed_to_ai: false,
           });
-          extractedProposta.source_format = resolvedAttachment.format;
-          const diagnostics = ensureExtractionDiagnostics(result);
-          const agentRun = diagnostics.proposta_agent_runs.at(-1);
-          if (agentRun) {
-            agentRun.before_merge_result_proposta = cloneDiagnostic(result.extracted.proposta);
-            agentRun.proposta_agent_for_merge = cloneDiagnostic(extractedProposta);
-          }
-          result.extracted.proposta = mergeExtractedProposta(result.extracted.proposta, extractedProposta);
-          if (agentRun) {
-            agentRun.after_merge_result_proposta = cloneDiagnostic(result.extracted.proposta);
-          }
+          proposalCandidates.push({
+            resolvedAttachment,
+            text: attachmentText,
+            text_extracted: Boolean(attachmentText),
+            usable_text: usableText,
+          });
           await updateProcessingEvent(event.id, { result }, {
-            message: "Proposal extracted",
-            data: extractedProposta,
+            message: "Proposal attachment classified",
+            data: attachmentDiagnostic(resolvedAttachment, {
+              text_extracted: Boolean(attachmentText),
+              text_length: String(attachmentText || "").length,
+              usable_text: usableText,
+            }),
           });
           continue;
         }
@@ -1243,6 +1397,53 @@ export function createAiExtractionPipeline({
           reason: "unclassified_attachment",
         },
       });
+    }
+
+    const selectedProposalCandidates = selectProposalCandidates(result, proposalCandidates);
+    for (const candidate of selectedProposalCandidates) {
+      const { resolvedAttachment, text: attachmentText } = candidate;
+      try {
+        upsertAttachmentDiagnostic(result, resolvedAttachment, {
+          passed_to_ai: true,
+          proposal_primary: Boolean(candidate.proposal_primary),
+          selection_reason: candidate.selection_reason,
+          selection_score: proposalSelectionScore(candidate),
+        });
+        const extractedProposta = await extractPropostaAiFirst({
+          text: attachmentText,
+          fileName: resolvedAttachment.file_name,
+          eventId: event.id,
+          result,
+        });
+        extractedProposta.source_format = resolvedAttachment.format;
+        extractedProposta.document_role = resolvedAttachment.document_role;
+        const diagnostics = ensureExtractionDiagnostics(result);
+        const agentRun = diagnostics.proposta_agent_runs.at(-1);
+        if (agentRun) {
+          agentRun.document_role = resolvedAttachment.document_role;
+          agentRun.proposal_primary = Boolean(candidate.proposal_primary);
+          agentRun.selection_reason = candidate.selection_reason;
+          agentRun.before_merge_result_proposta = cloneDiagnostic(result.extracted.proposta);
+          agentRun.proposta_agent_for_merge = cloneDiagnostic(extractedProposta);
+        }
+        result.extracted.proposta = mergeExtractedProposta(result.extracted.proposta, extractedProposta);
+        if (agentRun) {
+          agentRun.after_merge_result_proposta = cloneDiagnostic(result.extracted.proposta);
+        }
+        await updateProcessingEvent(event.id, { result }, {
+          message: candidate.proposal_primary ? "Primary proposal extracted" : "Additional proposal extracted",
+          data: {
+            file_name: resolvedAttachment.file_name,
+            proposal_primary: Boolean(candidate.proposal_primary),
+            selection_reason: candidate.selection_reason,
+            extracted: extractedProposta,
+          },
+        });
+      } catch (error) {
+        result.notes.push(
+          `${resolvedAttachment.file_name}: estrazione proposta fallita (${error.message || String(error)})`
+        );
+      }
     }
 
     if (

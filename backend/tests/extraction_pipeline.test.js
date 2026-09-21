@@ -626,3 +626,165 @@ test("Apify announcement data replaces extracted announcement while keeping AI f
     else process.env.APIFY_IMMOBILIARE_ACTOR_ID = previousActor;
   }
 });
+
+function cachedTextEntry({ buffer, fileName, format, text, source = format }) {
+  return [
+    createHash("sha256").update(buffer).digest("hex"),
+    {
+      file_name: fileName,
+      format,
+      text,
+      text_length: text.length,
+      source,
+      parser_version: source === "pdf_app" ? "pdf_app_multi_page_v1" : null,
+    },
+  ];
+}
+
+function compiledProposalText(extra = "") {
+  return [
+    "Proposta irrevocabile di acquisto di immobile",
+    "Il sottoscritto Mario Rossi in qualità di Proponente Acquirente",
+    "codice fiscale RSSMRA80A01H501U",
+    "identificato al Catasto Fabbricati al Foglio 6, Particella 305, Sub 501",
+    "Via Vicolo Magenta n. 3",
+    "Prezzo offerto Euro 150.000,00",
+    "Firma e sottoscrizione",
+    extra,
+  ].join("\n");
+}
+
+function makePipeline(events) {
+  return createAiExtractionPipeline({
+    autoSendMergedDocumentEmail: async () => null,
+    getProcessingEvent: async (id) => events.get(id) || null,
+    updateProcessingEvent: async (id, patch = {}, step = null) => {
+      const current = events.get(id) || { id, steps: [] };
+      const next = {
+        ...current,
+        ...patch,
+        steps: step ? [...(current.steps || []), step] : current.steps || [],
+      };
+      events.set(id, next);
+      return next;
+    },
+  });
+}
+
+test("proposal selection prefers compiled PDF source over proposal template DOCX", async () => {
+  const templateBuffer = Buffer.from("PK template");
+  const sourceBuffer = Buffer.from("%PDF source");
+  const templateText = "FORMAT PROPOSTA\nNome Cognome __________________\nCodice fiscale __________________\nDa compilare a cura del proponente.";
+  const sourceText = `${compiledProposalText("LI JIN\nSAVOY REOCO S.r.l.")}\n`.repeat(8);
+  const events = new Map([["proposal-selection-test", { id: "proposal-selection-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  const result = await pipeline({
+    eventId: "proposal-selection-test",
+    body: { subject: "PROPOSAL_SELECTION_TEST" },
+    files: [
+      {
+        fieldname: "email_attachment_1",
+        originalname: "Allegato B_Format Proposta Savoy Procedura Proprietà.docx",
+        mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        buffer: templateBuffer,
+      },
+      {
+        fieldname: "email_attachment_2",
+        originalname: "Proposta irrevocabile di acquisto.pdf",
+        mimetype: "application/pdf",
+        buffer: sourceBuffer,
+      },
+    ],
+    previousResult: {
+      attachment_text_cache: Object.fromEntries([
+        cachedTextEntry({ buffer: templateBuffer, fileName: "Allegato B_Format Proposta Savoy Procedura Proprietà.docx", format: "docx", text: templateText, source: "docx" }),
+        cachedTextEntry({ buffer: sourceBuffer, fileName: "Proposta irrevocabile di acquisto.pdf", format: "pdf", text: sourceText, source: "pdf_app" }),
+      ]),
+    },
+    skipAutoSend: true,
+  });
+
+  const byName = new Map(result.extraction_diagnostics.attachments.map((item) => [item.file_name, item]));
+  assert.equal(byName.get("Allegato B_Format Proposta Savoy Procedura Proprietà.docx").document_role, "template");
+  assert.equal(byName.get("Allegato B_Format Proposta Savoy Procedura Proprietà.docx").proposal_candidate, false);
+  assert.equal(byName.get("Allegato B_Format Proposta Savoy Procedura Proprietà.docx").passed_to_ai, false);
+  assert.equal(byName.get("Proposta irrevocabile di acquisto.pdf").document_role, "source");
+  assert.equal(byName.get("Proposta irrevocabile di acquisto.pdf").proposal_primary, true);
+  assert.equal(result.extraction_diagnostics.proposta_agent_runs.length, 1);
+  assert.equal(result.extraction_diagnostics.proposta_agent_runs[0].file_name, "Proposta irrevocabile di acquisto.pdf");
+});
+
+test("compiled DOCX proposal can be selected as source", async () => {
+  const buffer = Buffer.from("PK compiled docx");
+  const text = compiledProposalText("Documento compilato in formato DOCX.");
+  const events = new Map([["compiled-docx-proposal-test", { id: "compiled-docx-proposal-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  const result = await pipeline({
+    eventId: "compiled-docx-proposal-test",
+    body: { subject: "COMPILED_DOCX_PROPOSAL_TEST" },
+    files: [
+      {
+        fieldname: "email_attachment_1",
+        originalname: "Proposta acquisto Rossi.docx",
+        mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        buffer,
+      },
+    ],
+    previousResult: {
+      attachment_text_cache: Object.fromEntries([
+        cachedTextEntry({ buffer, fileName: "Proposta acquisto Rossi.docx", format: "docx", text, source: "docx" }),
+      ]),
+    },
+    skipAutoSend: true,
+  });
+
+  assert.equal(result.extraction_diagnostics.proposal_selection.primary_file_name, "Proposta acquisto Rossi.docx");
+  assert.equal(result.extraction_diagnostics.proposta_agent_runs.length, 1);
+  assert.equal(result.extracted.proposta.file_pdf, "Proposta acquisto Rossi.docx");
+  assert.equal(result.extracted.proposta.source_format, "docx");
+});
+
+test("multiple real proposal sources are diagnosed instead of silently first or last winning", async () => {
+  const firstBuffer = Buffer.from("PK compiled source one");
+  const secondBuffer = Buffer.from("PK compiled source two");
+  const firstText = compiledProposalText("Fonte uno.");
+  const secondText = compiledProposalText("Fonte due.");
+  const events = new Map([["multiple-proposal-sources-test", { id: "multiple-proposal-sources-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  const result = await pipeline({
+    eventId: "multiple-proposal-sources-test",
+    body: { subject: "MULTIPLE_PROPOSAL_SOURCES_TEST" },
+    files: [
+      {
+        fieldname: "email_attachment_1",
+        originalname: "Proposta acquisto Rossi.docx",
+        mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        buffer: firstBuffer,
+      },
+      {
+        fieldname: "email_attachment_2",
+        originalname: "Offerta irrevocabile Bianchi.docx",
+        mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        buffer: secondBuffer,
+      },
+    ],
+    previousResult: {
+      attachment_text_cache: Object.fromEntries([
+        cachedTextEntry({ buffer: firstBuffer, fileName: "Proposta acquisto Rossi.docx", format: "docx", text: firstText, source: "docx" }),
+        cachedTextEntry({ buffer: secondBuffer, fileName: "Offerta irrevocabile Bianchi.docx", format: "docx", text: secondText, source: "docx" }),
+      ]),
+    },
+    skipAutoSend: true,
+  });
+
+  assert.equal(result.extraction_diagnostics.proposal_selection.status, "ambiguous_sources");
+  assert.deepEqual(
+    result.extraction_diagnostics.proposal_selection.ambiguous_file_names,
+    ["Proposta acquisto Rossi.docx", "Offerta irrevocabile Bianchi.docx"]
+  );
+  assert.equal(result.extraction_diagnostics.proposta_agent_runs.length, 2);
+  assert.ok(result.notes.some((note) => note.includes("Più proposte compilate con pari priorità")));
+});

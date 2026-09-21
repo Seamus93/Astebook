@@ -68,6 +68,7 @@ Updated: 2026-07-10
 - Dedupe should use stable external email IDs such as `email_id`, `message_id`, `gmail_id`; Zapier naming may vary.
 - Existing Zapier payloads may use camelCase or compact names (`zapRunId`, `emailid`, `zaprunid`, `emailbodytext`), so alias handling should be explicit if needed.
 - Attachments may arrive as multipart files, URLs, nested JSON, JSON strings or flattened fields such as `attachment_1_attachment`.
+- Attachment descriptors separate `file_name`, `basename`, `extension`, MIME type, detected `format`, `document_type`, `document_role` and `classification_reason`. Format detection prefers magic bytes when content is available, then MIME type, then extension, and records mismatch diagnostics.
 
 ## Processing Flow
 
@@ -75,10 +76,11 @@ Updated: 2026-07-10
 2. Resolve email text and clean it.
 3. Extract practice code and announcement data from email body.
 4. Collect attachment descriptors and supported file content.
-5. Parse/OCR/extract announcement, proposal and commission documents.
-6. Merge announcement/proposal fields.
-7. Update event result, missing fields, notes and status.
-8. Auto-send generated document email when merged data and SMTP/document settings are complete.
+5. Parse/OCR/extract announcement and commission documents; proposal attachments are text-extracted and scored before the Proposal Agent is called.
+6. Select proposal source candidates by document type/role plus deterministic content evidence. Proposal templates such as `Format/Formato/Modello/Template/Fac-simile` combined with `proposta/offerta` are retained in diagnostics but are not primary extraction sources when a compiled/source proposal exists.
+7. Merge announcement/proposal fields.
+8. Update event result, missing fields, notes and status.
+9. Auto-send generated document email when merged data and SMTP/document settings are complete.
 
 ## Extraction Feedback Loop
 

@@ -146,46 +146,78 @@ export function scoreProposalContent(text) {
   const value = normalizedName(text);
   const raw = String(text || "");
   const reasons = [];
-  let compiled_score = 0;
+  let label_score = 0;
+  let compiled_value_score = 0;
+  let placeholder_score = 0;
   let template_score = 0;
 
-  const compiledPatterns = [
-    ["content_contains_proposta_irrevocabile", /proposta\s+irrevocabile/],
-    ["content_contains_proponente_acquirente", /proponente\s+acquirente/],
-    ["content_contains_sottoscritto", /sottoscritt[oa]/],
-    ["content_contains_codice_fiscale", /codice\s+fiscale|[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]/i],
-    ["content_contains_catasto", /foglio\s+\w{1,8}[\s,;]+(?:particella|mappale)\s+\w{1,12}|catasto\s+fabbricati/],
-    ["content_contains_subalterno", /\bsub(?:alterno)?\.?\s+\w{1,8}/],
-    ["content_contains_address", /\b(via|viale|vicolo|piazza|corso|largo)\b\s+\w+/],
-    ["content_contains_amount", /(?:euro|eur|\b€)\s*[\d.]{2,}(?:,\d{2})?|[\d.]{2,},\d{2}\s*(?:euro|eur|€)/],
-    ["content_contains_firma", /firma|sottoscrizione/],
+  const labelPatterns = [
+    ["content_label_proposta_irrevocabile", /proposta\s+irrevocabile/],
+    ["content_label_proponente_acquirente", /proponente\s+acquirente/],
+    ["content_label_sottoscritto", /sottoscritt[oa]/],
+    ["content_label_codice_fiscale", /codice\s+fiscale/],
+    ["content_label_catasto", /catasto|foglio|particella|mappale|subalterno|\bsub\b/],
+    ["content_label_importo", /prezzo|importo|euro|cauzione/],
+    ["content_label_firma", /firma|sottoscrizione/],
   ];
-  for (const [reason, pattern] of compiledPatterns) {
-    if (pattern.test(value) || pattern.test(raw)) {
-      compiled_score += 1;
+  for (const [reason, pattern] of labelPatterns) {
+    if (pattern.test(value)) {
+      label_score += 1;
       reasons.push(reason);
     }
   }
 
+  const concretePatterns = [
+    ["content_value_codice_fiscale", /\b[A-Z]{6}\d{2}[A-Z]\d{2}[A-Z]\d{3}[A-Z]\b/i],
+    ["content_value_iban", /\bIT\d{2}[A-Z]\d{10}[A-Z0-9]{12}\b/i],
+    ["content_value_catasto_foglio_particella", /\bfoglio\s*(?:n\.?|num(?:ero)?\.?)?\s*\d{1,5}[\s,;.\-]+(?:particella|mappale|part\.|mapp\.)\s*(?:n\.?|num(?:ero)?\.?)?\s*\d{1,8}/i],
+    ["content_value_catasto_sub", /\bsub(?:alterno)?\.?\s*(?:n\.?|num(?:ero)?\.?)?\s*\d{1,6}\b/i],
+    ["content_value_address_with_number", /\b(via|viale|vicolo|piazza|corso|largo|strada|localita)\b\s+[a-zàèéìòù0-9' ]{3,60}\b(?:n\.?|numero|civico)?\s*\d+[a-z]?\b/i],
+    ["content_value_amount", /(?:euro|eur|€)\s*\d{1,3}(?:[.\s]\d{3})+(?:,\d{2})?|\d{1,3}(?:[.\s]\d{3})+(?:,\d{2})?\s*(?:euro|eur|€)/i],
+    ["content_value_date", /\b(?:0?[1-9]|[12]\d|3[01])[\/.-](?:0?[1-9]|1[0-2])[\/.-](?:20)?\d{2}\b/],
+    ["content_value_named_party", /\b(?:il|la)\s+sottoscritt[oa]\s+[A-ZÀ-Ý][A-ZÀ-Ý' -]{2,}\s+[A-ZÀ-Ý][A-ZÀ-Ý' -]{2,}/],
+  ];
+  for (const [reason, pattern] of concretePatterns) {
+    if (pattern.test(raw)) {
+      compiled_value_score += 1;
+      reasons.push(reason);
+    }
+  }
+
+  const repeatedBracketPlaceholders = raw.match(/\[[^\]]{0,80}\]|[●•]{2,}|\{\{[^}]{0,80}\}\}/g) || [];
+  const repeatedLinePlaceholders = raw.match(/_{4,}|\.{5,}/g) || [];
   const templatePatterns = [
     ["content_contains_template_word", /\b(format|formato|modello|template|fac\s*simile|facsimile)\b/],
     ["content_contains_placeholder_lines", /_{4,}|\.{5,}/],
-    ["content_contains_bracket_placeholders", /\[[^\]]{1,40}\]|\{\{[^}]{1,40}\}\}/],
+    ["content_contains_bracket_placeholders", /\[[^\]]{0,80}\]|[●•]{2,}|\{\{[^}]{0,80}\}\}/],
     ["content_contains_da_compilare", /da\s+compilare|compilare\s+a\s+cura|nome\s+cognome/],
+    ["content_contains_empty_fields", /(?:codice\s+fiscale|foglio|particella|sub|importo|prezzo|firma)[\s:._-]{3,}/],
   ];
   for (const [reason, pattern] of templatePatterns) {
     if (pattern.test(value) || pattern.test(raw)) {
       template_score += 1;
+      placeholder_score += reason.includes("placeholder") || reason.includes("empty_fields") || reason.includes("da_compilare") ? 1 : 0;
       reasons.push(reason);
     }
   }
+  if (repeatedBracketPlaceholders.length >= 3) {
+    placeholder_score += 2;
+    reasons.push("content_contains_repeated_bracket_placeholders");
+  }
+  if (repeatedLinePlaceholders.length >= 5) {
+    placeholder_score += 2;
+    reasons.push("content_contains_repeated_empty_lines");
+  }
 
   let role_evidence = "weak";
-  if (compiled_score >= 3) role_evidence = "compiled";
-  else if (template_score >= 2 && compiled_score === 0) role_evidence = "template";
+  if (compiled_value_score >= 3 && compiled_value_score > placeholder_score) role_evidence = "compiled";
+  else if (template_score >= 2 || placeholder_score >= 2) role_evidence = "template";
 
   return {
-    compiled_score,
+    compiled_score: compiled_value_score,
+    label_score,
+    compiled_value_score,
+    placeholder_score,
     template_score,
     role_evidence,
     classification_reason: reasons,
@@ -195,10 +227,22 @@ export function scoreProposalContent(text) {
 export function refineProposalClassificationWithText(descriptor, text) {
   if (descriptor?.document_type !== "proposta") return descriptor;
   const score = scoreProposalContent(text);
+  const templateFilenameEvidence = (descriptor.classification_reason || []).some((reason) =>
+    ["proposal_template_filename_pattern", "docx_template_pattern", "template_filename_pattern"].includes(reason)
+  );
+  const compiledValueEvidence = score.compiled_value_score >= (templateFilenameEvidence ? 4 : 3) &&
+    score.compiled_value_score > score.placeholder_score;
+  const placeholderEvidence = score.placeholder_score > 0 || score.template_score >= 2;
   const next = {
     ...descriptor,
+    template_filename_evidence: templateFilenameEvidence,
+    placeholder_evidence: placeholderEvidence,
+    compiled_value_evidence: compiledValueEvidence,
     content_score: {
       compiled_score: score.compiled_score,
+      label_score: score.label_score,
+      compiled_value_score: score.compiled_value_score,
+      placeholder_score: score.placeholder_score,
       template_score: score.template_score,
       role_evidence: score.role_evidence,
     },
@@ -207,7 +251,10 @@ export function refineProposalClassificationWithText(descriptor, text) {
       ...score.classification_reason,
     ])),
   };
-  if (score.role_evidence === "compiled") {
+  if (templateFilenameEvidence && !compiledValueEvidence) {
+    next.document_role = "template";
+    next.classification_reason.push("template_filename_requires_concrete_values");
+  } else if (compiledValueEvidence) {
     next.document_role = "source";
     next.classification_reason.push("content_compiled_proposal_evidence");
   } else if (score.role_evidence === "template") {

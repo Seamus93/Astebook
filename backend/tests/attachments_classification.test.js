@@ -64,6 +64,62 @@ test("compiled DOCX proposal can become source from content evidence", () => {
   assert.ok(refined.classification_reason.includes("content_compiled_proposal_evidence"));
 });
 
+test("proposal template labels and placeholders do not promote a template DOCX to source", () => {
+  const descriptor = classifyAttachmentDescriptor({
+    fileName: "Allegato B_Format Proposta Savoy Procedura Proprietà.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    buffer: Buffer.from("PK test"),
+  });
+  const refined = refineProposalClassificationWithText(
+    descriptor,
+    [
+      "Proposta irrevocabile di acquisto",
+      "Il sottoscritto/a __________________",
+      "Proponente Acquirente [●]",
+      "Codice fiscale __________________",
+      "Catasto Fabbricati: Foglio ____ Particella ____ Sub ____",
+      "Importo Euro __________",
+      "Firma __________________",
+      "Da compilare a cura del proponente",
+    ].join("\n")
+  );
+
+  assert.equal(refined.document_type, "proposta");
+  assert.equal(refined.document_role, "template");
+  assert.equal(refined.proposal_candidate, false);
+  assert.equal(refined.template_filename_evidence, true);
+  assert.equal(refined.placeholder_evidence, true);
+  assert.equal(refined.compiled_value_evidence, false);
+  assert.ok(refined.classification_reason.includes("template_filename_requires_concrete_values"));
+});
+
+test("compiled DOCX with template-like filename can be promoted with concrete values", () => {
+  const descriptor = classifyAttachmentDescriptor({
+    fileName: "Format Proposta Cliente.docx",
+    mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    buffer: Buffer.from("PK test"),
+  });
+  const refined = refineProposalClassificationWithText(
+    descriptor,
+    [
+      "Proposta irrevocabile di acquisto",
+      "Il sottoscritto Mario Rossi in qualità di Proponente Acquirente",
+      "Codice fiscale RSSMRA80A01H501U",
+      "IBAN IT60X0542811101000000123456",
+      "Foglio 6, Particella 305, Sub 501",
+      "Via Vicolo Magenta n. 3",
+      "Prezzo offerto Euro 150.000,00",
+      "Data 12/09/2026",
+    ].join("\n")
+  );
+
+  assert.equal(refined.document_type, "proposta");
+  assert.equal(refined.document_role, "source");
+  assert.equal(refined.proposal_candidate, true);
+  assert.equal(refined.template_filename_evidence, true);
+  assert.equal(refined.compiled_value_evidence, true);
+});
+
 test("template-looking PDF with empty placeholders does not become source just because it is PDF", () => {
   const descriptor = classifyAttachmentDescriptor({
     fileName: "Format Proposta.pdf",

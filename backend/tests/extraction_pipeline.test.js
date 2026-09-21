@@ -654,6 +654,21 @@ function compiledProposalText(extra = "") {
   ].join("\n");
 }
 
+function proposalTemplateText(extra = "") {
+  return [
+    "Proposta irrevocabile di acquisto",
+    "Il sottoscritto/a __________________",
+    "Proponente Acquirente [●]",
+    "Codice fiscale __________________",
+    "Catasto Fabbricati: Foglio ____ Particella ____ Sub ____",
+    "Indirizzo immobile __________________",
+    "Importo Euro __________",
+    "Firma __________________",
+    "Da compilare a cura del proponente",
+    extra,
+  ].join("\n").repeat(80);
+}
+
 function makePipeline(events) {
   return createAiExtractionPipeline({
     autoSendMergedDocumentEmail: async () => null,
@@ -669,6 +684,39 @@ function makePipeline(events) {
       return next;
     },
   });
+}
+
+function installPdfAppEnv() {
+  const previous = {
+    PROJECT_URL: process.env.PROJECT_URL,
+    PDF_APP_API_KEY: process.env.PDF_APP_API_KEY,
+    PDF_APP_OCR_ENDPOINT: process.env.PDF_APP_OCR_ENDPOINT,
+    PDF_APP_ASYNC_MODE: process.env.PDF_APP_ASYNC_MODE,
+    PDF_APP_RETRY_COUNT: process.env.PDF_APP_RETRY_COUNT,
+    PDF_APP_RETRY_BASE_DELAY_MS: process.env.PDF_APP_RETRY_BASE_DELAY_MS,
+    fetch: globalThis.fetch,
+  };
+  process.env.PROJECT_URL = "https://astebook.example";
+  process.env.PDF_APP_API_KEY = "pdf-key";
+  process.env.PDF_APP_OCR_ENDPOINT = "https://pdf-app.example/ocr";
+  process.env.PDF_APP_ASYNC_MODE = "false";
+  process.env.PDF_APP_RETRY_COUNT = "0";
+  process.env.PDF_APP_RETRY_BASE_DELAY_MS = "0";
+  return () => {
+    if (previous.PROJECT_URL === undefined) delete process.env.PROJECT_URL;
+    else process.env.PROJECT_URL = previous.PROJECT_URL;
+    if (previous.PDF_APP_API_KEY === undefined) delete process.env.PDF_APP_API_KEY;
+    else process.env.PDF_APP_API_KEY = previous.PDF_APP_API_KEY;
+    if (previous.PDF_APP_OCR_ENDPOINT === undefined) delete process.env.PDF_APP_OCR_ENDPOINT;
+    else process.env.PDF_APP_OCR_ENDPOINT = previous.PDF_APP_OCR_ENDPOINT;
+    if (previous.PDF_APP_ASYNC_MODE === undefined) delete process.env.PDF_APP_ASYNC_MODE;
+    else process.env.PDF_APP_ASYNC_MODE = previous.PDF_APP_ASYNC_MODE;
+    if (previous.PDF_APP_RETRY_COUNT === undefined) delete process.env.PDF_APP_RETRY_COUNT;
+    else process.env.PDF_APP_RETRY_COUNT = previous.PDF_APP_RETRY_COUNT;
+    if (previous.PDF_APP_RETRY_BASE_DELAY_MS === undefined) delete process.env.PDF_APP_RETRY_BASE_DELAY_MS;
+    else process.env.PDF_APP_RETRY_BASE_DELAY_MS = previous.PDF_APP_RETRY_BASE_DELAY_MS;
+    globalThis.fetch = previous.fetch;
+  };
 }
 
 test("proposal selection prefers compiled PDF source over proposal template DOCX", async () => {
@@ -787,4 +835,297 @@ test("multiple real proposal sources are diagnosed instead of silently first or 
   );
   assert.equal(result.extraction_diagnostics.proposta_agent_runs.length, 2);
   assert.ok(result.notes.some((note) => note.includes("Più proposte compilate con pari priorità")));
+});
+
+test("scanned proposal PDF uses PDF-app OCR before proposal selection", async () => {
+  const restore = installPdfAppEnv();
+  const pdfBuffer = Buffer.from("%PDF scanned proposal without native text");
+  const ocrText = `${compiledProposalText("LI JIN\nSAVOY REOCO S.r.l.")}\n`.repeat(8);
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      extraction_results: [{ result: [{ page: 1, region_index: 0, result: ocrText }] }],
+    }),
+  });
+  const events = new Map([["scanned-pdf-ocr-selection-test", { id: "scanned-pdf-ocr-selection-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  try {
+    const result = await pipeline({
+      eventId: "scanned-pdf-ocr-selection-test",
+      body: { subject: "SCANNED_PDF_OCR_SELECTION_TEST" },
+      files: [{
+        fieldname: "email_attachment_1",
+        originalname: "PROPOSTA SCANDOLARA.pdf",
+        mimetype: "application/pdf",
+        buffer: pdfBuffer,
+      }],
+      skipAutoSend: true,
+    });
+
+    const diagnostic = result.extraction_diagnostics.attachments.find((item) => item.file_name === "PROPOSTA SCANDOLARA.pdf");
+    assert.equal(diagnostic.ocr_attempted, true);
+    assert.equal(diagnostic.ocr_status, "completed");
+    assert.equal(diagnostic.text_source, "pdf_app_ocr");
+    assert.equal(diagnostic.usable_text, true);
+    assert.equal(diagnostic.proposal_candidate, true);
+    assert.equal(diagnostic.proposal_primary, true);
+    assert.equal(diagnostic.passed_to_ai, true);
+  } finally {
+    restore();
+  }
+});
+
+test("native proposal PDF text can be selected without PDF-app OCR", async () => {
+  const pdfBuffer = Buffer.from("%PDF native proposal cached");
+  const nativeText = `${compiledProposalText("Documento PDF testuale.")}\n`.repeat(8);
+  const events = new Map([["native-pdf-proposal-test", { id: "native-pdf-proposal-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  const result = await pipeline({
+    eventId: "native-pdf-proposal-test",
+    body: { subject: "NATIVE_PDF_PROPOSAL_TEST" },
+    files: [{
+      fieldname: "email_attachment_1",
+      originalname: "Proposta irrevocabile di acquisto.pdf",
+      mimetype: "application/pdf",
+      buffer: pdfBuffer,
+    }],
+    previousResult: {
+      attachment_text_cache: Object.fromEntries([
+        cachedTextEntry({ buffer: pdfBuffer, fileName: "Proposta irrevocabile di acquisto.pdf", format: "pdf", text: nativeText, source: "pdf_native" }),
+      ]),
+    },
+    skipAutoSend: true,
+  });
+
+  const diagnostic = result.extraction_diagnostics.attachments.find((item) => item.file_name === "Proposta irrevocabile di acquisto.pdf");
+  assert.equal(diagnostic.ocr_attempted, false);
+  assert.equal(diagnostic.ocr_status, "cache_hit");
+  assert.equal(diagnostic.text_source, "pdf_native_cache");
+  assert.equal(diagnostic.usable_text, true);
+  assert.equal(diagnostic.proposal_primary, true);
+});
+
+test("empty PDF-app OCR leaves scanned proposal PDF unusable", async () => {
+  const restore = installPdfAppEnv();
+  const pdfBuffer = Buffer.from("%PDF scanned empty ocr");
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      extraction_results: [{ result: [{ page: 1, region_index: 0, result: "   \n " }] }],
+    }),
+  });
+  const events = new Map([["empty-pdf-ocr-selection-test", { id: "empty-pdf-ocr-selection-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  try {
+    const result = await pipeline({
+      eventId: "empty-pdf-ocr-selection-test",
+      body: { subject: "EMPTY_PDF_OCR_SELECTION_TEST" },
+      files: [{
+        fieldname: "email_attachment_1",
+        originalname: "PROPOSTA SCANDOLARA.pdf",
+        mimetype: "application/pdf",
+        buffer: pdfBuffer,
+      }],
+      skipAutoSend: true,
+    });
+
+    const diagnostic = result.extraction_diagnostics.attachments.find((item) => item.file_name === "PROPOSTA SCANDOLARA.pdf");
+    assert.equal(diagnostic.ocr_attempted, true);
+    assert.equal(diagnostic.ocr_status, "empty");
+    assert.equal(diagnostic.usable_text, false);
+    assert.equal(diagnostic.unusable_reason, "ocr_empty_text");
+    assert.equal(diagnostic.passed_to_ai, false);
+  } finally {
+    restore();
+  }
+});
+
+test("PDF-app OCR timeout is diagnosed without crashing proposal fallback", async () => {
+  const restore = installPdfAppEnv();
+  const pdfBuffer = Buffer.from("%PDF scanned timeout");
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 504,
+    statusText: "Gateway Timeout",
+    text: async () => "Gateway Timeout",
+  });
+  const events = new Map([["timeout-pdf-ocr-selection-test", { id: "timeout-pdf-ocr-selection-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  try {
+    const result = await pipeline({
+      eventId: "timeout-pdf-ocr-selection-test",
+      body: { subject: "TIMEOUT_PDF_OCR_SELECTION_TEST" },
+      files: [{
+        fieldname: "email_attachment_1",
+        originalname: "PROPOSTA SCANDOLARA.pdf",
+        mimetype: "application/pdf",
+        buffer: pdfBuffer,
+      }],
+      skipAutoSend: true,
+    });
+
+    const diagnostic = result.extraction_diagnostics.attachments.find((item) => item.file_name === "PROPOSTA SCANDOLARA.pdf");
+    assert.equal(diagnostic.ocr_attempted, true);
+    assert.equal(diagnostic.ocr_status, "timeout");
+    assert.equal(diagnostic.usable_text, false);
+    assert.equal(diagnostic.unusable_reason, "ocr_timeout");
+    assert.equal(diagnostic.passed_to_ai, false);
+  } finally {
+    restore();
+  }
+});
+
+test("real scenario selects scanned PDF OCR source over long template DOCX", async () => {
+  const restore = installPdfAppEnv();
+  const pdfBuffer = Buffer.from("%PDF real scenario scanned");
+  const templateBuffer = Buffer.from("PK real scenario template");
+  const ocrText = `${compiledProposalText("LI JIN\nSAVOY REOCO S.r.l.")}\n`.repeat(8);
+  globalThis.fetch = async () => ({
+    ok: true,
+    status: 200,
+    text: async () => JSON.stringify({
+      extraction_results: [{ result: [{ page: 1, region_index: 0, result: ocrText }] }],
+    }),
+  });
+  const events = new Map([["real-scenario-pdf-vs-template-test", { id: "real-scenario-pdf-vs-template-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  try {
+    const result = await pipeline({
+      eventId: "real-scenario-pdf-vs-template-test",
+      body: { subject: "REAL_SCENARIO_PDF_VS_TEMPLATE_TEST" },
+      files: [
+        {
+          fieldname: "email_attachment_1",
+          originalname: "PROPOSTA SCANDOLARA.pdf",
+          mimetype: "application/pdf",
+          buffer: pdfBuffer,
+        },
+        {
+          fieldname: "email_attachment_2",
+          originalname: "Allegato B_Format Proposta Savoy Procedura Proprietà.docx",
+          mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          buffer: templateBuffer,
+        },
+      ],
+      previousResult: {
+        attachment_text_cache: Object.fromEntries([
+          cachedTextEntry({ buffer: templateBuffer, fileName: "Allegato B_Format Proposta Savoy Procedura Proprietà.docx", format: "docx", text: proposalTemplateText(), source: "docx" }),
+        ]),
+      },
+      skipAutoSend: true,
+    });
+
+    const byName = new Map(result.extraction_diagnostics.attachments.map((item) => [item.file_name, item]));
+    assert.equal(byName.get("PROPOSTA SCANDOLARA.pdf").document_role, "source");
+    assert.equal(byName.get("PROPOSTA SCANDOLARA.pdf").proposal_primary, true);
+    assert.equal(byName.get("PROPOSTA SCANDOLARA.pdf").passed_to_ai, true);
+    assert.equal(byName.get("Allegato B_Format Proposta Savoy Procedura Proprietà.docx").document_role, "template");
+    assert.equal(byName.get("Allegato B_Format Proposta Savoy Procedura Proprietà.docx").proposal_primary || false, false);
+    assert.equal(byName.get("Allegato B_Format Proposta Savoy Procedura Proprietà.docx").passed_to_ai, false);
+  } finally {
+    restore();
+  }
+});
+
+test("OCR failure plus uncompiled template does not promote the template", async () => {
+  const restore = installPdfAppEnv();
+  const pdfBuffer = Buffer.from("%PDF failed source");
+  const templateBuffer = Buffer.from("PK fallback template");
+  globalThis.fetch = async () => ({
+    ok: false,
+    status: 504,
+    statusText: "Gateway Timeout",
+    text: async () => "Gateway Timeout",
+  });
+  const events = new Map([["ocr-failure-template-fallback-test", { id: "ocr-failure-template-fallback-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  try {
+    const result = await pipeline({
+      eventId: "ocr-failure-template-fallback-test",
+      body: { subject: "OCR_FAILURE_TEMPLATE_FALLBACK_TEST" },
+      files: [
+        {
+          fieldname: "email_attachment_1",
+          originalname: "PROPOSTA SCANDOLARA.pdf",
+          mimetype: "application/pdf",
+          buffer: pdfBuffer,
+        },
+        {
+          fieldname: "email_attachment_2",
+          originalname: "Allegato B_Format Proposta Savoy Procedura Proprietà.docx",
+          mimetype: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          buffer: templateBuffer,
+        },
+      ],
+      previousResult: {
+        attachment_text_cache: Object.fromEntries([
+          cachedTextEntry({ buffer: templateBuffer, fileName: "Allegato B_Format Proposta Savoy Procedura Proprietà.docx", format: "docx", text: proposalTemplateText(), source: "docx" }),
+        ]),
+      },
+      skipAutoSend: true,
+    });
+
+    const byName = new Map(result.extraction_diagnostics.attachments.map((item) => [item.file_name, item]));
+    assert.equal(byName.get("PROPOSTA SCANDOLARA.pdf").ocr_status, "timeout");
+    assert.equal(byName.get("PROPOSTA SCANDOLARA.pdf").usable_text, false);
+    assert.equal(byName.get("Allegato B_Format Proposta Savoy Procedura Proprietà.docx").document_role, "template");
+    assert.equal(byName.get("Allegato B_Format Proposta Savoy Procedura Proprietà.docx").passed_to_ai, false);
+    assert.equal(result.extraction_diagnostics.proposal_selection.status, "no_source_candidate");
+    assert.equal(result.extraction_diagnostics.proposta_agent_runs.length, 0);
+  } finally {
+    restore();
+  }
+});
+
+test("cached PDF-app OCR text is reused without a new OCR request", async () => {
+  const restore = installPdfAppEnv();
+  const pdfBuffer = Buffer.from("%PDF cached ocr source");
+  const ocrText = `${compiledProposalText("Cached OCR source.")}\n`.repeat(8);
+  let fetchCalled = false;
+  globalThis.fetch = async () => {
+    fetchCalled = true;
+    return {
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ text: ocrText }),
+    };
+  };
+  const events = new Map([["cached-ocr-proposal-test", { id: "cached-ocr-proposal-test", steps: [] }]]);
+  const pipeline = makePipeline(events);
+
+  try {
+    const result = await pipeline({
+      eventId: "cached-ocr-proposal-test",
+      body: { subject: "CACHED_OCR_PROPOSAL_TEST" },
+      files: [{
+        fieldname: "email_attachment_1",
+        originalname: "PROPOSTA SCANDOLARA.pdf",
+        mimetype: "application/pdf",
+        buffer: pdfBuffer,
+      }],
+      previousResult: {
+        attachment_text_cache: Object.fromEntries([
+          cachedTextEntry({ buffer: pdfBuffer, fileName: "PROPOSTA SCANDOLARA.pdf", format: "pdf", text: ocrText, source: "pdf_app" }),
+        ]),
+      },
+      skipAutoSend: true,
+    });
+
+    const diagnostic = result.extraction_diagnostics.attachments.find((item) => item.file_name === "PROPOSTA SCANDOLARA.pdf");
+    assert.equal(fetchCalled, false);
+    assert.equal(diagnostic.ocr_status, "cache_hit");
+    assert.equal(diagnostic.text_source, "pdf_app_ocr_cache");
+    assert.equal(diagnostic.usable_text, true);
+    assert.equal(diagnostic.passed_to_ai, true);
+  } finally {
+    restore();
+  }
 });

@@ -76,11 +76,12 @@ Updated: 2026-07-10
 2. Resolve email text and clean it.
 3. Extract practice code and announcement data from email body.
 4. Collect attachment descriptors and supported file content.
-5. Parse/OCR/extract announcement and commission documents; proposal attachments are text-extracted and scored before the Proposal Agent is called.
-6. Select proposal source candidates by document type/role plus deterministic content evidence. Proposal templates such as `Format/Formato/Modello/Template/Fac-simile` combined with `proposta/offerta` are retained in diagnostics but are not primary extraction sources when a compiled/source proposal exists.
-7. Merge announcement/proposal fields.
-8. Update event result, missing fields, notes and status.
-9. Auto-send generated document email when merged data and SMTP/document settings are complete.
+5. Parse/OCR/extract announcement and commission documents; proposal attachments are text-acquired and scored before the Proposal Agent is called.
+6. Proposal PDF text acquisition first reuses valid cache, then tries sufficient native PDF text, then PDF-app OCR when native text is missing/insufficient. Diagnostics expose `native_text_length`, `ocr_required`, `ocr_attempted`, `ocr_status`, `ocr_text_length`, `text_source`, `usable_text` and `unusable_reason`.
+7. Select proposal source candidates by document type/role plus deterministic content evidence. Proposal templates such as `Format/Formato/Modello/Template/Fac-simile` combined with `proposta/offerta` are retained in diagnostics and are not promoted by module labels alone; concrete values and placeholder evidence drive template/source refinement.
+8. Merge announcement/proposal fields.
+9. Update event result, missing fields, notes and status.
+10. Auto-send generated document email when merged data and SMTP/document settings are complete.
 
 ## Extraction Feedback Loop
 

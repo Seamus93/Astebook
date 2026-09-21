@@ -105,6 +105,16 @@ export function createAiExtractionPipeline({
       kind: resolvedAttachment?.kind || null,
       document_type: resolvedAttachment?.document_type || resolvedAttachment?.kind || null,
       document_role: resolvedAttachment?.document_role || null,
+      native_text_length: resolvedAttachment?.text_acquisition?.native_text_length ?? null,
+      ocr_required: resolvedAttachment?.text_acquisition?.ocr_required ?? null,
+      ocr_attempted: resolvedAttachment?.text_acquisition?.ocr_attempted ?? null,
+      ocr_status: resolvedAttachment?.text_acquisition?.ocr_status ?? null,
+      ocr_text_length: resolvedAttachment?.text_acquisition?.ocr_text_length ?? null,
+      text_source: resolvedAttachment?.text_acquisition?.text_source || null,
+      unusable_reason: resolvedAttachment?.text_acquisition?.unusable_reason || null,
+      template_filename_evidence: resolvedAttachment?.template_filename_evidence ?? null,
+      placeholder_evidence: resolvedAttachment?.placeholder_evidence ?? null,
+      compiled_value_evidence: resolvedAttachment?.compiled_value_evidence ?? null,
       classification_reason: resolvedAttachment?.classification_reason || [],
       proposal_candidate: Boolean(resolvedAttachment?.proposal_candidate),
       ...extra,
@@ -213,7 +223,10 @@ export function createAiExtractionPipeline({
   function isUsefulCachedAttachmentText(entry, format) {
     const textLength = String(entry?.text || "").trim().length;
     const normalizedFormat = String(format || entry?.format || "").toLowerCase();
-    if (["pdf", "image"].includes(normalizedFormat) && entry?.source !== "pdf_app") return false;
+    if (
+      ["pdf", "image"].includes(normalizedFormat) &&
+      !["pdf_app", "pdf_native"].includes(entry?.source)
+    ) return false;
     if (
       ["pdf", "image"].includes(normalizedFormat) &&
       entry?.source === "pdf_app" &&
@@ -312,16 +325,60 @@ export function createAiExtractionPipeline({
 
   function hasUsableAttachmentText(result, resolvedAttachment, text) {
     const quality = ocrQualityForText(text, resolvedAttachment.format);
+    if (
+      resolvedAttachment?.document_type === "proposta" &&
+      ["pdf", "image"].includes(resolvedAttachment.format) &&
+      quality.final_status !== "ocr_completed"
+    ) {
+      resolvedAttachment.text_acquisition = {
+        ...(resolvedAttachment.text_acquisition || {}),
+        usable_text: false,
+        unusable_reason: resolvedAttachment.text_acquisition?.unusable_reason || quality.reason || "text_not_sufficient",
+      };
+      addUniqueNote(result, `${resolvedAttachment.file_name}: testo OCR non sufficiente per AI proposta (${resolvedAttachment.text_acquisition.unusable_reason}).`);
+      return false;
+    }
     if (quality.final_status !== "ocr_empty") return true;
+    resolvedAttachment.text_acquisition = {
+      ...(resolvedAttachment.text_acquisition || {}),
+      usable_text: false,
+      unusable_reason: resolvedAttachment.text_acquisition?.unusable_reason || quality.reason || "ocr_text_empty",
+    };
     addUniqueNote(result, `${resolvedAttachment.file_name}: OCR completato senza testo utilizzabile; AI non avviata.`);
     return false;
   }
 
+  function setTextAcquisition(resolvedAttachment, data = {}) {
+    resolvedAttachment.text_acquisition = {
+      ...(resolvedAttachment.text_acquisition || {}),
+      ...data,
+    };
+    return resolvedAttachment.text_acquisition;
+  }
+
+  function mapOcrStatus(statusOrReason) {
+    const value = String(statusOrReason || "").toLowerCase();
+    if (value.includes("timeout") || value.includes("504")) return "timeout";
+    if (value.includes("empty")) return "empty";
+    if (value.includes("short") || value.includes("suspicious")) return "short";
+    if (value.includes("completed")) return "completed";
+    if (value.includes("unavailable")) return "unavailable";
+    if (value.includes("failed") || value.includes("error")) return "error";
+    return value || null;
+  }
+
+  function nativePdfTextSufficient(text) {
+    const quality = ocrQualityForText(text, "pdf");
+    return quality.final_status === "ocr_completed";
+  }
+
   function proposalSelectionScore(candidate) {
-    const compiledScore = Number(candidate.resolvedAttachment?.content_score?.compiled_score || 0);
+    const compiledScore = Number(candidate.resolvedAttachment?.content_score?.compiled_value_score || candidate.resolvedAttachment?.content_score?.compiled_score || 0);
     const templateScore = Number(candidate.resolvedAttachment?.content_score?.template_score || 0);
+    const placeholderScore = Number(candidate.resolvedAttachment?.content_score?.placeholder_score || 0);
+    const templateFilenamePenalty = candidate.resolvedAttachment?.template_filename_evidence ? 20 : 0;
     const textLengthScore = Math.min(5, Math.floor(String(candidate.text || "").trim().length / 1500));
-    return compiledScore * 10 + textLengthScore - templateScore * 4;
+    return compiledScore * 15 + textLengthScore - templateScore * 5 - placeholderScore * 8 - templateFilenamePenalty;
   }
 
   function selectProposalCandidates(result, candidates) {
@@ -340,8 +397,12 @@ export function createAiExtractionPipeline({
     const diagnostics = ensureExtractionDiagnostics(result);
 
     if (!usableSources.length) {
+      if (candidates.some((candidate) => candidate.resolvedAttachment?.document_role === "source")) {
+        addUniqueNote(result, "Nessuna proposta source utilizzabile dopo acquisizione testo/OCR.");
+      }
       diagnostics.proposal_selection = {
         status: "no_source_candidate",
+        reason: "no_usable_source_candidate",
         candidates: proposalDiagnostics,
       };
       return [];
@@ -375,7 +436,7 @@ export function createAiExtractionPipeline({
     diagnostics.proposal_selection = {
       status: tied.length > 1 ? "ambiguous_sources" : "selected",
       primary_file_name: usableSources[0].resolvedAttachment.file_name,
-      selection_reason: "compiled_proposal_candidate",
+      selection_reason: tied.length > 1 ? "ambiguous_compiled_proposal_candidates" : "compiled_proposal_candidate",
       selected_file_names: selected.map((candidate) => candidate.resolvedAttachment.file_name),
       ambiguous_file_names: tied.length > 1 ? tied.map((candidate) => candidate.resolvedAttachment.file_name) : [],
       candidates: proposalDiagnostics.map((candidate) => ({
@@ -402,9 +463,21 @@ export function createAiExtractionPipeline({
   async function extractAttachmentText(resolvedAttachment, eventId, result) {
     const cached = cachedAttachmentText(result, resolvedAttachment);
     if (cached) {
+      const source = cached.entry.source || null;
+      const textLength = cached.entry.text_length || cached.entry.text.length;
+      setTextAcquisition(resolvedAttachment, {
+        native_text_length: source === "pdf_native" ? textLength : resolvedAttachment.text_acquisition?.native_text_length ?? null,
+        ocr_required: source === "pdf_app",
+        ocr_attempted: false,
+        ocr_status: "cache_hit",
+        ocr_text_length: source === "pdf_app" ? textLength : 0,
+        text_source: source === "pdf_app" ? "pdf_app_ocr_cache" : source === "pdf_native" ? "pdf_native_cache" : source,
+        text_length: textLength,
+        usable_text: true,
+      });
       recordOcrSummary(result, resolvedAttachment, "cache_hit", {
-        source: cached.entry.source || null,
-        text_length: cached.entry.text_length || cached.entry.text.length,
+        source,
+        text_length: textLength,
       });
       if (eventId) {
         await updateProcessingEvent(eventId, {}, {
@@ -412,7 +485,7 @@ export function createAiExtractionPipeline({
           data: {
             file_name: resolvedAttachment.file_name,
             format: resolvedAttachment.format,
-            text_length: cached.entry.text_length || cached.entry.text.length,
+            text_length: textLength,
           },
         });
       }
@@ -440,9 +513,72 @@ export function createAiExtractionPipeline({
         });
       }
       rememberAttachmentText(result, resolvedAttachment, parsed.text, "docx");
+      setTextAcquisition(resolvedAttachment, {
+        native_text_length: parsed.text?.length || 0,
+        ocr_required: false,
+        ocr_attempted: false,
+        ocr_status: null,
+        ocr_text_length: 0,
+        text_source: "docx",
+        text_length: parsed.text?.length || 0,
+      });
       return parsed.text;
     }
     if (["pdf", "image"].includes(resolvedAttachment.format)) {
+      if (resolvedAttachment.document_type === "proposta" && resolvedAttachment.format === "pdf") {
+        try {
+          if (eventId) {
+            await updateProcessingEvent(eventId, {}, {
+              message: "Native PDF text extraction started",
+              data: {
+                file_name: resolvedAttachment.file_name,
+                format: resolvedAttachment.format,
+              },
+            });
+          }
+          const parsed = await parsePdfBuffer(resolvedAttachment.buffer);
+          const nativeText = parsed.text || "";
+          const nativeTextLength = nativeText.length;
+          const nativeSufficient = nativePdfTextSufficient(nativeText);
+          setTextAcquisition(resolvedAttachment, {
+            native_text_length: nativeTextLength,
+            ocr_required: !nativeSufficient,
+            ocr_attempted: false,
+            ocr_status: null,
+            ocr_text_length: 0,
+            text_source: nativeSufficient ? "pdf_native" : null,
+            text_length: nativeSufficient ? nativeTextLength : 0,
+          });
+          recordOcrSummary(result, resolvedAttachment, "native_pdf_completed", {
+            text_length: nativeTextLength,
+            sufficient: nativeSufficient,
+          });
+          if (eventId) {
+            await updateProcessingEvent(eventId, {}, {
+              message: "Native PDF text extraction completed",
+              data: {
+                file_name: resolvedAttachment.file_name,
+                text_length: nativeTextLength,
+                sufficient: nativeSufficient,
+              },
+            });
+          }
+          if (nativeSufficient) {
+            rememberAttachmentText(result, resolvedAttachment, nativeText, "pdf_native");
+            return nativeText;
+          }
+        } catch (error) {
+          setTextAcquisition(resolvedAttachment, {
+            native_text_length: 0,
+            ocr_required: true,
+            native_error: error.message || String(error),
+          });
+          recordOcrSummary(result, resolvedAttachment, "native_pdf_failed", {
+            error: error.message || String(error),
+          });
+        }
+      }
+
       let ocrFileUrl = resolvedAttachment.url || "";
       if (!ocrFileUrl) {
         const ocrInput = await createOcrInputFromBuffer({
@@ -479,6 +615,16 @@ export function createAiExtractionPipeline({
           });
         }
         if (!ocrFileUrl && !localPdfFallbackEnabled()) {
+          setTextAcquisition(resolvedAttachment, {
+            native_text_length: resolvedAttachment.text_acquisition?.native_text_length ?? 0,
+            ocr_required: true,
+            ocr_attempted: false,
+            ocr_status: "unavailable",
+            ocr_text_length: 0,
+            text_length: 0,
+            usable_text: false,
+            unusable_reason: "ocr_input_unavailable",
+          });
           addUniqueNote(
             result,
             `${resolvedAttachment.file_name}: OCR PDF-app non avviato per URL pubblico mancante; fallback PDF locale disabilitato.`
@@ -489,6 +635,13 @@ export function createAiExtractionPipeline({
 
       if (ocrFileUrl) {
         try {
+          setTextAcquisition(resolvedAttachment, {
+            native_text_length: resolvedAttachment.text_acquisition?.native_text_length ?? 0,
+            ocr_required: true,
+            ocr_attempted: true,
+            ocr_status: "started",
+            ocr_text_length: 0,
+          });
           recordOcrSummary(result, resolvedAttachment, "pdf_app_started");
           if (eventId) {
             await updateProcessingEvent(eventId, {}, {
@@ -505,6 +658,18 @@ export function createAiExtractionPipeline({
           });
           if (ocrResult.ok && ocrResult.text) {
             const quality = ocrResult.quality || ocrQualityForText(ocrResult.text, resolvedAttachment.format);
+            const mappedStatus = mapOcrStatus(quality.status || quality.final_status || "ocr_completed");
+            setTextAcquisition(resolvedAttachment, {
+              native_text_length: resolvedAttachment.text_acquisition?.native_text_length ?? 0,
+              ocr_required: true,
+              ocr_attempted: true,
+              ocr_status: mappedStatus,
+              ocr_text_length: ocrResult.text.length,
+              text_source: "pdf_app_ocr",
+              text_length: ocrResult.text.length,
+              usable_text: mappedStatus === "completed",
+              unusable_reason: mappedStatus === "completed" ? null : quality.reason || mappedStatus,
+            });
             recordOcrSummary(result, resolvedAttachment, "pdf_app_completed", {
               text_length: ocrResult.text.length,
               job_id: ocrResult.job_id || null,
@@ -539,6 +704,16 @@ export function createAiExtractionPipeline({
             page_count: ocrResult.quality?.page_count || null,
             pdf_app_diagnostics: ocrResult.diagnostics || null,
           });
+          setTextAcquisition(resolvedAttachment, {
+            native_text_length: resolvedAttachment.text_acquisition?.native_text_length ?? 0,
+            ocr_required: true,
+            ocr_attempted: true,
+            ocr_status: "empty",
+            ocr_text_length: 0,
+            text_length: 0,
+            usable_text: false,
+            unusable_reason: "ocr_empty_text",
+          });
           if (eventId) {
             await updateProcessingEvent(eventId, {}, {
               message: "PDF-app OCR skipped or empty",
@@ -556,6 +731,17 @@ export function createAiExtractionPipeline({
             `${resolvedAttachment.file_name}: OCR PDF-app non eseguito o senza testo (${ocrResult.reason || "Nessun testo OCR restituito."})`
           );
         } catch (error) {
+          const status = mapOcrStatus(error.diagnostics?.http_status || error.diagnostics?.error || error.message || "ocr_failed");
+          setTextAcquisition(resolvedAttachment, {
+            native_text_length: resolvedAttachment.text_acquisition?.native_text_length ?? 0,
+            ocr_required: true,
+            ocr_attempted: true,
+            ocr_status: status || "error",
+            ocr_text_length: 0,
+            text_length: 0,
+            usable_text: false,
+            unusable_reason: status === "timeout" ? "ocr_timeout" : "ocr_error",
+          });
           recordOcrSummary(result, resolvedAttachment, "pdf_app_failed", {
             error: error.message || String(error),
             ocr_url_origin: urlOrigin(ocrFileUrl),
@@ -582,6 +768,16 @@ export function createAiExtractionPipeline({
 
       if (!localPdfFallbackEnabled()) {
         const existingOcrStatus = result.ocr_summary?.files?.[resolvedAttachment.file_name]?.status;
+        setTextAcquisition(resolvedAttachment, {
+          native_text_length: resolvedAttachment.text_acquisition?.native_text_length ?? 0,
+          ocr_required: resolvedAttachment.text_acquisition?.ocr_required ?? true,
+          ocr_attempted: resolvedAttachment.text_acquisition?.ocr_attempted ?? Boolean(ocrFileUrl),
+          ocr_status: resolvedAttachment.text_acquisition?.ocr_status || "unavailable",
+          ocr_text_length: resolvedAttachment.text_acquisition?.ocr_text_length ?? 0,
+          text_length: 0,
+          usable_text: false,
+          unusable_reason: resolvedAttachment.text_acquisition?.unusable_reason || "ocr_unavailable",
+        });
         recordOcrSummary(
           result,
           resolvedAttachment,
@@ -616,6 +812,15 @@ export function createAiExtractionPipeline({
           });
         }
         rememberAttachmentText(result, resolvedAttachment, parsed.text, "local_pdf");
+        setTextAcquisition(resolvedAttachment, {
+          native_text_length: parsed.text?.length || 0,
+          ocr_required: false,
+          ocr_attempted: resolvedAttachment.text_acquisition?.ocr_attempted ?? false,
+          ocr_status: resolvedAttachment.text_acquisition?.ocr_status || null,
+          ocr_text_length: resolvedAttachment.text_acquisition?.ocr_text_length ?? 0,
+          text_source: "local_pdf",
+          text_length: parsed.text?.length || 0,
+        });
         recordOcrSummary(result, resolvedAttachment, "local_pdf_completed", {
           text_length: parsed.text?.length || 0,
         });
@@ -1302,6 +1507,12 @@ export function createAiExtractionPipeline({
         if (resolvedAttachment.kind === "proposta") {
           const attachmentText = await extractAttachmentText(resolvedAttachment, event.id, result);
           const usableText = hasUsableAttachmentText(result, resolvedAttachment, attachmentText);
+          setTextAcquisition(resolvedAttachment, {
+            ...(resolvedAttachment.text_acquisition || {}),
+            text_length: String(attachmentText || "").length,
+            usable_text: usableText,
+            unusable_reason: usableText ? null : resolvedAttachment.text_acquisition?.unusable_reason || "text_unusable",
+          });
           const classifiedAttachment = refineProposalClassificationWithText(resolvedAttachment, attachmentText);
           Object.assign(resolvedAttachment, classifiedAttachment);
           const updatedDescriptor = {
@@ -1315,6 +1526,9 @@ export function createAiExtractionPipeline({
             kind: resolvedAttachment.kind,
             document_type: resolvedAttachment.document_type,
             document_role: resolvedAttachment.document_role,
+            template_filename_evidence: resolvedAttachment.template_filename_evidence,
+            placeholder_evidence: resolvedAttachment.placeholder_evidence,
+            compiled_value_evidence: resolvedAttachment.compiled_value_evidence,
             classification_reason: resolvedAttachment.classification_reason,
             proposal_candidate: resolvedAttachment.proposal_candidate,
             supported_by_extraction: ["pdf", "docx", "image"].includes(resolvedAttachment.format),
@@ -1326,6 +1540,7 @@ export function createAiExtractionPipeline({
             text_extracted: Boolean(attachmentText),
             text_length: String(attachmentText || "").length,
             usable_text: usableText,
+            unusable_reason: resolvedAttachment.text_acquisition?.unusable_reason || null,
             passed_to_ai: false,
           });
           proposalCandidates.push({
@@ -1340,6 +1555,7 @@ export function createAiExtractionPipeline({
               text_extracted: Boolean(attachmentText),
               text_length: String(attachmentText || "").length,
               usable_text: usableText,
+              unusable_reason: resolvedAttachment.text_acquisition?.unusable_reason || null,
             }),
           });
           continue;

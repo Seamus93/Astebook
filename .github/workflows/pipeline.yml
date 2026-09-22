@@ -220,12 +220,12 @@ jobs:
           fetch-depth: 0
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3.36.2
+        uses: github/codeql-action/init@v4.37.0
         with:
           languages: javascript-typescript
 
       - name: Analyze with CodeQL
-        uses: github/codeql-action/analyze@v3.36.2
+        uses: github/codeql-action/analyze@v4.37.0
 
   deploy:
     name: Deploy

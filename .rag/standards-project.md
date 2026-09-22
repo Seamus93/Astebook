@@ -81,8 +81,9 @@ If a project deviates from the baseline, document the reason in deployment docs 
 
 Before implementation, refactor, debugging, deployment or documentation work:
 
-1. Ensure `.rag/` exists.
-2. Index or incrementally update:
+1. Ensure project-local documentation exists, preferably under `docs/ai-context/`.
+2. Keep `.rag/` and `.skills/` reusable across projects; do not put project-specific product, provider, schema, URL, path or runtime details there.
+3. Index or incrementally update the project-local knowledge base from:
    - `AGENTS.md`
    - `.skills/**/*.md`
    - `docs/**/*.md`
@@ -93,10 +94,10 @@ Before implementation, refactor, debugging, deployment or documentation work:
    - `package.json`
    - `.github/workflows/**/*.yml`
    - project config such as `sonar-project.properties`
-3. Retrieve only relevant sections.
-4. Apply task using retrieved context and directly affected files.
-5. Update docs if architecture, deployment, security, API behavior, DB schema or CI/CD changes.
-6. Re-index changed docs.
+4. Retrieve only relevant sections.
+5. Apply task using retrieved context and directly affected files.
+6. Update docs if architecture, deployment, security, API behavior, DB schema or CI/CD changes.
+7. Re-index changed project docs.
 
 ## Documentation Standard
 

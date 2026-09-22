@@ -26,8 +26,9 @@ In caso di conflitto seguire sempre:
 
 Prima di qualunque implementazione, refactor, debug, deploy o documentazione:
 
-1. Aggiornare o creare `.rag/`.
-2. Indicizzare almeno:
+1. Aggiornare o creare una knowledge base di progetto in `docs/ai-context/` o in altra cartella documentale locale al progetto.
+2. Non inserire dettagli specifici del progetto in `.rag/`: `.rag/` e `.skills/` sono cartelle condivise tra progetti e devono restare riusabili.
+3. Indicizzare almeno:
    - `AGENTS.md`
    - `.skills/**/*.md`
    - `docs/**/*.md`
@@ -38,9 +39,9 @@ Prima di qualunque implementazione, refactor, debug, deploy o documentazione:
    - `package.json`
    - `.github/workflows/**/*.yml`
    - configurazioni progetto come `sonar-project.properties`
-3. Recuperare solo il contesto rilevante.
-4. Applicare il task usando contesto recuperato e file direttamente coinvolti.
-5. Aggiornare documentazione e `.rag/` quando cambiano architettura, deploy, sicurezza, API, schema DB o CI/CD.
+4. Recuperare solo il contesto rilevante.
+5. Applicare il task usando contesto recuperato e file direttamente coinvolti.
+6. Aggiornare documentazione e knowledge base di progetto quando cambiano architettura, deploy, sicurezza, API, schema DB o CI/CD.
 
 ## Project-Specific Data Rule
 
@@ -59,7 +60,7 @@ Questi valori vanno in:
 - `AGENTS.md` root del progetto;
 - `docs/`;
 - `docs/adr/`;
-- `.rag/` del progetto.
+- `docs/ai-context/` o altra documentazione locale del progetto.
 
 ## Final Rule
 

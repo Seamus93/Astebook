@@ -19,7 +19,7 @@ Do not put concrete project names, URLs, ports, app-specific paths or exceptions
 - root `AGENTS.md`
 - `docs/`
 - `docs/adr/`
-- `.rag/` project indexes
+- `docs/ai-context/` or another project-local docs folder
 
 ## RAG Mirrors
 

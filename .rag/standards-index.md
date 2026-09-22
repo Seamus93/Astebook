@@ -28,7 +28,7 @@ For any project:
 - `.skills/FRONTEND_STANDARD.md`: UI/frontend expectations.
 - `.skills/MEDIA_STANDARD.md`: media storage and Cloudinary rules.
 
-Keep concrete project names, URLs, ports, local deploy paths and exceptions out of reusable `.skills` and `.rag/standards-*` files. Put them in root `AGENTS.md`, docs, ADRs, or project RAG files.
+Keep concrete project names, URLs, ports, local deploy paths and exceptions out of reusable `.skills` and `.rag` files. Put them in root `AGENTS.md`, docs, ADRs, or project-local context docs such as `docs/ai-context/`.
 
 ## Retrieval Queries
 

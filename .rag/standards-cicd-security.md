@@ -133,4 +133,4 @@ When real build, scan, deploy, GitHub variables/secrets or Infisical behavior ch
 - `docs/SECURITY.md`
 - `docs/GITHUB_ACTIONS.md` when present
 - `docs/SONAR_CONFIGURATION.md` when relevant
-- project RAG index
+- project-local AI/context docs, for example `docs/ai-context/`

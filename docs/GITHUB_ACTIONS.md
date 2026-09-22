@@ -55,6 +55,10 @@ The Sonar job is time-boxed so a stalled SonarCloud scan cannot keep the pipelin
 - `DEPLOY_USER`
 - `DEPLOY_KEY`
 
+## Standards Sync Secrets
+
+- `STANDARDS_SYNC_TOKEN`: token with access to push shared `.skills/` and `.rag/standards-*.md` updates to `Seamus93/Template`.
+
 ## Infisical
 
 The deploy job fetches Infisical secrets with OIDC when `INFISICAL_IDENTITY_ID` is configured.

@@ -47,6 +47,7 @@ Secrets:
 - `SONAR_TOKEN`
 - `INFISICAL_CLIENT_ID`
 - `INFISICAL_CLIENT_SECRET`
+- `STANDARDS_SYNC_TOKEN` for the standards sync workflow to push shared standards to `Seamus93/Template`
 
 Variables:
 

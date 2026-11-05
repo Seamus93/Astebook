@@ -73,6 +73,31 @@ Application repositories may assume this standard exists, but should not manage 
 - Required host endpoint:
   - `http://SERVER_IP/health`
 
+## Mandatory Two-Tier Nginx and Docker Port Policy
+
+This policy is mandatory for VPS-hosted HTTP applications; justified exceptions must be recorded in project `AGENTS.md` and `docs/DEPLOYMENT.md`.
+
+- **Host Nginx:** shared VPS-managed public HTTP/HTTPS ingress (80/443), TLS, domains and routing.
+- **Project Nginx:** dedicated Nginx container per HTTP project, responsible for frontend/API routing to internal services.
+- **Required flow:** `Internet -> host Nginx :443 -> 127.0.0.1:<HOST_PORT> -> project Nginx :80 -> private Docker services`.
+- Publish only the project Nginx HTTP entry point by default, using `127.0.0.1:<HOST_PORT>:80` (adapt the internal port if necessary). Do not bind project entry points to `0.0.0.0` or use host networking as the default.
+- Container-internal ports may repeat across isolated projects. Published host bindings must be unique per IP, transport protocol and port.
+- Do not publish Redis, PostgreSQL, caches or microservice ports to the VPS host for normal operation. Keep them on isolated project Docker networks. Administrative exceptions require documented justification and loopback/tunnel restrictions.
+- Record each project's host port, Nginx internal port, domain, health endpoint and exceptions in its own deployment docs. Keep the actual VPS-wide port inventory in `/opt/infra/docs/VPS.md`, never in the reusable Template standard.
+- Before deployment, check the effective Docker Compose configuration, VPS inventory, `docker ps` and `ss -tuln` for collisions. Do not automatically reassign another project's port.
+- Existing stacks require planned migration and live verification. Synchronizing documentation must not itself change production ports, Nginx or firewall settings.
+- See `.skills/VPS_INFRASTRUCTURE.md` for the normative complete standard and sample Compose.
+
+## Planned Host-Port Convention (Documentation Only)
+
+- Future application HTTP ingress host ports should follow increments of ten: `3000`, `3010`, `3020`, `3030`, etc. These are candidate **individual ingress ports**, not reservations of entire ten-port ranges.
+- **Astesmart exception:** retain its planned host port `5000` until explicitly changed.
+- Do not permanently assign candidates to other projects until actual VPS bindings, port conflicts and dependencies are verified. Astebook currently defaults to host `3000` in its Compose, which is not proof of live allocation.
+- Keep app entry points on `127.0.0.1`, behind host Nginx. Internal container ports need not change.
+- Maintain separate inventories for applications and shared VPS tools in `/opt/infra/docs/VPS.md`, recording host bind address/port, internal port, proxy/domain, source and verified/planned status.
+- Shared tools (e.g. Portainer, Uptime Kuma, Homepage, Grafana, Cockpit, and potentially LibreOffice/Collabora) may use dedicated ports outside the application sequence. Do not assume an installation or actual port without inspecting the VPS.
+- **Documentation only:** no Docker Compose, firewall, reverse proxy or production port changes are authorized by this plan. Migrate later with verified inventory and rollback.
+
 ## Infrastructure Tools
 
 Expected shared tools:

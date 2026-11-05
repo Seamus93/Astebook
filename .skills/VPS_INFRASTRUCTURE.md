@@ -68,6 +68,78 @@ Per un repository applicativo, tale standard e un prerequisito esterno al proget
 - Endpoint host obbligatorio:
   - `http://SERVER_IP/health`
 
+## Standard Obbligatorio: Due Livelli Nginx e Porte Docker
+
+Questo standard e **obbligatorio** per ogni applicazione HTTP deployata sulla VPS. Eventuali eccezioni tecniche devono essere motivate e documentate in `AGENTS.md` e `docs/DEPLOYMENT.md` del singolo repository, prima del deploy.
+
+### Separazione delle responsabilita
+
+1. **Nginx host (infrastruttura):** unico ingresso HTTP/HTTPS pubblico standard sulle porte 80/443; gestisce TLS, virtual host, dominio e instradamento al progetto. E gestito in ambito VPS, non dal repository applicativo.
+2. **Nginx progetto (applicazione):** ogni progetto HTTP deve includere il proprio Nginx nel suo stack Docker, responsabile di frontend, routing API e proxy verso i servizi interni. Il progetto mantiene autonomamente questa configurazione.
+3. **Servizi interni:** gateway, backend, microservizi, Redis e database comunicano su reti Docker; non richiedono porte pubblicate sull'host.
+
+Flusso richiesto: `Internet -> Nginx host :443 -> 127.0.0.1:<HOST_PORT> -> Nginx progetto :80 -> servizi Docker interni`.
+
+### Pubblicazione delle porte
+
+- Per ciascun progetto HTTP, pubblicare **una sola porta HTTP di ingresso** del Nginx applicativo sull'host, salvo eccezioni documentate.
+- Pubblicarla esclusivamente su loopback: `127.0.0.1:<HOST_PORT>:80` (oppure la porta interna effettiva del Nginx progetto).
+- Non usare `<HOST_PORT>:80`, `0.0.0.0:<HOST_PORT>:80` o `network_mode: host` per l'ingresso applicativo standard.
+- Le porte interne dei container **possono ripetersi** tra progetti distinti: ad esempio ogni progetto puo usare `3000` per il backend e `6379` per Redis.
+- Le porte pubblicate sull'host devono essere **univoche per coppia IP/protocollo/porta**. Non presumere che una porta sia libera solo perche non compare nel repository.
+- Non pubblicare Redis, PostgreSQL o altri database/cache sull'host per il normale funzionamento. Accessi amministrativi eccezionali devono essere limitati a loopback o tunnel sicuri, motivati e documentati.
+- Isolare i progetti con reti Docker dedicate. Non collegare servizi sensibili a reti condivise se non strettamente necessario.
+
+Esempio conforme nel `docker-compose.yml` applicativo:
+
+```yaml
+services:
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "127.0.0.1:${HOST_PORT:-6080}:80"
+    depends_on:
+      - api
+    networks:
+      - app
+  api:
+    build: ./api
+    expose:
+      - "3000"
+    networks:
+      - app
+  redis:
+    image: redis:7-alpine
+    networks:
+      - app
+networks:
+  app:
+    driver: bridge
+```
+
+La porta `6080` nell'esempio e illustrativa, **non e una prenotazione globale**. Il Nginx host deve inoltrare al `127.0.0.1:<HOST_PORT>` del progetto. `expose` non pubblica una porta sull'host ed e facoltativo per la comunicazione fra container della stessa rete.
+
+### Inventario, controlli e migrazione
+
+- Ogni progetto deve documentare `HOST_PORT`, porta interna del Nginx applicativo, nome del servizio, dominio, endpoint health e tutte le eventuali eccezioni in `docs/DEPLOYMENT.md` o `AGENTS.md`.
+- L'inventario operativo delle porte effettivamente assegnate e dei reverse proxy deve essere mantenuto in `/opt/infra/docs/VPS.md`; i valori specifici dei progetti **non** devono essere copiati negli standard condivisi di `Template`.
+- Prima di ogni nuova assegnazione o modifica di una porta host, verificare l'inventario e lo stato reale con `docker ps --format "table {{.Names}}\\t{{.Ports}}"` e `ss -tuln`. Considerare anche servizi host non Docker.
+- La pipeline di deploy deve verificare che la configurazione Compose risultante sia valida e che le nuove porte host non siano in conflitto; non deve interrompere o riassegnare automaticamente porte di altri progetti.
+- Le applicazioni esistenti non conformi vanno migrate in modo pianificato, verificando prima i binding reali e il proxy host. **Non** cambiare automaticamente mapping, firewall o Nginx di produzione durante la sincronizzazione degli standard.
+- Se il Nginx di progetto e il Nginx host risiedono su macchine differenti o si adotta un'infrastruttura di rete diversa, serve una deroga esplicita con controlli equivalenti di isolamento e sicurezza.
+
+### Piano futuro di razionalizzazione delle porte host (solo documentazione)
+
+**Stato: pianificato, non applicato.** Per i progetti applicativi HTTP, adottare progressivamente porte di ingresso host a passi di dieci: `3000`, `3010`, `3020`, `3030`, ecc. Ogni numero e un **candidato per una singola porta di ingresso**, non la prenotazione automatica dell'intero intervallo di dieci porte. Non modificare le porte interne dei container per aderire alla convenzione.
+
+- **Eccezione esplicita:** Astesmart mantiene la porta host `5000` come scelta prevista; non deve essere migrato alla serie `3000 + 10n` senza una decisione successiva.
+- Per gli altri progetti, assegnare i candidati `3000 + 10n` **solo dopo** aver verificato occupazione reale, inventario VPS e dipendenze. Non associare ora in modo definitivo un numero a un progetto; un candidato puo essere gia occupato (ad esempio `3000` e il default Compose di Astebook).
+- Mantenere i binding applicativi su `127.0.0.1` secondo la policy precedente; l'Nginx host continua a ricevere il traffico pubblico su `80/443`.
+- **Separare l'inventario delle applicazioni dall'inventario degli strumenti infrastrutturali** in `/opt/infra/docs/VPS.md`. Per ogni servizio annotare nome, categoria, porta host effettiva, indirizzo di binding, porta interna, dominio/proxy, fonte e stato (verificato/pianificato).
+- Gli strumenti condivisi (es. Portainer, Uptime Kuma, Homepage, Grafana, Cockpit, SonarQube e possibili servizi documentali come LibreOffice/Collabora) possono usare porte dedicate **fuori dalla convenzione applicativa**, ma nessuna porta o installazione va presunta senza verifica sul VPS. LibreOffice/Collabora e solo un possibile servizio da censire, non una componente confermata.
+- Le porte host pubblicate dagli strumenti condivisi restano soggette a verifica dei conflitti e a regole di esposizione minima; ove possibile sono raggiunte tramite il Nginx host e binding loopback.
+- Questa sezione **non autorizza modifiche automatiche** a Docker Compose, `.env`, Nginx host, firewall o servizi in produzione. La migrazione avverra in una fase separata, con inventario verificato, assegnazioni approvate e piano di rollback.
+
 ## Strumenti Infrastrutturali Attesi
 
 - Portainer

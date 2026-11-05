@@ -190,3 +190,27 @@ I valori concreti del singolo progetto vanno documentati nel root `AGENTS.md` de
 ## Regola Finale
 
 Il progetto applicativo puo assumere l'esistenza dello standard VPS, ma non deve modificarne direttamente la struttura salvo richiesta esplicita.
+
+## Authelia - Autenticazione Centralizzata
+
+- Authelia e un servizio infrastrutturale condiviso gestito sotto `/opt/infra`, non dai singoli repository applicativi.
+- Nginx host rimane il reverse proxy pubblico e puo delegare ad Authelia la verifica di autorizzazione tramite `auth_request` (endpoint compatibile con la versione Authelia installata).
+- Il percorso pubblico di login e la configurazione effettiva sono definiti nella documentazione operativa VPS, non in questo standard riusabile.
+- Authelia non sostituisce automaticamente l'autenticazione applicativa: per ciascun servizio scegliere e documentare la modalita `authelia-protected`, `app-auth`, `public` o `machine-to-machine`, con motivazione e policy di accesso.
+- Non imporre indiscriminatamente il redirect a login su API, webhook, callback OAuth, endpoint health o servizi machine-to-machine; prevedere policy esplicite e limitazioni di accesso appropriate.
+- Per risorse protette, negare l'accesso in caso di errore o indisponibilita del servizio di autorizzazione (fail closed); non disabilitare `auth_request` per risolvere errori 5xx.
+- Esporre le porte interne dei servizi solo sulle reti necessarie o su loopback; TLS termina su Nginx secondo la configurazione operativa.
+- Monitorare healthcheck, restart, consumo RAM, eventi OOM, errori Nginx 401/403/5xx e log Authelia. Dimensionare la memoria da misure reali: nessun limite numerico e universalmente valido.
+- Eseguire backup consistenti di configurazione, storage persistente, utenti e segreti Authelia, oltre a Nginx e ai file Compose. Cifrare i backup, conservarli fuori dalla VPS e verificare il restore; mai versionare password, chiavi o database di autenticazione.
+- La migrazione su nuova VPS deve ripristinare prima i servizi infrastrutturali condivisi, verificare Authelia/Nginx e solo dopo pubblicare le applicazioni protette.
+
+### Contratto di integrazione per i progetti
+
+Ogni progetto HTTP deve documentare in `AGENTS.md` o `docs/DEPLOYMENT.md`:
+
+- URL pubblico, porta interna, healthcheck e registrazione su Homepage/Uptime Kuma;
+- modalita di autenticazione e policy di accesso previste, inclusi eventuali percorsi pubblici, API e webhook;
+- proprietario della sessione e dell'identita (Authelia/Nginx oppure applicazione) e requisiti di logout;
+- requisiti di metriche/log per l'osservabilita centralizzata (Grafana e servizi collegati).
+
+I progetti non devono creare, modificare o riavviare Authelia, Nginx, Homepage, Grafana o Uptime Kuma durante il proprio deploy, salvo operazione infrastrutturale esplicitamente autorizzata.

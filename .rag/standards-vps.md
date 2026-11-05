@@ -172,3 +172,13 @@ Project-specific expected values belong in root `AGENTS.md` or project deploymen
 ## Final Rule
 
 The application project can assume the VPS standard exists. It should not modify `/opt/infra` structure directly unless the user explicitly asks for infrastructure work.
+
+## Centralized Access - Authelia
+
+- Authelia is shared VPS infrastructure under `/opt/infra`; applications do not install or own it.
+- Host Nginx can enforce Authelia authorization via `auth_request` before proxying protected apps. Authorization failures must fail closed, not bypass protection.
+- Each project documents its auth mode: `authelia-protected`, `app-auth`, `public`, or `machine-to-machine`. Do not force browser login onto APIs, webhooks, OAuth callbacks, or health endpoints without an explicit access design.
+- Each project documents public URL, internal port, health endpoint, Homepage/Uptime Kuma registration, access policies, identity/session ownership, and log/metrics expectations for centralized observability (Grafana).
+- Monitor Authelia health, restarts, OOM, memory and Nginx auth errors; size resources based on measurements.
+- Back up and test restoration of Authelia configuration, persistent data, user database, secrets, Nginx and Compose files; encrypt and keep backups off-host. Never commit credentials.
+- Shared infrastructure is provisioned and restored independently of application deployments.

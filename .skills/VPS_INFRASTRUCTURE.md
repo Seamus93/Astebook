@@ -183,6 +183,26 @@ Lo script infrastrutturale deve:
 - aggiornare `/opt/infra/docs/VPS.md`;
 - evitare duplicati.
 
+### Standard Homepage: descrizione della porta host
+
+- Ogni nuovo progetto registrato su Homepage deve avere la proprieta `description` nel formato esatto `port X`, dove `X` e la porta host effettivamente assegnata all'ingresso HTTP del progetto (variabile `HOST_PORT` o mapping Compose equivalente).
+- Non usare la porta interna del container e non mostrare una porta candidata o pianificata come se fosse gia attiva. Se il valore non e verificato, interrompere la registrazione automatica o richiedere conferma: non inventarlo.
+- La proprieta `href` deve continuare a puntare al dominio HTTPS pubblico, senza aggiungere la porta host privata all'URL.
+- Lo script `/opt/infra/scripts/register-project.sh` o l'integrazione equivalente deve ricavare o ricevere la porta host verificata, creare/aggiornare la descrizione anche per progetti gia registrati e non creare duplicati.
+- Quando cambia la porta host di un progetto, aggiornare contestualmente la voce Homepage, l'inventario VPS, il mapping Compose e il reverse proxy host, con validazione e rollback. La sincronizzazione degli standard non deve modificare direttamente la produzione.
+- Le assegnazioni concrete rimangono nella documentazione operativa VPS e nei repository applicativi, non nel Template condiviso.
+
+Esempio illustrativo (porta non prenotata):
+
+```yaml
+- Progetti:
+    - NomeProgetto:
+        href: https://progetto.example.com
+        description: "port 30XX"
+```
+
+Nel deployment reale, sostituire `30XX` con il numero effettivo, ad esempio `3040`, solo dopo la verifica della porta.
+
 ## Docker Standards
 
 - Ogni progetto deve essere deployato come stack Docker dedicato.

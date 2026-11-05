@@ -193,3 +193,11 @@ Quando cambia la procedura reale di build, scan, deploy, secrets o variables agg
 - `docs/GITHUB_ACTIONS.md` se presente;
 - `docs/SONAR_CONFIGURATION.md` se rilevante;
 - `.rag/`.
+
+## Authelia and Reverse Proxy Access Control
+
+- Project deployment pipelines must not modify shared Authelia or host Nginx configuration implicitly.
+- For each exposed service, document whether access is protected by Authelia at Nginx, authenticated within the app, public, or machine-to-machine; define API/webhook/health exceptions explicitly.
+- Authelia authorization errors must not trigger a bypass of the reverse-proxy access gate. Preserve least privilege and fail-closed behavior.
+- Never store Authelia user databases, credentials, session/encryption secrets or backup archives in GitHub repositories. Keep secrets in the approved secret manager and encrypted off-host recovery backups.
+- Include auth-mode and protected-route verification in deployment checks where relevant; use service-appropriate synthetic checks rather than assuming protected endpoints return HTTP 200 anonymously.

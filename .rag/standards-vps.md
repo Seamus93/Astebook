@@ -73,6 +73,31 @@ Application repositories may assume this standard exists, but should not manage 
 - Required host endpoint:
   - `http://SERVER_IP/health`
 
+## Mandatory Two-Tier Nginx and Docker Port Policy
+
+This policy is mandatory for VPS-hosted HTTP applications; justified exceptions must be recorded in project `AGENTS.md` and `docs/DEPLOYMENT.md`.
+
+- **Host Nginx:** shared VPS-managed public HTTP/HTTPS ingress (80/443), TLS, domains and routing.
+- **Project Nginx:** dedicated Nginx container per HTTP project, responsible for frontend/API routing to internal services.
+- **Required flow:** `Internet -> host Nginx :443 -> 127.0.0.1:<HOST_PORT> -> project Nginx :80 -> private Docker services`.
+- Publish only the project Nginx HTTP entry point by default, using `127.0.0.1:<HOST_PORT>:80` (adapt the internal port if necessary). Do not bind project entry points to `0.0.0.0` or use host networking as the default.
+- Container-internal ports may repeat across isolated projects. Published host bindings must be unique per IP, transport protocol and port.
+- Do not publish Redis, PostgreSQL, caches or microservice ports to the VPS host for normal operation. Keep them on isolated project Docker networks. Administrative exceptions require documented justification and loopback/tunnel restrictions.
+- Record each project's host port, Nginx internal port, domain, health endpoint and exceptions in its own deployment docs. Keep the actual VPS-wide port inventory in `/opt/infra/docs/VPS.md`, never in the reusable Template standard.
+- Before deployment, check the effective Docker Compose configuration, VPS inventory, `docker ps` and `ss -tuln` for collisions. Do not automatically reassign another project's port.
+- Existing stacks require planned migration and live verification. Synchronizing documentation must not itself change production ports, Nginx or firewall settings.
+- See `.skills/VPS_INFRASTRUCTURE.md` for the normative complete standard and sample Compose.
+
+## Planned Host-Port Convention (Documentation Only)
+
+- Future application HTTP ingress host ports should follow increments of ten: `3000`, `3010`, `3020`, `3030`, etc. These are candidate **individual ingress ports**, not reservations of entire ten-port ranges.
+- **Astesmart exception:** retain its planned host port `5000` until explicitly changed.
+- Do not permanently assign candidates to other projects until actual VPS bindings, port conflicts and dependencies are verified. Astebook currently defaults to host `3000` in its Compose, which is not proof of live allocation.
+- Keep app entry points on `127.0.0.1`, behind host Nginx. Internal container ports need not change.
+- Maintain separate inventories for applications and shared VPS tools in `/opt/infra/docs/VPS.md`, recording host bind address/port, internal port, proxy/domain, source and verified/planned status.
+- Shared tools (e.g. Portainer, Uptime Kuma, Homepage, Grafana, Cockpit, and potentially LibreOffice/Collabora) may use dedicated ports outside the application sequence. Do not assume an installation or actual port without inspecting the VPS.
+- **Documentation only:** no Docker Compose, firewall, reverse proxy or production port changes are authorized by this plan. Migrate later with verified inventory and rollback.
+
 ## Infrastructure Tools
 
 Expected shared tools:
@@ -117,6 +142,14 @@ The script must:
 - place it under `Livello 2 - Applicazioni`;
 - update `/opt/infra/docs/VPS.md`;
 - avoid duplicates.
+
+## Homepage Project Port Description
+
+- Every newly registered Homepage project must use `description: "port X"`, with `X` replaced by the **verified published host port** of the project's HTTP gateway, never the container-internal port or an unverified planned port.
+- Keep `href` as the public HTTPS domain, without appending the private host port.
+- `/opt/infra/scripts/register-project.sh` (or the equivalent registration mechanism) must obtain the verified host port, write/update the description idempotently, and update it when the host port changes.
+- Record actual allocations in the VPS operational inventory and project deployment docs; never embed project-specific assignments in the shared Template.
+- Standards synchronization alone must not change production Compose, Nginx, Homepage, or port allocations. See `.skills/VPS_INFRASTRUCTURE.md` for the normative rule.
 
 ## Docker Standard
 
@@ -172,3 +205,13 @@ Project-specific expected values belong in root `AGENTS.md` or project deploymen
 ## Final Rule
 
 The application project can assume the VPS standard exists. It should not modify `/opt/infra` structure directly unless the user explicitly asks for infrastructure work.
+
+## Centralized Access - Authelia
+
+- Authelia is shared VPS infrastructure under `/opt/infra`; applications do not install or own it.
+- Host Nginx can enforce Authelia authorization via `auth_request` before proxying protected apps. Authorization failures must fail closed, not bypass protection.
+- Each project documents its auth mode: `authelia-protected`, `app-auth`, `public`, or `machine-to-machine`. Do not force browser login onto APIs, webhooks, OAuth callbacks, or health endpoints without an explicit access design.
+- Each project documents public URL, internal port, health endpoint, Homepage/Uptime Kuma registration, access policies, identity/session ownership, and log/metrics expectations for centralized observability (Grafana).
+- Monitor Authelia health, restarts, OOM, memory and Nginx auth errors; size resources based on measurements.
+- Back up and test restoration of Authelia configuration, persistent data, user database, secrets, Nginx and Compose files; encrypt and keep backups off-host. Never commit credentials.
+- Shared infrastructure is provisioned and restored independently of application deployments.

@@ -53,7 +53,7 @@ docker compose up -d --build
 For the current test deployment, the container publishes port `3000` on the VPS host:
 
 ```text
-${HOST_PORT:-3000}:3000
+127.0.0.1:3010:3000
 ```
 
 Runtime files are persisted through the Docker volume:
@@ -80,3 +80,8 @@ PROCESSING_UI_TOKEN=<random UI token>
 ```
 
 With PostgreSQL enabled, the UI stores these values in the `runtime_settings` table. Env variables still override runtime values. Local/dev runs without `DATABASE_URL` keep using `runtime/app-config.json` as a fallback.
+
+
+## Standard porte VPS (2026-11-05)
+
+Configurazione operativa aggiornata: `127.0.0.1:3010:3000`. Questa assegnazione sostituisce le precedenti indicazioni di accesso diretto sulla porta 3000. Nginx e HTTPS sono gestiti manualmente sulla VPS. Vedere [piano e rollback](VPS_PORT_MIGRATION.md).

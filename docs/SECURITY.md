@@ -68,9 +68,14 @@ Critical and high findings block deploy.
 ## Runtime
 
 - The app should be exposed through host Nginx.
-- The Docker service publishes `${HOST_PORT:-3000}:3000` for the current test deployment.
+- The Docker service publishes `127.0.0.1:3010:3000` for the current test deployment.
 - Keep `runtime/` mounted as a Docker volume so admin credentials and settings survive redeploys.
 - Shared infrastructure tools must not be installed by this repository.
 - Set `PROCESSING_UI_TOKEN` from the admin UI or env before exposing processing APIs outside a trusted network.
 - Set `ZAPIER_WEBHOOK_TOKEN` from the admin UI or env before exposing `/api/v1/zapier/email-activation`.
 - If the VPS email watcher is enabled, store the mailbox app password as `smtp_password` runtime setting or `EMAIL_WATCHER_IMAP_PASSWORD` environment secret. Prefer a provider app password over the account's primary password.
+
+
+## Standard porte VPS (2026-11-05)
+
+Configurazione operativa aggiornata: `127.0.0.1:3010:3000`. Questa assegnazione sostituisce le precedenti indicazioni di accesso diretto sulla porta 3000. Nginx e HTTPS sono gestiti manualmente sulla VPS. Vedere [piano e rollback](VPS_PORT_MIGRATION.md).

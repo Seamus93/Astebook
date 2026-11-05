@@ -33,7 +33,7 @@ Variabili principali:
 ai_api_key=
 GOOGLE_MAPS_API_KEY=
 PORT=3000
-HOST_PORT=3000
+# Host gateway: 127.0.0.1:3010:3000 (fixed in Compose)
 ```
 
 ## Verifiche
@@ -55,7 +55,7 @@ docker compose up -d
 Il servizio espone internamente la porta `3000` e pubblica su localhost:
 
 ```text
-${HOST_PORT:-3000}:3000
+127.0.0.1:3010:3000
 ```
 
 La cartella `runtime/` e montata come volume locale per conservare log, admin bootstrap e impostazioni tra i redeploy.

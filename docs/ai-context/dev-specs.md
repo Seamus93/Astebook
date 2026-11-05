@@ -15,7 +15,7 @@ Read in this order:
 5. `.skills/*.md`: reusable standards for project delivery, CI/CD, VPS, database/API, frontend and media.
 6. `docs/ai-context/*.md`: project-local fast retrieval maps.
 7. `.rag/*.md`: shared reusable standards only.
-7. Framework and codebase conventions.
+8. Framework and codebase conventions.
 
 ## Project-Specific Specs
 
@@ -23,10 +23,15 @@ Read in this order:
 - `docs/adr/ADR-001-compact-node-service.md`: accepted decision to keep a minimal frontend/backend split instead of a heavier monorepo layout.
 - `docs/PROJECT_OVERVIEW.md`: product scope and service purpose.
 - `docs/ARCHITECTURE.md`: system architecture overview.
+- `docs/AI_EXTRACTION.md`: AI extraction agents, field agents, fallbacks and feedback memory.
 - `docs/API.md`: endpoints and runtime API behavior.
 - `docs/DB_SCHEMA.md`: database schema and migration policy.
 - `docs/DEPLOYMENT.md`: deployment process and operational commands.
+- `docs/FRONTEND_ADMIN.md`: protected admin UI runtime, modules, screens and styles.
 - `docs/GITHUB_ACTIONS.md`: CI/CD workflow behavior.
+- `docs/MAILBOX.md`: project-specific mailbox watcher, sidebar, sync/backfill and auto-process behavior.
+- `docs/OCR_PDF_APP.md`: project-specific OCR/PDF-app contract, diagnostics and proposal text flow.
+- `docs/SCRIPTS.md`: npm scripts, repository diagnostics and verification commands.
 - `docs/SECURITY.md`: security and secret-handling rules.
 - `docs/ROADMAP.md` and `docs/PM_STATUS.md`: planning/status context.
 
@@ -102,6 +107,7 @@ Update docs and RAG when changes affect:
 
 - `.rag/index.md` for shared standards
 - `docs/ai-context/backend-api.md`
+- `docs/ai-context/ai-agents.md`
 - `docs/ai-context/frontend-admin.md`
 - `docs/ai-context/database-prisma.md`
 - `docs/ai-context/mailbox-ingestion.md`

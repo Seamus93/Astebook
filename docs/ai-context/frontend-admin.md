@@ -1,100 +1,66 @@
 # Frontend Admin Knowledge
 
-Updated: 2026-07-10
+Updated: 2026-09-22
+
+Purpose: fast retrieval map for the protected React admin UI, settings page, event detail workflow and related styles.
 
 ## Entry Points
 
 - `frontend/src/main.jsx`: React entry point.
-- `frontend/src/App.jsx`: static admin shell markup served under `/admin`; imports `adminClient.js` on mount.
-- `frontend/src/ConsoleAdmin.jsx`: dedicated `/admin/settings` page markup with searchable settings section view.
-- `frontend/src/adminClient.js`: thin initializer that wires admin controllers.
+- `frontend/src/App.jsx`: admin dashboard shell served under `/admin`.
+- `frontend/src/ConsoleAdmin.jsx`: dedicated `/admin/settings` page.
+- `frontend/src/adminClient.js`: dashboard initializer and controller wiring.
+- `backend/routes/admin_auth.js`: server-rendered login/setup/recovery before the protected SPA.
+
+## Admin Modules
+
 - `frontend/src/admin/apiClient.js`: authenticated fetch and token retry.
-- `frontend/src/admin/detailController.js`: selected event loading, detail panes and action buttons.
-- `frontend/src/admin/dom.js`: tiny DOM lookup helper.
-- `frontend/src/admin/eventList.js`: event list loading and rendering.
-- `frontend/src/admin/fileSections.js`: file/step grouping and file sections.
-- `frontend/src/admin/html.js`: HTML escaping.
+- `frontend/src/admin/eventList.js`: processing event list and mailbox sidebar loading.
+- `frontend/src/admin/detailController.js`: selected event detail panes and actions.
+- `frontend/src/admin/settingsController.js`: settings load/save, saved-values panel and recipients.
 - `frontend/src/admin/learningController.js`: auto-learning feedback summary panel.
-- `frontend/src/admin/settingsController.js`: settings loading/saving, saved-values panel and recipient deletion.
-- `frontend/src/admin/shell.js`: sidebar collapse behavior.
-- `frontend/src/admin/structuredView.js`: generic nested data rendering.
-- `frontend/src/admin/toast.js`: toast rendering.
-- `frontend/src/admin/workflowView.js`: workflow status rendering.
-- `frontend/src/progressStepper.js`: progress/substep support.
-- `frontend/src/latestFilePane.js`: latest file panel helpers.
-- `frontend/src/styles.css`: CSS entrypoint imported by `App.jsx`; contains only `@import` statements for partials.
-- `frontend/src/styles/base.css`: tokens, reset, shell/sidebar/search/buttons.
-- `frontend/src/styles/base/*.css`: base submodules for tokens, reset, shell, header and buttons.
-- `frontend/src/styles/events.css`: event list, event badges and detail heading basics.
-- `frontend/src/styles/workflow.css`: workflow status and analysis substepper.
-- `frontend/src/styles/panels.css`: dashboard panes, structured data sections, file sections and steps.
-- `frontend/src/styles/panels/*.css`: panel submodules for layout, data view, sections and steps.
-- `frontend/src/styles/overlays.css`: modal, notification and toast styles.
-- `frontend/src/styles/settings.css`: settings page, settings forms, feedback form and recipient chips.
-- `frontend/src/styles/settings/*.css`: settings submodules for page, forms, summary, feedback and recipients.
-- `frontend/src/styles/responsive.css`: responsive layout rules.
-- `backend/routes/admin_auth.js`: server-rendered login/setup/recovery page shown before the protected React admin shell.
-
-## Current Admin Client Responsibilities
-
-`frontend/src/adminClient.js` now only:
-
-- creates settings, learning, detail and event-list controllers;
-- opens/closes the settings modal;
-- wires reveal buttons, sidebar toggle, settings submit and AI base URL hint;
-- starts `loadSettings()` and `loadEvents()`.
-
-## Module Split
-
-Current modules:
-
-- `frontend/src/admin/apiClient.js`: `apiFetch`, token handling, endpoint helpers.
-- `frontend/src/admin/toast.js`: toast rendering.
-- `frontend/src/admin/settingsController.js`: settings loading/saving, saved-values panel, recipient deletion.
-- `frontend/src/admin/learningController.js`: loads `/api/v1/extraction-feedback/summary` and renders AI memory metrics.
-- `frontend/src/admin/eventList.js`: events fetch/list rendering.
-- `frontend/src/admin/detailController.js`: selected event loading and action buttons.
-- `frontend/src/admin/structuredView.js`: generic key/value display helpers.
 - `frontend/src/admin/workflowView.js`: workflow step status rendering.
-- `frontend/src/admin/fileSections.js`: file/step grouping and file sections.
-- `frontend/src/admin/dom.js`: tiny DOM utilities if still useful.
-- `frontend/src/adminClient.js`: thin initializer that wires modules.
+- `frontend/src/admin/structuredView.js`: nested data display.
+- `frontend/src/admin/fileSections.js`: file/step grouping.
+- `frontend/src/admin/toast.js`: notifications.
+- `frontend/src/admin/shell.js`: sidebar behavior.
 
-## Settings Page
+## Styles
 
-- Settings are displayed as a dedicated protected page at `/admin/settings`, not as a modal.
-- The dashboard button navigates to `/admin/settings`; the page's Dashboard button navigates back to `/admin/`.
-- Settings are grouped in a searchable section view: SMTP, Watcher Email, Documenti e Invio, AI e OCR, Immobiliare.it, Sicurezza e Utenti, Memoria AI, Diagnostica.
-- Settings API is loaded with `GET /api/v1/admin/settings?reveal=1`.
-- `Send to` (`document_send_to`) is shown as recipient chips in the saved-values panel.
-- The Memoria AI section includes memory settings plus an Autoapprendimento AI panel with correction totals, scopes, top fields and recent feedback.
-- The Watcher Email section includes a manual "Scansiona ora" action calling `POST /api/v1/admin/email-watcher/scan`.
-- The Documenti e Invio section includes a manual "Invia ultimo documento" action.
-- The API AI e OCR section is split into AI, Geocoding and OCR subsections. Geocoding includes provider selection (`nominatim`, `google`, `none`) plus Nominatim endpoint/User-Agent settings.
-- The API AI e OCR section includes a manual "Analizza ultima mail" action using reprocess with `skip_auto_send`.
-- The Diagnostica section includes an operational logger with mailbox sync status, processable mailbox messages without pipeline events, recent event steps, errors, missing fields and last-update age. It refreshes on demand and every 3 seconds while visible, and highlights the current long operation such as OCR, AI extraction or Immobiliare.it acquisition.
-- Clicking a recipient chip X posts `{ document_send_to: nextValue }` to `/api/v1/admin/settings`, reloads settings, and updates the input.
-- Non-secret settings fields should be rendered as text fields, not password fields.
-- Secret fields still use reveal buttons.
+- `frontend/src/styles.css`: CSS entrypoint.
+- `frontend/src/styles/base.css` and `frontend/src/styles/base/*.css`: tokens, reset, shell, header, buttons.
+- `frontend/src/styles/events.css`: event list and detail heading basics.
+- `frontend/src/styles/workflow.css`: workflow and substepper.
+- `frontend/src/styles/panels.css` and `frontend/src/styles/panels/*.css`: panes, data view, sections and steps.
+- `frontend/src/styles/settings.css` and `frontend/src/styles/settings/*.css`: settings page, forms, summary, feedback and recipients.
+- `frontend/src/styles/overlays.css`: modal, notification and toast styles.
+- `frontend/src/styles/responsive.css`: responsive layout rules.
 
-## Login Page
+## Important Signals
 
-- `/login` and `/setup` are rendered by Express before the protected SPA is served.
-- The login page uses the Astebook admin visual language: black brand bar, serif wordmark, white surfaces, magenta accent and compact operational copy.
-- Keep authentication behavior in `backend/routes/admin_auth.js`; do not move login into the React admin shell unless the server-side protection model changes.
+- Endpoint catalog: `docs/API.md`.
+- Canonical admin UI behavior: `docs/FRONTEND_ADMIN.md`.
+- UI handoff workflow: `docs/UI_DESIGN_HANDOFF.md`.
+- Frontend standard: `.skills/FRONTEND_STANDARD.md`.
+- Settings are a protected page at `/admin/settings`, not a modal.
+- Login/setup stay server-rendered unless the server-side protection model changes.
+- Vite output is `frontend/dist` and is served by Express under `/admin`.
 
-## UI Design Handoff
+## Verification
 
-- `docs/UI_DESIGN_HANDOFF.md` defines the standard Figma -> Bolt -> GitHub workflow for UI/UX experiments.
-- Figma should provide separate named frames for desktop, mobile and key states; links must be copied with `Copy link to selection` from the frame.
-- Desktop and mobile frames for the same feature should be imported into one Bolt project as responsive breakpoints, not separate apps.
-- Bolt output must go to a dedicated branch such as `figma-ui-prototype`, `ui-redesign-experiment` or `figma-admin-refresh`; never push generated UI directly to `main`.
-- Integrate manually into `frontend/src`, preserving backend, server-side admin auth, API clients, processing pipeline and existing controller behavior.
-- Treat Bolt as a prototyping and UI extraction tool, not as the authority for Astebook production architecture.
+- Build: `npm run build`
+- Lint: `npm run lint`
+- Backend tests: `npm test`
 
-## Frontend Verification
+## Retrieval Queries
 
-- Build: `npm run build`.
-- Lint only: `npm run lint`.
-- Backend tests: `npm test`.
-- Vite output is written to `frontend/dist` and served by Express under `/admin`.
+- Admin controllers: `rg -n "create.*Controller|loadSettings|loadEvents|apiFetch|reprocess|send-document" frontend/src/admin frontend/src`
+- Settings UI: `rg -n "document_send_to|Memoria AI|Watcher Email|Diagnostica|settings" frontend/src docs`
+- Event detail: `rg -n "selectedEvent|render.*Detail|workflow|missing_fields|feedback" frontend/src/admin`
+- Auth shell: `rg -n "requireAdminSession|adminLoginPage|/admin|/setup|/login" backend/routes/admin_auth.js backend/server.js`
+
+## Related Docs
+
+- `docs/FRONTEND_ADMIN.md`
+- `docs/API.md`
+- `docs/UI_DESIGN_HANDOFF.md`

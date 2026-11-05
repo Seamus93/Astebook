@@ -14,6 +14,24 @@ Example response:
 }
 ```
 
+## Admin session pages
+
+Server-rendered authentication/setup routes:
+
+- `GET /setup`: first runtime admin setup page when no admin exists.
+- `POST /setup`: creates the first runtime admin and starts a session.
+- `GET /admin/setup`: redirects to `/setup`.
+- `POST /admin/setup`: redirects to `/setup`.
+- `GET /login`: admin login page.
+- `POST /login`: verifies admin credentials and redirects to `/admin/`.
+- `GET /admin/login`: redirects to `/login`.
+- `POST /admin/login`: redirects to `/login`.
+- `POST /recover-login`: sends or displays admin recovery credentials.
+- `GET /logout`: clears admin session.
+- `POST /logout`: clears admin session.
+- `POST /admin/logout`: clears admin session.
+- `GET /admin/*`: protected React admin UI.
+
 ## `POST /callAI`
 
 Extracts, enriches and merges auction announcement and proposal data.
@@ -99,6 +117,18 @@ The `/admin` browser UI normally uses the login cookie instead of this header.
 
 Returns the complete event with request payload, file metadata, processing steps, result and error.
 
+## `GET /api/v1/processing-events/:id/extraction-debug`
+
+Returns protected extraction diagnostics for a processing event, including attachment text cache summary, OCR snapshots, proposal agent runs, field matrix and missing fields.
+
+Requires `x-astebook-token` or an authenticated admin UI session.
+
+## `DELETE /api/v1/processing-events/:id`
+
+Deletes one processing event. Returns `404` when the event does not exist.
+
+Requires `x-astebook-token` or an authenticated admin UI session.
+
 ## `POST /api/v1/processing-events/:id/feedback`
 
 Stores a human correction for an extracted field in `runtime/extraction-feedback.jsonl`.
@@ -116,6 +146,33 @@ Body:
 ```
 
 By default the correction is also applied to the event `result` at `field_path` and a processing step is logged. Set `apply` to `false` to only save the training example.
+
+## `GET /api/v1/processing-events/:id/document`
+
+Generates a document for one processing event.
+
+Query parameters:
+
+- `format=pdf`: default, returns an inline PDF.
+- `format=docx`: returns a DOCX attachment.
+
+Legacy `format=html`, `format=doc` and `format=txt` return `410`.
+
+Requires `x-astebook-token` or an authenticated admin UI session.
+
+## `POST /api/v1/processing-events/:id/send-document`
+
+Sends the generated document email for one processing event.
+
+Body can include:
+
+```json
+{ "send_to": "user@example.com" }
+```
+
+If no body recipients are provided, Astebook uses `document_send_to`. The endpoint validates SMTP, template and recipient configuration before sending.
+
+Requires `x-astebook-token` or an authenticated admin UI session.
 
 ## `GET /api/v1/extraction-feedback`
 
@@ -148,6 +205,10 @@ Query parameters:
 
 Returns redacted runtime settings for the logged-in admin.
 
+Query parameters:
+
+- `reveal=1`: returns stored values for the protected admin settings UI.
+
 ## `POST /api/v1/admin/settings`
 
 Updates runtime settings for:
@@ -178,6 +239,12 @@ Updates runtime settings for:
 
 These endpoints require the `/admin` login cookie.
 
+## `GET /api/v1/ocr-inputs/:token/:fileName`
+
+Serves a temporary OCR input file created from an attachment buffer.
+
+This route is intentionally unauthenticated because PDF-app must fetch the file by URL. The token is random and sensitive; logs must mask it. The response returns the stored content type, content length and `Cache-Control: private, max-age=3600`.
+
 ## Address geocoding
 
 Address enrichment defaults to Nominatim. The geocoder is used after extraction to complete address context such as comune, provincia, CAP and formatted address when the source text is incomplete.
@@ -203,13 +270,9 @@ The email includes the generated PDF and an Astebook-styled processing report wi
 
 ## VPS email watcher
 
-When `email_watcher_enabled=true`, Astebook connects to the configured IMAP mailbox and polls unread messages. It reuses `smtp_user` and `smtp_password` as IMAP credentials unless `EMAIL_WATCHER_IMAP_USER` and `EMAIL_WATCHER_IMAP_PASSWORD` are provided as environment variables.
+When `email_watcher_enabled=true`, Astebook connects to the configured IMAP mailbox and indexes processable activation emails into the DB-backed mailbox list. Processing is started separately by the admin Process button or by the mailbox auto-process cronjob.
 
-At server startup, the first automatic watcher scan is delayed by `EMAIL_WATCHER_START_DELAY_SECONDS`, default `30`, so the admin mailbox listing can run first after login. The mailbox sync endpoint also pauses the watcher while it indexes messages, then starts it again after the same delay to avoid overlapping IMAP sessions.
-
-The watcher indexes unread mailbox messages into the DB-backed mailbox list. Messages that pass the watcher sender and filename filters are marked as indexed, but the pipeline is started separately by the admin Process button or by the mailbox auto-process cronjob. This avoids coupling IMAP discovery to OCR/AI execution and lets the same DB mailbox row be processed later.
-
-When `mailbox_auto_process_enabled=true`, the cronjob periodically reads indexed mailbox rows that have no `event_id`, are not marked `processed`, and are not from an explicitly excluded sender. It then calls the same manual mailbox processing path used by the Process button, without requiring the attachment filename filter.
+The project-specific mailbox behavior, sidebar loading rules, watcher state, auto-process candidate query and cutover notes live in `docs/MAILBOX.md`.
 
 When an activation email contains an Immobiliare.it announcement URL and the configured scraper returns data, the normalized Immobiliare/Apify payload becomes the primary `extracted.annuncio` source for fields it can provide, such as address, description, price, availability, surface and property type. AI/email/PDF extraction is retained in `fallback_annuncio`, so if Apify is unavailable, rate limited or returns incomplete data, the pipeline still uses the best fallback extracted from the original inputs.
 
@@ -219,11 +282,81 @@ Runs one immediate IMAP watcher scan using the current watcher settings and filt
 
 The response includes scan counters: `scanned`, `accepted`, `duplicates`, `skipped_sender` and `skipped_filename`; `accepted` means indexed into the mailbox DB for later processing. It also returns recent `diagnostics` for skipped unread messages, including subject, sender and attachment filenames.
 
+## `POST /api/v1/admin/email-watcher/state/reset`
+
+Resets persisted email watcher state. Requires the `/admin` login cookie.
+
+## `POST /api/v1/admin/email-watcher/state/forget`
+
+Removes one message id from persisted email watcher state. Requires the `/admin` login cookie.
+
+Body:
+
+```json
+{ "message_id": "<message-id>" }
+```
+
+## `GET /api/v1/admin/mailbox/messages`
+
+Returns indexed mailbox messages for the admin sidebar. Requires the `/admin` login cookie.
+
+Query parameters:
+
+- `limit`: max rows, default `50`.
+- `q`: optional text search.
+- `from`: optional sender filter.
+- `include_all_senders=1`: include explicitly disallowed senders.
+
+## `GET /api/v1/admin/email-watcher/messages`
+
+Alias for `GET /api/v1/admin/mailbox/messages`.
+
+## `POST /api/v1/admin/mailbox/sync`
+
+Starts mailbox IMAP sync/backfill in the background. Requires the `/admin` login cookie.
+
+Body can include:
+
+```json
+{
+  "from": "sender@example.com",
+  "include_all_senders": true,
+  "limit": 30,
+  "q": "",
+  "days_back": 21
+}
+```
+
+Returns `202` with current sync state.
+
+## `GET /api/v1/admin/mailbox/sync/status`
+
+Returns current or latest mailbox sync status. Requires the `/admin` login cookie.
+
+## `POST /api/v1/admin/mailbox/messages/process`
+
+Processes one indexed mailbox message through the email activation pipeline. Requires the `/admin` login cookie.
+
+Body can include:
+
+```json
+{
+  "uid": 123,
+  "message_id": "<message-id>"
+}
+```
+
+Returns `202` when processing is accepted.
+
 ## `POST /api/v1/admin/mailbox/auto-process/run`
 
 Runs one immediate mailbox auto-process batch. Requires the `/admin` login cookie.
 
 The scheduled version uses the `mailbox_auto_process_*` settings and calls the same backend path as the Process button for each eligible mailbox row.
+
+## `GET /api/v1/admin/mailbox/auto-process/status`
+
+Returns mailbox auto-process runtime status. Requires the `/admin` login cookie.
 
 ## `POST /api/v1/processing-events/:id/reprocess`
 

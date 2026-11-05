@@ -26,6 +26,23 @@ CI uses the same credentials against the GitHub Actions PostgreSQL service on `l
 - Apply migrations: `npm run db:migrate`
 - Generate client: `npm run db:generate`
 
+Backend entry points:
+
+- `backend/lib/db.js`: Prisma client singleton.
+- `backend/lib/processing_log.js`: processing events and steps persistence.
+- `backend/lib/app_config.js`: runtime settings via DB table or JSON fallback.
+- `backend/lib/mailbox_index.js`: DB-backed mailbox index with JSON-file fallback.
+- `backend/lib/extraction_feedback.js`: feedback records via JSONL/runtime path, with API exposure.
+
+## Runtime Storage
+
+- Production with `DATABASE_URL` uses PostgreSQL for Prisma-backed features.
+- Local/dev without `DATABASE_URL` uses JSON fallbacks in `runtime/` for app config, processing logs and mailbox index.
+- Docker Compose provisions PostgreSQL 17 with named volume `postgres_data_v17`.
+- The app startup command runs `prisma migrate deploy` before `backend/server.js`.
+- GitHub Actions starts PostgreSQL and runs `npm run db:migrate` before lint/build/tests.
+- Tests that import `backend/server.js` and reach Prisma-backed processing-event paths require a usable `DATABASE_URL`.
+
 ## Tables
 
 ```mermaid
@@ -60,16 +77,30 @@ erDiagram
     string mailbox
     string subject
     json from
+    json sender_candidates
     json to
+    datetime date
     boolean seen
+    boolean sender_allowed
+    json allowed_from
     boolean processed
+    boolean required_filename_match
+    string required_filename
+    json filenames
+    json interceptor
+    json mail_cache
     string event_id
     string status
+    string processing_status
+    datetime last_synced_at
   }
 
   EMAIL_WATCHER_STATE {
     int id PK
     json processed_ids
+    int last_uid
+    string mailbox
+    datetime baseline_at
     datetime updated_at
   }
 
@@ -86,6 +117,9 @@ erDiagram
     json ai_value
     json corrected_value
     string rating
+    string reason
+    string model
+    string prompt_version
     datetime created_at
   }
 
@@ -98,6 +132,13 @@ erDiagram
 ```
 
 ## Migration Policy
+
+Current migration folders:
+
+- `20260717154000_init_postgresql`
+- `20260717180500_remove_mailbox_ignore_before`
+- `20260720092000_add_mailbox_message_cache`
+- `20260721172000_email_watcher_last_uid`
 
 Schema changes require:
 

@@ -143,6 +143,14 @@ The script must:
 - update `/opt/infra/docs/VPS.md`;
 - avoid duplicates.
 
+## Homepage Project Port Description
+
+- Every newly registered Homepage project must use `description: "port X"`, with `X` replaced by the **verified published host port** of the project's HTTP gateway, never the container-internal port or an unverified planned port.
+- Keep `href` as the public HTTPS domain, without appending the private host port.
+- `/opt/infra/scripts/register-project.sh` (or the equivalent registration mechanism) must obtain the verified host port, write/update the description idempotently, and update it when the host port changes.
+- Record actual allocations in the VPS operational inventory and project deployment docs; never embed project-specific assignments in the shared Template.
+- Standards synchronization alone must not change production Compose, Nginx, Homepage, or port allocations. See `.skills/VPS_INFRASTRUCTURE.md` for the normative rule.
+
 ## Docker Standard
 
 - Each project is a dedicated Docker Compose stack.

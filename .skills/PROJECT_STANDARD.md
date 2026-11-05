@@ -218,3 +218,7 @@ Documentare:
 - costo mensile;
 - lock-in;
 - alternative.
+
+## VPS Shared Services Integration
+
+For applications deployed on the standard VPS, treat Nginx, Authelia, Homepage, Uptime Kuma and Grafana as externally managed shared infrastructure. Follow `.skills/VPS_INFRASTRUCTURE.md` for the integration contract. Document the project's authentication mode, public/internal endpoints, healthcheck, monitoring and any explicit exceptions in project-local `AGENTS.md` or `docs/DEPLOYMENT.md`. The application's own auth library remains valid when app-owned identity is required; Authelia is not a mandatory replacement.

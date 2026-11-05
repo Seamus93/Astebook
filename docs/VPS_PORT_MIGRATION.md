@@ -1,6 +1,16 @@
 # Piano di standardizzazione delle porte VPS
 
-Data: 2026-11-05. Stato: piano preliminare verificabile; implementazione e deployment non eseguiti.
+Data: 2026-11-05. Stato: configurazione Astebook implementata nei sorgenti e autorizzata dall'utente per push su main; deployment da verificare tramite Actions. Le evidenze live VPS restano da acquisire dall'operatore.
+
+## Configurazione Astebook implementata
+
+- Gateway fisso `127.0.0.1:3010:3000`, indipendente da vecchi valori HOST_PORT.
+- CI verifica il binding tramite `python3 scripts/check-gateway-port.py`; porte interne, DB e volumi invariati.
+- Push su main avvia il deployment esistente con ricostruzione Docker. Aggiornamento Nginx VPS manuale: upstream `http://127.0.0.1:3010`, preservando TLS e login.
+- Prima di distribuire AgriAvenger sulla 3000 verificare che Astebook l'abbia liberata.
+- Rollback Astebook: revertire il cambio Compose e ridistribuire, ripristinare l'upstream Nginx precedente. Se AgriAvenger occupa 3000, riportarlo prima su 6080. Mai eliminare volumi o ricreare DB.
+
+Il resto del documento conserva l'inventario preliminare e il piano globale: i valori sorgente descritti come attuali si riferiscono alla baseline prima dell'implementazione.
 
 ## Evidenze e limiti dell'inventario
 

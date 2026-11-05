@@ -24,7 +24,7 @@ Updated: 2026-07-10
   - `/app/frontend/media`
   - `/app/scripts`
 - Exposes port `3000`.
-- `docker-compose.yml` publishes `${HOST_PORT:-3000}:3000` for test access.
+- `docker-compose.yml` publishes `127.0.0.1:3010:3000` for test access.
 - Healthcheck: `curl -f http://localhost:3000/health`, interval 30s, timeout 10s, retries 3.
 
 ## GitHub Actions Requirements

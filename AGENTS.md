@@ -74,7 +74,7 @@ Variables:
 
 - HTTP health endpoint: `GET /health`.
 - Public traffic must enter through the host Nginx reverse proxy.
-- The Docker service currently exposes port `3000` publicly for test access.
+- The Docker gateway binds only `127.0.0.1:3010:3000`; public access uses host Nginx. Host mapping is fixed in Compose.
 - `/admin` must stay protected by server-side login before any public exposure.
 - If env admin secrets are absent, `/admin/setup` creates the first runtime admin.
 - Runtime admin settings and processing logs must persist in the Docker-mounted `runtime/` directory.

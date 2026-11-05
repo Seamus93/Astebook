@@ -56,6 +56,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v5
+      - name: Validate gateway port assignment
+        run: python3 scripts/check-gateway-port.py
 
       - name: Fetch secrets from Infisical
         if: ${{ env.INFISICAL_IDENTITY_ID != '' && env.INFISICAL_PROJECT_ID != '' && env.INFISICAL_ENV != '' }}

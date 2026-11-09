@@ -135,11 +135,12 @@ jobs:
       - name: SonarQube Scan
         if: ${{ env.SONAR_TOKEN != '' && env.SONAR_ORGANIZATION != '' }}
         timeout-minutes: 32
-        uses: SonarSource/sonarqube-scan-action@v6
+        uses: SonarSource/sonarqube-scan-action@e805d875275f728fac1885b413934be6d7c63f65 # v8.4.1
         with:
           args: >-
             -Dsonar.organization=${{ env.SONAR_ORGANIZATION }}
             -Dsonar.host.url=https://sonarcloud.io
+            -Dsonar.verbose=true
         env:
           SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
           SONAR_HOST_URL: https://sonarcloud.io

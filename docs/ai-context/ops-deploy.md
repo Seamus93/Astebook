@@ -77,3 +77,11 @@ Required Variables:
 - Build: `npm run build`.
 - CI locally: `npm run ci`.
 - Tests: `npm test`.
+
+## Pipeline remediation 2026-11-09
+
+- Sources: package.json/package-lock.json, .github/workflows/pipeline.yml, sonar-project.properties, docs/SONAR_CONFIGURATION.md.
+- Run 42070312239: CI/CodeQL passed; npm audit failed on 11 vulnerabilities (4 high, 3 critical); Sonar JsSecuritySensorV2 stalled after 84% and timed out at 32 minutes.
+- Remediation in progress: compatible dependency fixes without --force; retain audit and security analysis. Verify clean npm install, tests and build before publishing.
+
+Validation: npm ci and production build pass; npm audit reports zero vulnerabilities. Local suite reached 126 tests, with database-backed HTTP cases failing because the clean install has no generated Prisma client and this workstation has no running Docker/PostgreSQL. Full DB integration validation remains assigned to CI, which generates Prisma and migrates its disposable PostgreSQL service. Source Compose binding and workflow YAML validation pass. Sonar completion remains unverified until the new remote scan finishes.
